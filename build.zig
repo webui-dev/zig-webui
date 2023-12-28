@@ -6,17 +6,32 @@ const CrossTarget = std.zig.CrossTarget;
 const Compile = Build.Step.Compile;
 
 pub fn build(b: *Build) void {
+    const isStatic = b.option(bool, "is_static", "whether lib is static") orelse true;
     const target = b.standardTargetOptions(.{});
 
     const optimize = b.standardOptimizeOption(.{});
 
-    const civetweb_static = build_civetweb(b, optimize, target, true);
-    const webui_static = build_webui(b, optimize, target, true);
+    const civetweb_c = build_c_civetweb(b, optimize, target, isStatic);
+    const webui_c = build_c_webui(b, optimize, target, isStatic);
 
-    const lib_step = b.step("library", "build c library");
+    const install_civetweb_c = b.addInstallArtifact(civetweb_c, .{});
+    const install_webui_c = b.addInstallArtifact(webui_c, .{});
 
-    lib_step.dependOn(&civetweb_static.step);
-    lib_step.dependOn(&webui_static.step);
+    const lib_step = b.step("c_lib", "build c library");
+
+    lib_step.dependOn(&install_civetweb_c.step);
+    lib_step.dependOn(&install_webui_c.step);
+
+    const webui = b.addStaticLibrary(.{
+        .name = "webui",
+        // In this case the main source file is merely a path, however, in more
+        // complicated build scripts, this could be a generated file.
+        .root_source_file = .{ .path = "src/webui.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+
+    b.installArtifact(webui);
 
     const text_editor = b.addExecutable(.{
         .name = "text_editor",
@@ -37,30 +52,40 @@ pub fn build(b: *Build) void {
         .path = "webui/include",
     });
 
-    text_editor.linkLibrary(webui_static);
-    text_editor.linkLibrary(civetweb_static);
+    text_editor.linkLibrary(webui_c);
+    text_editor.linkLibrary(civetweb_c);
     text_editor.linkSystemLibrary("pthread");
     text_editor.linkSystemLibrary("m");
 
-    b.installArtifact(text_editor);
+    const install_text_editor = b.addInstallArtifact(text_editor, .{});
 
     const text_editor_step = b.step("text_editor", "build text_editor");
 
-    text_editor_step.dependOn(&text_editor.step);
+    text_editor_step.dependOn(&install_text_editor.step);
+
+    const run_text_editor_cmd = b.addRunArtifact(text_editor);
+    run_text_editor_cmd.setCwd(.{
+        .path = "webui/examples/C/text-editor",
+    });
+    run_text_editor_cmd.step.dependOn(&install_text_editor.step);
+
+    const run_text_editor_step = b.step("run_text_editor", "Run the text_editor");
+    run_text_editor_step.dependOn(&run_text_editor_cmd.step);
 }
 
-fn build_webui(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool) *Compile {
-    const webui = if (is_static) b.addStaticLibrary(.{
-        .name = "webui",
+fn build_c_webui(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool) *Compile {
+    const name = "webui_c";
+    const webui_c = if (is_static) b.addStaticLibrary(.{
+        .name = name,
         .target = target,
         .optimize = optimize,
     }) else b.addSharedLibrary(.{
-        .name = "webui",
+        .name = name,
         .target = target,
         .optimize = optimize,
     });
 
-    webui.addCSourceFile(.{
+    webui_c.addCSourceFile(.{
         .file = .{
             .path = "webui/src/webui.c",
         },
@@ -69,29 +94,28 @@ fn build_webui(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static
         },
     });
 
-    webui.linkLibC();
+    webui_c.linkLibC();
 
-    webui.addIncludePath(.{
+    webui_c.addIncludePath(.{
         .path = "webui/include",
     });
 
-    b.installArtifact(webui);
-
-    return webui;
+    return webui_c;
 }
 
-fn build_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool) *Compile {
-    const civetweb = if (is_static) b.addStaticLibrary(.{
-        .name = "civetweb",
+fn build_c_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool) *Compile {
+    const name = "civetweb_c";
+    const civetweb_c = if (is_static) b.addStaticLibrary(.{
+        .name = name,
         .target = target,
         .optimize = optimize,
     }) else b.addSharedLibrary(.{
-        .name = "civetweb",
+        .name = name,
         .target = target,
         .optimize = optimize,
     });
 
-    civetweb.addCSourceFile(.{
+    civetweb_c.addCSourceFile(.{
         .file = .{
             .path = "webui/src/civetweb/civetweb.c",
         },
@@ -111,17 +135,15 @@ fn build_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_sta
         },
     });
 
-    civetweb.linkLibC();
+    civetweb_c.linkLibC();
 
     if (target.os_tag == .windows) {
-        civetweb.linkSystemLibrary("ws2_32");
+        civetweb_c.linkSystemLibrary("ws2_32");
     }
 
-    civetweb.addIncludePath(.{
+    civetweb_c.addIncludePath(.{
         .path = "webui/include",
     });
 
-    b.installArtifact(civetweb);
-
-    return civetweb;
+    return civetweb_c;
 }
