@@ -31,6 +31,9 @@ pub fn build(b: *Build) void {
         .optimize = optimize,
     });
 
+    webui.linkLibrary(civetweb_c);
+    webui.linkLibrary(webui_c);
+
     b.installArtifact(webui);
 
     const text_editor = b.addExecutable(.{
