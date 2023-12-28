@@ -95,7 +95,14 @@ fn build_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_sta
         .file = .{
             .path = "webui/src/civetweb/civetweb.c",
         },
-        .flags = &[_][]const u8{
+        .flags = if (target.os_tag == .windows) &[_][]const u8{
+            "-DNO_SSL",
+            "-DNDEBUG",
+            "-DNO_CACHING",
+            "-DNO_CGI",
+            "-DUSE_WEBSOCKET",
+            "-DMUST_IMPLEMENT_CLOCK_GETTIME",
+        } else &[_][]const u8{
             "-DNO_SSL",
             "-DNDEBUG",
             "-DNO_CACHING",
@@ -105,6 +112,10 @@ fn build_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_sta
     });
 
     civetweb.linkLibC();
+
+    if (target.os_tag == .windows) {
+        civetweb.linkSystemLibrary("ws2_32");
+    }
 
     civetweb.addIncludePath(.{
         .path = "webui/include",
