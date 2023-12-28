@@ -76,8 +76,8 @@ pub fn newWindow() Self {
 /// Show Window
 /// You can show the WebUI window, which is a web browser window.
 /// If the window is already shown, the UI will get refreshed by the new content in the same window.
-pub fn show(self: *Self, content: []const u8) void {
-    WebUI.webui_show(self.window_handle, @ptrCast(content.ptr));
+pub fn show(self: *Self, content: []const u8) bool {
+    return WebUI.webui_show(self.window_handle, @ptrCast(content.ptr));
 }
 
 /// To know if a specific window is running.

@@ -7,26 +7,16 @@ const Compile = Build.Step.Compile;
 
 pub fn build(b: *Build) void {
     const isStatic = b.option(bool, "is_static", "whether lib is static") orelse true;
-    const target = b.standardTargetOptions(.{});
 
+    const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     const civetweb_c = build_c_civetweb(b, optimize, target, isStatic);
     const webui_c = build_c_webui(b, optimize, target, isStatic);
 
-    const install_civetweb_c = b.addInstallArtifact(civetweb_c, .{});
-    const install_webui_c = b.addInstallArtifact(webui_c, .{});
-
-    const lib_step = b.step("c_lib", "build c library");
-
-    lib_step.dependOn(&install_civetweb_c.step);
-    lib_step.dependOn(&install_webui_c.step);
-
     const webui = b.addStaticLibrary(.{
         .name = "webui",
-        // In this case the main source file is merely a path, however, in more
-        // complicated build scripts, this could be a generated file.
-        .root_source_file = .{ .path = "src/webui.zig" },
+        // .root_source_file = .{ .path = "src/webui.zig" },
         .target = target,
         .optimize = optimize,
     });
@@ -34,7 +24,33 @@ pub fn build(b: *Build) void {
     webui.linkLibrary(civetweb_c);
     webui.linkLibrary(webui_c);
 
+    webui.installHeader("webui/include/webui.h", "webui.h");
+
     b.installArtifact(webui);
+
+    const webui_module = b.addModule("webui", .{
+        .source_file = .{
+            .path = "src/webui.zig",
+        },
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "zig-webui",
+        .root_source_file = .{ .path = "src/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+
+    exe.addModule("webui", webui_module);
+    exe.linkLibrary(webui);
+
+    const exe_install = b.addInstallArtifact(exe, .{});
+
+    const exe_run = b.addRunArtifact(exe);
+    exe_run.step.dependOn(&exe_install.step);
+
+    const exe_run_step = b.step("run", "Run the app");
+    exe_run_step.dependOn(&exe_run.step);
 
     const text_editor = b.addExecutable(.{
         .name = "text_editor",
@@ -118,6 +134,10 @@ fn build_c_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_s
         .optimize = optimize,
     });
 
+    civetweb_c.addIncludePath(.{
+        .path = "webui/include",
+    });
+
     civetweb_c.addCSourceFile(.{
         .file = .{
             .path = "webui/src/civetweb/civetweb.c",
@@ -143,10 +163,6 @@ fn build_c_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_s
     if (target.os_tag == .windows) {
         civetweb_c.linkSystemLibrary("ws2_32");
     }
-
-    civetweb_c.addIncludePath(.{
-        .path = "webui/include",
-    });
 
     return civetweb_c;
 }
