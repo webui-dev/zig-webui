@@ -27,11 +27,7 @@ fn count(e: webui.Event) void {
         }
     }
 
-    const res_buf = for (response, 0..) |value, i| {
-        if (value == 0) {
-            break response[0..i];
-        }
-    } else response[0..];
+    const res_buf = response[0..std.mem.len(@as([*:0]u8, @ptrCast(&response)))];
 
     var tmp_count = std.fmt.parseInt(i32, res_buf, 10) catch |err| blk: {
         std.log.err("error is {}", .{err});
