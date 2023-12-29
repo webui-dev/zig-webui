@@ -7,13 +7,14 @@ const Compile = Build.Step.Compile;
 
 pub fn build(b: *Build) void {
     const isStatic = b.option(bool, "is_static", "whether lib is static") orelse true;
+    const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse true;
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     var deps: [2]*Compile = .{
-        build_c_webui(b, optimize, target, isStatic),
-        build_c_civetweb(b, optimize, target, isStatic),
+        build_c_webui(b, optimize, target, isStatic, enableTLS),
+        build_c_civetweb(b, optimize, target, isStatic, enableTLS),
     };
 
     // this will build normal C demo text_editor
@@ -111,7 +112,7 @@ fn build_text_editor(b: *Build, optimize: OptimizeMode, target: CrossTarget, dep
     run_text_editor_step.dependOn(&run_text_editor_cmd.step);
 }
 
-fn build_c_webui(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool) *Compile {
+fn build_c_webui(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool, enable_tls: bool) *Compile {
     const name = "webui_c";
     const webui_c = if (is_static) b.addStaticLibrary(.{
         .name = name,
@@ -127,9 +128,17 @@ fn build_c_webui(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_stat
         .file = .{
             .path = "webui/src/webui.c",
         },
-        .flags = &[_][]const u8{
-            "-DNO_SSL",
-        },
+        .flags = if (enable_tls)
+            &[_][]const u8{
+                "-DNO_SSL",
+                "-DWEBUI_TLS",
+                "-DNO_SSL_DL",
+                "-DOPENSSL_API_1_1",
+            }
+        else
+            &[_][]const u8{
+                "-DNO_SSL",
+            },
     });
 
     webui_c.linkLibC();
@@ -141,7 +150,7 @@ fn build_c_webui(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_stat
     return webui_c;
 }
 
-fn build_c_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool) *Compile {
+fn build_c_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool, enable_tls: bool) *Compile {
     const name = "civetweb_c";
     const civetweb_c = if (is_static) b.addStaticLibrary(.{
         .name = name,
@@ -157,30 +166,59 @@ fn build_c_civetweb(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_s
         .path = "webui/include",
     });
 
+    const cflags = if (target.os_tag == .windows and !enable_tls) &[_][]const u8{
+        "-DNO_SSL",
+        "-DNDEBUG",
+        "-DNO_CACHING",
+        "-DNO_CGI",
+        "-DUSE_WEBSOCKET",
+        "-DMUST_IMPLEMENT_CLOCK_GETTIME",
+    } else if (target.os_tag == .windows and enable_tls) &[_][]const u8{
+        "-DNDEBUG",
+        "-DNO_CACHING",
+        "-DNO_CGI",
+        "-DUSE_WEBSOCKET",
+        "-DWEBUI_TLS",
+        "-DNO_SSL_DL",
+        "-DOPENSSL_API_1_1",
+        "-DMUST_IMPLEMENT_CLOCK_GETTIME",
+    } else if (target.os_tag != .windows and enable_tls)
+        &[_][]const u8{
+            "-DNDEBUG",
+            "-DNO_CACHING",
+            "-DNO_CGI",
+            "-DUSE_WEBSOCKET",
+            "-DWEBUI_TLS",
+            "-DNO_SSL_DL",
+            "-DOPENSSL_API_1_1",
+        }
+    else
+        &[_][]const u8{
+            "-DNO_SSL",
+            "-DNDEBUG",
+            "-DNO_CACHING",
+            "-DNO_CGI",
+            "-DUSE_WEBSOCKET",
+        };
+
     civetweb_c.addCSourceFile(.{
         .file = .{
             .path = "webui/src/civetweb/civetweb.c",
         },
-        .flags = if (target.os_tag == .windows) &[_][]const u8{
-            "-DNO_SSL",
-            "-DNDEBUG",
-            "-DNO_CACHING",
-            "-DNO_CGI",
-            "-DUSE_WEBSOCKET",
-            "-DMUST_IMPLEMENT_CLOCK_GETTIME",
-        } else &[_][]const u8{
-            "-DNO_SSL",
-            "-DNDEBUG",
-            "-DNO_CACHING",
-            "-DNO_CGI",
-            "-DUSE_WEBSOCKET",
-        },
+        .flags = cflags,
     });
 
     civetweb_c.linkLibC();
 
     if (target.os_tag == .windows) {
         civetweb_c.linkSystemLibrary("ws2_32");
+        if (enable_tls) {
+            civetweb_c.linkSystemLibrary("bcrypt");
+        }
+    }
+    if (enable_tls) {
+        civetweb_c.linkSystemLibrary("ssl");
+        civetweb_c.linkSystemLibrary("crypto");
     }
 
     return civetweb_c;
