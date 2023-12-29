@@ -5,12 +5,24 @@ const OptimizeMode = std.builtin.OptimizeMode;
 const CrossTarget = std.zig.CrossTarget;
 const Compile = Build.Step.Compile;
 
+const log = std.log.scoped(.WebUI);
+
+// NOTE: we should note that when enable tls support we cannot compile with musl
+
 pub fn build(b: *Build) void {
     const isStatic = b.option(bool, "is_static", "whether lib is static") orelse true;
     const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse true;
-
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    log.info("link is {s}", .{if (isStatic) "static" else "dynamic"});
+
+    if (enableTLS) {
+        log.info("enable TLS support", .{});
+        if (!target.isNative()) {
+            @compileError("when enable tls, not support cross compile");
+        }
+    }
 
     var deps: [2]*Compile = .{
         build_c_webui(b, optimize, target, isStatic, enableTLS),

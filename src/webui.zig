@@ -76,9 +76,6 @@ window_handle: usize,
 
 /// Creating a new WebUI window object.
 pub fn newWindow() Self {
-    if (flags.enableTLS) {
-        std.log.info("enable tls", .{});
-    }
     return .{
         .window_handle = WebUI.webui_new_window(),
     };
