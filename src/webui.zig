@@ -43,6 +43,13 @@ pub const Event = struct {
     event_number: usize,
     bind_id: usize,
 
+    // get window through Window
+    pub fn getWindow(self: *Event) Self {
+        return .{
+            .window_handle = self.window_handle,
+        };
+    }
+
     pub fn convetToWebUIEventT(self: *Event) WebUI.webui_event_t {
         return WebUI.webui_event_t{
             .window = self.window_handle,
@@ -269,5 +276,3 @@ pub fn script(self: *Self, script_content: []const u8, timeout: usize, buffer: [
 /// Chose between Deno and Nodejs as runtime for .js and .ts files.
 // TODO: complete this
 pub fn setRuntime() void {}
-
-
