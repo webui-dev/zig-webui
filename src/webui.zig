@@ -44,6 +44,8 @@ pub const Event = struct {
     event_number: usize,
     bind_id: usize,
 
+    e: *WebUI.webui_event_t,
+
     // get window through Window
     pub fn getWindow(self: *Event) Self {
         return .{
@@ -61,13 +63,14 @@ pub const Event = struct {
         };
     }
 
-    pub fn convertWebUIEventT2(event: WebUI.webui_event_t) Event {
+    pub fn convertWebUIEventT2(event: *WebUI.webui_event_t) Event {
         return .{
             .window_handle = event.window,
             .event_type = event.event_type,
             .element = @ptrCast(event.element),
             .event_number = event.event_number,
             .bind_id = event.bind_id,
+            .e = event,
         };
     }
 };
@@ -106,7 +109,7 @@ pub fn getNewWindowId() usize {
 pub fn bind(self: *Self, element: []const u8, comptime func: fn (Event) void) usize {
     const tmp_struct = struct {
         fn handle(e: [*c]WebUI.webui_event_t) callconv(.C) void {
-            func(Event.convertWebUIEventT2(e.*));
+            func(Event.convertWebUIEventT2(e));
         }
     };
     return WebUI.webui_bind(self.window_handle, @ptrCast(element.ptr), tmp_struct.handle);
@@ -276,4 +279,63 @@ pub fn script(self: *Self, script_content: []const u8, timeout: usize, buffer: [
 
 /// Chose between Deno and Nodejs as runtime for .js and .ts files.
 // TODO: complete this
-pub fn setRuntime() void {}
+pub fn setRuntime(self: *Self, runtime: Runtimes) void {
+    WebUI.webui_set_runtime(self.window_handle, @intFromEnum(runtime));
+}
+
+/// Get an argument as integer at a specific index
+pub fn getIntAt(e: Event, index: usize) c_longlong {
+    return WebUI.webui_get_int_at(e.e, index);
+}
+
+/// Get the first argument as integer
+pub fn getInt(e: Event) c_longlong {
+    return WebUI.webui_get_int(e.e);
+}
+
+/// Get an argument as string at a specific index
+pub fn getStringAt(e: Event, index: usize) [*:0]const u8 {
+    const ptr = WebUI.webui_get_string_at(e.e, index);
+    return @ptrCast(ptr);
+}
+
+/// Get the first argument as string
+pub fn getString(e: Event) [*:0]const u8 {
+    const ptr = WebUI.webui_get_string(e.e);
+    return @ptrCast(ptr);
+}
+
+/// Get an argument as boolean at a specific index
+pub fn getBoolAt(e: Event, index: usize) bool {
+    return WebUI.webui_get_bool_at(e.e, index);
+}
+
+/// Get the first argument as boolean
+pub fn getBool(e: Event) bool {
+    return WebUI.webui_get_bool(e.e);
+}
+
+/// Get the size in bytes of an argument at a specific index
+pub fn getSizeAt(e: Event, index: usize) usize {
+    return WebUI.webui_get_size_at(e.e, index);
+}
+
+/// Get size in bytes of the first argument
+pub fn getSize(e: Event) usize {
+    return WebUI.webui_get_size(e.e);
+}
+
+/// Return the response to JavaScript as integer.
+pub fn returnInt(e: Event, n: c_longlong) void {
+    WebUI.webui_return_int(e.e, n);
+}
+
+/// Return the response to JavaScript as string.
+pub fn returnString(e: Event, str: []const u8) !void {
+    WebUI.webui_return_string(e.e, @ptrCast(str.ptr));
+}
+
+/// Return the response to JavaScript as boolean.
+pub fn returnBool(e: Event, b: bool) void {
+    WebUI.webui_return_bool(e.e, b);
+}
