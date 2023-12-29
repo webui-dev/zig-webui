@@ -11,22 +11,15 @@ pub fn build(b: *Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const civetweb_c = build_c_civetweb(b, optimize, target, isStatic);
-    const webui_c = build_c_webui(b, optimize, target, isStatic);
+    var deps: [2]*Compile = .{
+        build_c_webui(b, optimize, target, isStatic),
+        build_c_civetweb(b, optimize, target, isStatic),
+    };
 
-    const webui = b.addStaticLibrary(.{
-        .name = "webui",
-        // .root_source_file = .{ .path = "src/webui.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
+    // this will build normal C demo text_editor
+    build_text_editor(b, optimize, target, &deps);
 
-    webui.linkLibrary(civetweb_c);
-    webui.linkLibrary(webui_c);
-
-    webui.installHeader("webui/include/webui.h", "webui.h");
-
-    b.installArtifact(webui);
+    const webui = build_webui(b, optimize, target, isStatic, &deps);
 
     const webui_module = b.addModule("webui", .{
         .source_file = .{
@@ -51,7 +44,32 @@ pub fn build(b: *Build) void {
 
     const exe_run_step = b.step("run", "Run the app");
     exe_run_step.dependOn(&exe_run.step);
+}
 
+fn build_webui(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool, dependencies: []*Compile) *Compile {
+    const webui = if (is_static) b.addStaticLibrary(.{
+        .name = "webui",
+        .target = target,
+        .optimize = optimize,
+    }) else b.addSharedLibrary(.{
+        .name = "webui",
+        .target = target,
+        .optimize = optimize,
+    });
+
+    for (dependencies) |value| {
+        webui.linkLibrary(value);
+    }
+
+    webui.installHeader("webui/include/webui.h", "webui.h");
+
+    b.installArtifact(webui);
+
+    return webui;
+}
+
+/// build C demo text_editor
+fn build_text_editor(b: *Build, optimize: OptimizeMode, target: CrossTarget, dependencies: []*Compile) void {
     const text_editor = b.addExecutable(.{
         .name = "text_editor",
         .optimize = optimize,
@@ -70,9 +88,10 @@ pub fn build(b: *Build) void {
     text_editor.addIncludePath(.{
         .path = "webui/include",
     });
+    for (dependencies) |value| {
+        text_editor.linkLibrary(value);
+    }
 
-    text_editor.linkLibrary(webui_c);
-    text_editor.linkLibrary(civetweb_c);
     text_editor.linkSystemLibrary("pthread");
     text_editor.linkSystemLibrary("m");
 
