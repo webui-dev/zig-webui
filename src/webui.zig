@@ -163,7 +163,17 @@ pub fn setDefaultRootFolder(path: []const u8) bool {
     return WebUI.webui_set_default_root_folder(@ptrCast(path.ptr));
 }
 
-// TODO: webui_set_file_handler
+/// Set a custom handler to serve files.
+pub fn setFileHandler(self: *Self, comptime handler: fn (filename: [*:0]const u8) []u8) void {
+    const tmp_struct = struct {
+        fn handle(filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
+            const content = handler(@ptrCast(filename));
+            length.* = @intCast(content.len);
+            return @ptrCast(content.ptr);
+        }
+    };
+    WebUI.webui_set_file_handler(self.window_handle, tmp_struct.handle);
+}
 
 /// Check if the specified window is still running.
 pub fn isShown(self: *Self) bool {
@@ -194,11 +204,22 @@ pub fn decode(str: []const u8) [*:0]u8 {
     return @ptrCast(ptr);
 }
 
-// TODO: webui_free
+/// Safely free a buffer allocated by WebUI using
+pub fn free(buf: []u8) void {
+    WebUI.webui_free(@ptrCast(buf.ptr));
+}
 
-// TODO: webui_malloc
+/// Safely allocate memory using the WebUI memory management system
+/// it can be safely freed using `free()` at any time.
+pub fn malloc(size: usize) []u8 {
+    const ptr = WebUI.webui_malloc(size);
+    return @as([*]u8, @ptrCast(ptr))[0..size];
+}
 
-// TODO: webui_send_raw
+/// Safely send raw data to the UI.
+pub fn sendRaw(self: *Self, js_func: []const u8, raw: []u8) void {
+    WebUI.webui_send_raw(self.window_handle, @ptrCast(js_func.ptr), @ptrCast(raw.ptr), raw.len);
+}
 
 /// Set a window in hidden mode. Should be called before `show()`
 pub fn setHide(self: *Self, status: bool) void {
