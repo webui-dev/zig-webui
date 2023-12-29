@@ -22,9 +22,27 @@ pub fn build(b: *Build) void {
 
     const webui = build_webui(b, optimize, target, isStatic, &deps);
 
+    // create a options for command paramter
+    const flags_options = b.addOptions();
+
+    // add option
+    flags_options.addOption(bool, "enableTLS", enableTLS);
+
+    // add optios to webui
+    webui.addOptions("flags", flags_options);
+
+    // create a new module for flags options
+    const flags_module = flags_options.createModule();
+
     const webui_module = b.addModule("webui", .{
         .source_file = .{
             .path = "src/webui.zig",
+        },
+        .dependencies = &.{
+            .{
+                .name = "flags",
+                .module = flags_module,
+            },
         },
     });
 
