@@ -16,12 +16,6 @@ const default_enableTLS = false;
 
 const current_zig = builtin.zig_version;
 
-const examples_folders = [_][]const u8{
-    "minimal",
-    "call_js_from_zig",
-    "call_zig_from_js",
-};
-
 // NOTE: we should note that when enable tls support we cannot compile with musl
 
 comptime {
@@ -83,52 +77,80 @@ pub fn build(b: *Build) void {
 }
 
 fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_module: *Module, webui_lib: *Compile) void {
-    for (examples_folders) |value| {
-        const example_name = value;
-        const path = std.fmt.allocPrint(b.allocator, "src/examples/{s}/main.zig", .{example_name}) catch |err| {
-            log.err("fmt path for examples failed, err is {}", .{err});
+    // we use lazyPath to get absolute path of package
+    var lazy_path = Build.LazyPath{
+        .path = "src/examples",
+    };
+    const examples_path = lazy_path.getPath(b);
+    var iter_dir = if (comptime current_zig.minor == 11)
+        std.fs.openIterableDirAbsolute(examples_path, .{}) catch |err| {
+            log.err("open examples_path failed, err is {}", .{err});
             std.os.exit(1);
-        };
-
-        const cwd = std.fmt.allocPrint(b.allocator, "src/examples/{s}", .{example_name}) catch |err| {
-            log.err("fmt path for examples failed, err is {}", .{err});
-            std.os.exit(1);
-        };
-
-        const exe = b.addExecutable(.{
-            .name = example_name,
-            .root_source_file = .{ .path = path },
-            .target = target,
-            .optimize = optimize,
-        });
-
-        exe.addModule("webui", webui_module);
-        exe.linkLibrary(webui_lib);
-
-        const exe_install = b.addInstallArtifact(exe, .{});
-
-        const exe_run = b.addRunArtifact(exe);
-        exe_run.step.dependOn(&exe_install.step);
-
-        if (comptime (current_zig.minor > 11)) {
-            exe_run.setCwd(.{
-                .path = cwd,
-            });
-        } else {
-            exe_run.cwd = cwd;
         }
-
-        const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
-            log.err("fmt step_name for examples failed, err is {}", .{err});
+    else
+        std.fs.openDirAbsolute(examples_path, .{ .iterate = true }) catch |err| {
+            log.err("open examples_path failed, err is {}", .{err});
             std.os.exit(1);
         };
+    defer iter_dir.close();
 
-        const step_desc = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
-            log.err("fmt step_desc for examples failed, err is {}", .{err});
-            std.os.exit(1);
-        };
+    var itera = iter_dir.iterate();
 
-        const exe_run_step = b.step(step_name, step_desc);
-        exe_run_step.dependOn(&exe_run.step);
+    while (itera.next()) |val| {
+        if (val) |entry| {
+            if (entry.kind == .directory) {
+                const example_name = entry.name;
+                const path = std.fmt.allocPrint(b.allocator, "src/examples/{s}/main.zig", .{example_name}) catch |err| {
+                    log.err("fmt path for examples failed, err is {}", .{err});
+                    std.os.exit(1);
+                };
+
+                const cwd = std.fmt.allocPrint(b.allocator, "src/examples/{s}", .{example_name}) catch |err| {
+                    log.err("fmt path for examples failed, err is {}", .{err});
+                    std.os.exit(1);
+                };
+
+                const exe = b.addExecutable(.{
+                    .name = example_name,
+                    .root_source_file = .{ .path = path },
+                    .target = target,
+                    .optimize = optimize,
+                });
+
+                exe.addModule("webui", webui_module);
+                exe.linkLibrary(webui_lib);
+
+                const exe_install = b.addInstallArtifact(exe, .{});
+
+                const exe_run = b.addRunArtifact(exe);
+                exe_run.step.dependOn(&exe_install.step);
+
+                if (comptime (current_zig.minor > 11)) {
+                    exe_run.setCwd(.{
+                        .path = cwd,
+                    });
+                } else {
+                    exe_run.cwd = cwd;
+                }
+
+                const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
+                    log.err("fmt step_name for examples failed, err is {}", .{err});
+                    std.os.exit(1);
+                };
+
+                const step_desc = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
+                    log.err("fmt step_desc for examples failed, err is {}", .{err});
+                    std.os.exit(1);
+                };
+
+                const exe_run_step = b.step(step_name, step_desc);
+                exe_run_step.dependOn(&exe_run.step);
+            }
+        } else {
+            break;
+        }
+    } else |err| {
+        log.err("iterate examples_path failed, err is {}", .{err});
+        std.os.exit(1);
     }
 }
