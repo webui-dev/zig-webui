@@ -39,6 +39,7 @@ const Events = enum(u8) {
 };
 
 /// get the string length
+/// @param: str [*c]const u8
 pub fn str_len(str: anytype) usize {
     const t = @TypeOf(str);
     switch (t) {
@@ -352,17 +353,15 @@ pub fn getInt(e: Event) c_longlong {
 }
 
 /// Get an argument as string at a specific index
-pub fn getStringAt(e: Event, index: usize) []const u8 {
+pub fn getStringAt(e: Event, index: usize) [*c]const u8 {
     const ptr = WebUI.webui_get_string_at(e.e, index);
-    const len = str_len(ptr);
-    return ptr[0..len];
+    return ptr;
 }
 
 /// Get the first argument as string
-pub fn getString(e: Event) []const u8 {
+pub fn getString(e: Event) [*c]const u8 {
     const ptr = WebUI.webui_get_string(e.e);
-    const len = str_len(ptr);
-    return ptr[0..len];
+    return ptr;
 }
 
 /// Get an argument as boolean at a specific index
@@ -427,10 +426,9 @@ pub fn interfaceGetWindowId(self: *Self) usize {
 }
 
 /// Get an argument as string at a specific index
-pub fn interfaceGetStringAt(self: *Self, event_number: usize, index: usize) []const u8 {
+pub fn interfaceGetStringAt(self: *Self, event_number: usize, index: usize) [*c]const u8 {
     const ptr = WebUI.webui_interface_get_string_at(self.window_handle, event_number, index);
-    const len = str_len(ptr);
-    return ptr[0..len];
+    return ptr;
 }
 
 /// Get an argument as integer at a specific index

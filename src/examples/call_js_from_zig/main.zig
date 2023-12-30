@@ -1,26 +1,26 @@
 const std = @import("std");
 const webui = @import("webui");
-
 const html = @embedFile("index.html");
 
 pub fn main() !void {
-    var new_window = webui.newWindow();
+    var nwin = webui.newWindow();
 
-    _ = new_window.show(html);
+    _ = nwin.show(html);
 
-    _ = new_window.bind("MyButton1", count);
-    _ = new_window.bind("MyButton2", exit);
+    _ = nwin.bind("MyButton1", my_function_count);
+    _ = nwin.bind("MyButton2", my_function_exit);
 
     webui.wait();
 
     webui.clean();
 }
 
-fn count(e: webui.Event) void {
+fn my_function_count(e: webui.Event) void {
     var new_e = e;
     var response: [64]u8 = undefined;
 
     var win = new_e.getWindow();
+
     if (!win.script("return GetCount();", 0, &response)) {
         if (!win.isShown()) {
             std.debug.print("window closed\n", .{});
@@ -44,7 +44,7 @@ fn count(e: webui.Event) void {
     win.run(buf);
 }
 
-fn exit(e: webui.Event) void {
+fn my_function_exit(e: webui.Event) void {
     _ = e;
     webui.exit();
 }
