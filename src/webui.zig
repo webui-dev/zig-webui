@@ -1,3 +1,4 @@
+// TODO: c_longlong
 const std = @import("std");
 const flags = @import("flags");
 
@@ -260,7 +261,11 @@ pub fn setPosition(self: *Self, x: c_uint, y: c_uint) void {
     WebUI.webui_set_position(self.window_handle, x, y);
 }
 
-// TODO: webui_set_profile
+/// Set the web browser profile to use. An empty `name` and `path` means
+/// the default user profile. Need to be called before `show()`.
+pub fn setProfile(self: *Self, name: []const u8, path: []const u8) void {
+    WebUI.webui_set_profile(self.window_handle, @ptrCast(name.ptr), @ptrCast(path.ptr));
+}
 
 /// Get the full current URL.
 pub fn getUrl(self: *Self) []const u8 {
@@ -289,7 +294,10 @@ pub fn deleteAllProfiles() void {
     WebUI.webui_delete_all_profiles();
 }
 
-// TODO: webui_delete_profile
+/// Delete a specific window web-browser local folder profile.
+pub fn deleteProfile(self: *Self) void {
+    WebUI.webui_delete_profile(self.window_handle);
+}
 
 /// Get the ID of the parent process (The web browser may re-create another new process).
 pub fn getParentProcessId(self: *Self) usize {
@@ -309,7 +317,12 @@ pub fn wetPort(self: *Self, port: usize) bool {
     return WebUI.webui_set_port(self.window_handle, port);
 }
 
-// TODO: webui_set_tls_certificate
+/// Set the SSL/TLS certificate and the private key content, both in PEM
+/// format. This works only with `webui-2-secure` library. If set empty WebUI
+/// will generate a self-signed certificate.
+pub fn setTlsCertificate(certificate_pem: []const u8, private_key_pem: []const u8) bool {
+    return WebUI.webui_set_tls_certificate(@ptrCast(certificate_pem.ptr), @ptrCast(private_key_pem.ptr));
+}
 
 /// Run JavaScript without waiting for the response.
 pub fn run(self: *Self, script_content: []const u8) void {
@@ -324,7 +337,6 @@ pub fn script(self: *Self, script_content: []const u8, timeout: usize, buffer: [
 }
 
 /// Chose between Deno and Nodejs as runtime for .js and .ts files.
-// TODO: complete this
 pub fn setRuntime(self: *Self, runtime: Runtimes) void {
     WebUI.webui_set_runtime(self.window_handle, @intFromEnum(runtime));
 }
@@ -386,4 +398,44 @@ pub fn returnString(e: Event, str: []const u8) !void {
 /// Return the response to JavaScript as boolean.
 pub fn returnBool(e: Event, b: bool) void {
     WebUI.webui_return_bool(e.e, b);
+}
+
+// TODO: webui_interface_bind
+// pub fn interfaceBind(self:*Self,element:[]const u8,) void {}
+
+/// When using `interfaceBind()`, you may need this function to easily set a response.
+pub fn interfaceSetResponse(self: *Self, event_number: usize, response: []const u8) void {
+    WebUI.webui_interface_set_response(self.window_handle, event_number, @ptrCast(response.ptr));
+}
+
+/// Check if the app still running.
+pub fn interfaceIsAppRunning() bool {
+    return WebUI.webui_interface_is_app_running();
+}
+
+/// Get a unique window ID.
+pub fn interfaceGetWindowId(self: *Self) usize {
+    return WebUI.webui_interface_get_window_id(self.window_handle);
+}
+
+/// Get an argument as string at a specific index
+pub fn interfaceGetStringAt(self: *Self, event_number: usize, index: usize) []const u8 {
+    const ptr = WebUI.webui_interface_get_string_at(self.window_handle, event_number, index);
+    const len = str_len(ptr);
+    return ptr[0..len];
+}
+
+/// Get an argument as integer at a specific index
+pub fn interfaceGetIntAt(self: *Self, event_number: usize, index: usize) c_longlong {
+    return WebUI.webui_interface_get_int_at(self.window_handle, event_number, index);
+}
+
+/// Get an argument as boolean at a specific index
+pub fn interfaceGetBoolAt(self: *Self, event_number: usize, index: usize) bool {
+    return WebUI.webui_interface_get_bool_at(self.window_handle, event_number, index);
+}
+
+/// Get the size in bytes of an argument at a specific index
+pub fn interfaceGetSizeAt(self: *Self, event_number: usize, index: usize) usize {
+    return WebUI.webui_interface_get_size_at(self.window_handle, event_number, index);
 }
