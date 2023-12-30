@@ -95,7 +95,10 @@ pub fn build(b: *Build) void {
 }
 
 fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_module: *Module, webui_lib: *Compile) void {
-    var dir = std.fs.cwd().openIterableDir("./src/examples", .{}) catch @panic("try create iterate of examples failed!");
+    var dir = if (comptime (current_zig.minor > 11))
+        std.fs.cwd().openDir("./src/examples", .{ .iterate = true }) catch @panic("try create iterate of examples failed!")
+    else
+        std.fs.cwd().openIterableDir("./src/examples", .{}) catch @panic("try create iterate of examples failed!");
     defer dir.close();
 
     var iter = dir.iterate();
@@ -105,6 +108,11 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_
                 // we only itreate directory
 
                 const path = std.fmt.allocPrint(b.allocator, "src/examples/{s}/main.zig", .{val.name}) catch |err| {
+                    log.err("fmt path for examples failed, err is {}", .{err});
+                    std.os.exit(1);
+                };
+
+                const cwd = std.fmt.allocPrint(b.allocator, "src/examples/{s}", .{val.name}) catch |err| {
                     log.err("fmt path for examples failed, err is {}", .{err});
                     std.os.exit(1);
                 };
@@ -123,6 +131,14 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_
 
                 const exe_run = b.addRunArtifact(exe);
                 exe_run.step.dependOn(&exe_install.step);
+
+                if (comptime (current_zig.minor > 11)) {
+                    exe_run.setCwd(.{
+                        .path = cwd,
+                    });
+                } else {
+                    exe_run.cwd = cwd;
+                }
 
                 const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{val.name}) catch |err| {
                     log.err("fmt step_name for examples failed, err is {}", .{err});
