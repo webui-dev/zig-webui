@@ -16,6 +16,12 @@ const default_enableTLS = false;
 
 const current_zig = builtin.zig_version;
 
+const examples_folders = [_][]const u8{
+    "minimal",
+    "call_js_from_zig",
+    "call_zig_from_js",
+};
+
 // NOTE: we should note that when enable tls support we cannot compile with musl
 
 comptime {
@@ -72,80 +78,61 @@ pub fn build(b: *Build) void {
         },
     });
 
-    _ = webui_module;
-
     // build examples
-    // build_examples(b, optimize, target, webui_module, webui);
+    build_examples(b, optimize, target, webui_module, webui);
 
     // this will build normal C demo text_editor
-    // build_text_editor(b, optimize, target, &deps);
+    build_text_editor(b, optimize, target, &deps);
 }
 
 fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_module: *Module, webui_lib: *Compile) void {
-    var dir = if (comptime (current_zig.minor > 11))
-        std.fs.cwd().openDir("src/examples", .{ .iterate = true }) catch @panic("try create iterate of examples failed!")
-    else
-        std.fs.cwd().openIterableDir("src/examples", .{}) catch @panic("try create iterate of examples failed!");
-    defer dir.close();
+    for (examples_folders) |value| {
+        const example_name = value;
+        const path = std.fmt.allocPrint(b.allocator, "src/examples/{s}/main.zig", .{example_name}) catch |err| {
+            log.err("fmt path for examples failed, err is {}", .{err});
+            std.os.exit(1);
+        };
 
-    var iter = dir.iterate();
-    while (iter.next()) |entry| {
-        if (entry) |val| {
-            if (val.kind == .directory) {
-                // we only itreate directory
+        const cwd = std.fmt.allocPrint(b.allocator, "src/examples/{s}", .{example_name}) catch |err| {
+            log.err("fmt path for examples failed, err is {}", .{err});
+            std.os.exit(1);
+        };
 
-                const path = std.fmt.allocPrint(b.allocator, "src/examples/{s}/main.zig", .{val.name}) catch |err| {
-                    log.err("fmt path for examples failed, err is {}", .{err});
-                    std.os.exit(1);
-                };
+        const exe = b.addExecutable(.{
+            .name = example_name,
+            .root_source_file = .{ .path = path },
+            .target = target,
+            .optimize = optimize,
+        });
 
-                const cwd = std.fmt.allocPrint(b.allocator, "src/examples/{s}", .{val.name}) catch |err| {
-                    log.err("fmt path for examples failed, err is {}", .{err});
-                    std.os.exit(1);
-                };
+        exe.addModule("webui", webui_module);
+        exe.linkLibrary(webui_lib);
 
-                const exe = b.addExecutable(.{
-                    .name = val.name,
-                    .root_source_file = .{ .path = path },
-                    .target = target,
-                    .optimize = optimize,
-                });
+        const exe_install = b.addInstallArtifact(exe, .{});
 
-                exe.addModule("webui", webui_module);
-                exe.linkLibrary(webui_lib);
+        const exe_run = b.addRunArtifact(exe);
+        exe_run.step.dependOn(&exe_install.step);
 
-                const exe_install = b.addInstallArtifact(exe, .{});
-
-                const exe_run = b.addRunArtifact(exe);
-                exe_run.step.dependOn(&exe_install.step);
-
-                if (comptime (current_zig.minor > 11)) {
-                    exe_run.setCwd(.{
-                        .path = cwd,
-                    });
-                } else {
-                    exe_run.cwd = cwd;
-                }
-
-                const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{val.name}) catch |err| {
-                    log.err("fmt step_name for examples failed, err is {}", .{err});
-                    std.os.exit(1);
-                };
-
-                const step_desc = std.fmt.allocPrint(b.allocator, "run_{s}", .{val.name}) catch |err| {
-                    log.err("fmt step_desc for examples failed, err is {}", .{err});
-                    std.os.exit(1);
-                };
-
-                const exe_run_step = b.step(step_name, step_desc);
-                exe_run_step.dependOn(&exe_run.step);
-            }
+        if (comptime (current_zig.minor > 11)) {
+            exe_run.setCwd(.{
+                .path = cwd,
+            });
         } else {
-            break;
+            exe_run.cwd = cwd;
         }
-    } else |err| {
-        log.err("iterate examples failed, err is {}", .{err});
-        std.os.exit(1);
+
+        const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
+            log.err("fmt step_name for examples failed, err is {}", .{err});
+            std.os.exit(1);
+        };
+
+        const step_desc = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
+            log.err("fmt step_desc for examples failed, err is {}", .{err});
+            std.os.exit(1);
+        };
+
+        const exe_run_step = b.step(step_name, step_desc);
+        exe_run_step.dependOn(&exe_run.step);
     }
 }
 

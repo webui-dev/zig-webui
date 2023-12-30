@@ -32,7 +32,59 @@
 
 ### Zig `0.11`
 
+1. Add this to `build.zig.zon`
+
+```zig
+.@"zig-webui" = .{
+        .url = "https://github.com/webui-dev/zig-webui/archive/main.tar.gz",
+        .hash = <hash value>,
+    },
+```
+
+This tells zig to fetch zig-webui from a tarball provided by GitHub. Make sure to replace the COMMIT part with an actual commit SHA in long form, like `219faa2a5cd5a268a865a1100e92805df4b84610`. Every time you want to update zig-webui you'll have to update this commit.
+
+2. Config `build.zig`
+
+Add this:
+
+```zig
+const zig_webui = b.dependency("zig-webui", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+// add module
+exe.addModule("webui", zig_webui.module("webui"));
+
+// link library
+exe.linkLibrary(zig_webui.artifact("webui"));
+```
+
 ### Zig `nightly`
+
+1. Add to `build.zig.zon`
+
+```sh
+zig fetch --save https://github.com/webui-dev/zig-webui/archive/main.tar.gz
+```
+
+2. Config `build.zig`
+
+Add this:
+
+```zig
+const zig_webui = b.dependency("zig-webui", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+// add module
+exe.addModule("webui", zig_webui.module("webui"));
+
+// link library
+exe.linkLibrary(zig_webui.artifact("webui"));
+```
+
 
 ## UI & The Web Technologies
 
