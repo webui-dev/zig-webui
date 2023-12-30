@@ -1,6 +1,0 @@
-# Do not track Nodejs output files
-node_modules/
-*.json
-
-# Do not track js2c.py output files
-*.js
