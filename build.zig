@@ -72,18 +72,20 @@ pub fn build(b: *Build) void {
         },
     });
 
+    _ = webui_module;
+
     // build examples
-    build_examples(b, optimize, target, webui_module, webui);
+    // build_examples(b, optimize, target, webui_module, webui);
 
     // this will build normal C demo text_editor
-    build_text_editor(b, optimize, target, &deps);
+    // build_text_editor(b, optimize, target, &deps);
 }
 
 fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_module: *Module, webui_lib: *Compile) void {
     var dir = if (comptime (current_zig.minor > 11))
-        std.fs.cwd().openDir("./src/examples", .{ .iterate = true }) catch @panic("try create iterate of examples failed!")
+        std.fs.cwd().openDir("src/examples", .{ .iterate = true }) catch @panic("try create iterate of examples failed!")
     else
-        std.fs.cwd().openIterableDir("./src/examples", .{}) catch @panic("try create iterate of examples failed!");
+        std.fs.cwd().openIterableDir("src/examples", .{}) catch @panic("try create iterate of examples failed!");
     defer dir.close();
 
     var iter = dir.iterate();
