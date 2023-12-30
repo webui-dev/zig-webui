@@ -28,7 +28,7 @@ pub fn build(b: *Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    log.info("link is {s}", .{if (isStatic) "static" else "dynamic"});
+    log.info("link mode is {s}", .{if (isStatic) "static" else "dynamic"});
 
     if (enableTLS) {
         log.info("enable TLS support", .{});
@@ -71,24 +71,79 @@ pub fn build(b: *Build) void {
             },
         },
     });
+    // _ = webui_module;
 
-    const exe = b.addExecutable(.{
-        .name = "zig-webui",
-        .root_source_file = .{ .path = "src/main.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
+    build_examples(b, optimize, target, webui_module, webui);
 
-    exe.addModule("webui", webui_module);
-    exe.linkLibrary(webui);
+    // const exe = b.addExecutable(.{
+    //     .name = "zig-webui",
+    //     .root_source_file = .{ .path = "src/main.zig" },
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
+    //
+    // exe.addModule("webui", webui_module);
+    // exe.linkLibrary(webui);
+    //
+    // const exe_install = b.addInstallArtifact(exe, .{});
+    //
+    // const exe_run = b.addRunArtifact(exe);
+    // exe_run.step.dependOn(&exe_install.step);
+    //
+    // const exe_run_step = b.step("run", "Run the app");
+    // exe_run_step.dependOn(&exe_run.step);
+}
 
-    const exe_install = b.addInstallArtifact(exe, .{});
+fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_module: *Module, webui_lib: *Compile) void {
+    var dir = std.fs.cwd().openIterableDir("./src/examples", .{}) catch @panic("try create iterate of examples failed!");
+    defer dir.close();
 
-    const exe_run = b.addRunArtifact(exe);
-    exe_run.step.dependOn(&exe_install.step);
+    var iter = dir.iterate();
+    while (iter.next()) |entry| {
+        if (entry) |val| {
+            if (val.kind == .directory) {
+                // we only itreate directory
 
-    const exe_run_step = b.step("run", "Run the app");
-    exe_run_step.dependOn(&exe_run.step);
+                const path = std.fmt.allocPrint(b.allocator, "src/examples/{s}/main.zig", .{val.name}) catch |err| {
+                    log.err("fmt path for examples failed, err is {}", .{err});
+                    std.os.exit(1);
+                };
+
+                const exe = b.addExecutable(.{
+                    .name = val.name,
+                    .root_source_file = .{ .path = path },
+                    .target = target,
+                    .optimize = optimize,
+                });
+
+                exe.addModule("webui", webui_module);
+                exe.linkLibrary(webui_lib);
+
+                const exe_install = b.addInstallArtifact(exe, .{});
+
+                const exe_run = b.addRunArtifact(exe);
+                exe_run.step.dependOn(&exe_install.step);
+
+                const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{val.name}) catch |err| {
+                    log.err("fmt step_name for examples failed, err is {}", .{err});
+                    std.os.exit(1);
+                };
+
+                const step_desc = std.fmt.allocPrint(b.allocator, "run_{s}", .{val.name}) catch |err| {
+                    log.err("fmt step_desc for examples failed, err is {}", .{err});
+                    std.os.exit(1);
+                };
+
+                const exe_run_step = b.step(step_name, step_desc);
+                exe_run_step.dependOn(&exe_run.step);
+            }
+        } else {
+            break;
+        }
+    } else |err| {
+        log.err("iterate examples failed, err is {}", .{err});
+        std.os.exit(1);
+    }
 }
 
 fn build_webui(b: *Build, optimize: OptimizeMode, target: CrossTarget, is_static: bool, dependencies: []*Compile) *Compile {
