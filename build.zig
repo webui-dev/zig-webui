@@ -72,6 +72,8 @@ pub fn build(b: *Build) void {
     const webui = b.dependency("webui", .{
         .target = target,
         .optimize = optimize,
+        .enable_tls = enableTLS,
+        .is_static = isStatic,
     }).artifact("webui");
 
     b.installArtifact(webui);
