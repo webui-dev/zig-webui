@@ -1,13 +1,26 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const Build = std.Build;
 const OptimizeMode = std.builtin.OptimizeMode;
 const CrossTarget = std.zig.CrossTarget;
 const Compile = Build.Step.Compile;
+const Module = Build.Module;
 
 const log = std.log.scoped(.WebUI);
 
+const min_zig_string = "0.11.0";
+
+const current_zig = builtin.zig_version;
+
 // NOTE: we should note that when enable tls support we cannot compile with musl
+
+comptime {
+    const min_zig = std.SemanticVersion.parse(min_zig_string) catch unreachable;
+    if (current_zig.order(min_zig) == .lt) {
+        @compileError(std.fmt.comptimePrint("Your Zig version v{} does not meet the minimum build requirement of v{}", .{ current_zig, min_zig }));
+    }
+}
 
 pub fn build(b: *Build) void {
     const isStatic = b.option(bool, "is_static", "whether lib is static") orelse true;
@@ -20,7 +33,8 @@ pub fn build(b: *Build) void {
     if (enableTLS) {
         log.info("enable TLS support", .{});
         if (!target.isNative()) {
-            @compileError("when enable tls, not support cross compile");
+            log.info("when enable tls, not support cross compile", .{});
+            std.os.exit(1);
         }
     }
 
@@ -133,9 +147,17 @@ fn build_text_editor(b: *Build, optimize: OptimizeMode, target: CrossTarget, dep
     text_editor_step.dependOn(&install_text_editor.step);
 
     const run_text_editor_cmd = b.addRunArtifact(text_editor);
-    run_text_editor_cmd.setCwd(.{
-        .path = "webui/examples/C/text-editor",
-    });
+
+    // This is a compatibility issue
+    // we use comptime to read the version number and decide which API to use
+    if (comptime (current_zig.minor > 11)) {
+        run_text_editor_cmd.setCwd(.{
+            .path = "webui/examples/C/text-editor",
+        });
+    } else {
+        run_text_editor_cmd.cwd = "webui/examples/C/text-editor";
+    }
+
     run_text_editor_cmd.step.dependOn(&install_text_editor.step);
 
     const run_text_editor_step = b.step("run_text_editor", "Run the text_editor");
