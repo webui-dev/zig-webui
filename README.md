@@ -51,6 +51,8 @@ Add this:
 const zig_webui = b.dependency("zig-webui", .{
     .target = target,
     .optimize = optimize,
+    .enable_tls = false, // whether enable tls support
+    .is_static = false, // whether static link
 });
 
 // add module
@@ -76,6 +78,8 @@ Add this:
 const zig_webui = b.dependency("zig-webui", .{
     .target = target,
     .optimize = optimize,
+    .enable_tls = false, // whether enable tls support
+    .is_static = false, // whether static link
 });
 
 // add module
