@@ -37,10 +37,23 @@ const Events = enum(u8) {
     EVENT_CALLBACK, // 4. Function call event
 };
 
+/// get the string length
+pub fn str_len(str: anytype) usize {
+    const t = @TypeOf(str);
+    switch (t) {
+        [*c]u8, [*c]const u8, [*:0]u8, [*:0]const u8 => {
+            return std.mem.len(str);
+        },
+        else => {
+            @compileError("type is incorrect");
+        },
+    }
+}
+
 pub const Event = struct {
     window_handle: usize,
     event_type: usize,
-    element: [*:0]u8,
+    element: []u8,
     event_number: usize,
     bind_id: usize,
 
@@ -57,17 +70,19 @@ pub const Event = struct {
         return WebUI.webui_event_t{
             .window = self.window_handle,
             .event_type = self.event_type,
-            .element = @ptrCast(self.element),
+            .element = @ptrCast(self.element.ptr),
             .event_number = self.event_number,
             .bind_id = self.bind_id,
         };
     }
 
     pub fn convertWebUIEventT2(event: *WebUI.webui_event_t) Event {
+        const len = str_len(event.element);
+
         return .{
             .window_handle = event.window,
             .event_type = event.event_type,
-            .element = @ptrCast(event.element),
+            .element = event.element[0..len],
             .event_number = event.event_number,
             .bind_id = event.bind_id,
             .e = event,
@@ -164,10 +179,11 @@ pub fn setDefaultRootFolder(path: []const u8) bool {
 }
 
 /// Set a custom handler to serve files.
-pub fn setFileHandler(self: *Self, comptime handler: fn (filename: [*:0]const u8) []u8) void {
+pub fn setFileHandler(self: *Self, comptime handler: fn (filename: []const u8) []u8) void {
     const tmp_struct = struct {
         fn handle(filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
-            const content = handler(@ptrCast(filename));
+            const len = str_len(filename);
+            const content = handler(filename[0..len]);
             length.* = @intCast(content.len);
             return @ptrCast(content.ptr);
         }
@@ -192,16 +208,24 @@ pub fn setIcon(self: *Self, icon: []const u8, icon_type: []const u8) void {
 
 /// Base64 encoding. Use this to safely send text based data to the UI. If
 /// it fails it will return NULL.
-pub fn encode(str: []const u8) ?[*:0]u8 {
+pub fn encode(str: []const u8) ?[]u8 {
     const ptr = WebUI.webui_encode(@ptrCast(str.ptr));
-    return @ptrCast(ptr);
+    if (ptr == null) {
+        return null;
+    }
+    const len = str_len(ptr);
+    return ptr[0..len];
 }
 
 /// Base64 decoding. Use this to safely decode received Base64 text from
 /// the UI. If it fails it will return NULL.
-pub fn decode(str: []const u8) [*:0]u8 {
+pub fn decode(str: []const u8) ?[]u8 {
     const ptr = WebUI.webui_decode(@ptrCast(str.ptr));
-    return @ptrCast(ptr);
+    if (ptr == null) {
+        return null;
+    }
+    const len = str_len(ptr);
+    return ptr[0..len];
 }
 
 /// Safely free a buffer allocated by WebUI using
@@ -239,9 +263,10 @@ pub fn setPosition(self: *Self, x: c_uint, y: c_uint) void {
 // TODO: webui_set_profile
 
 /// Get the full current URL.
-pub fn getUrl(self: *Self) [*:0]const u8 {
+pub fn getUrl(self: *Self) []const u8 {
     const ptr = WebUI.webui_get_url(self.window_handle);
-    return @ptrCast(ptr);
+    const len = str_len(ptr);
+    return ptr[0..len];
 }
 
 /// Allow a specific window address to be accessible from a public network
@@ -315,15 +340,17 @@ pub fn getInt(e: Event) c_longlong {
 }
 
 /// Get an argument as string at a specific index
-pub fn getStringAt(e: Event, index: usize) [*:0]const u8 {
+pub fn getStringAt(e: Event, index: usize) []const u8 {
     const ptr = WebUI.webui_get_string_at(e.e, index);
-    return @ptrCast(ptr);
+    const len = str_len(ptr);
+    return ptr[0..len];
 }
 
 /// Get the first argument as string
-pub fn getString(e: Event) [*:0]const u8 {
+pub fn getString(e: Event) []const u8 {
     const ptr = WebUI.webui_get_string(e.e);
-    return @ptrCast(ptr);
+    const len = str_len(ptr);
+    return ptr[0..len];
 }
 
 /// Get an argument as boolean at a specific index
