@@ -11,6 +11,9 @@ const log = std.log.scoped(.WebUI);
 
 const min_zig_string = "0.11.0";
 
+const default_isStatic = true;
+const default_enableTLS = false;
+
 const current_zig = builtin.zig_version;
 
 // NOTE: we should note that when enable tls support we cannot compile with musl
@@ -23,8 +26,8 @@ comptime {
 }
 
 pub fn build(b: *Build) void {
-    const isStatic = b.option(bool, "is_static", "whether lib is static") orelse true;
-    const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse true;
+    const isStatic = b.option(bool, "is_static", "whether lib is static") orelse default_isStatic;
+    const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse default_enableTLS;
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
