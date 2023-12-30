@@ -43,9 +43,6 @@ pub fn build(b: *Build) void {
         build_c_civetweb(b, optimize, target, isStatic, enableTLS),
     };
 
-    // this will build normal C demo text_editor
-    build_text_editor(b, optimize, target, &deps);
-
     const webui = build_webui(b, optimize, target, isStatic, &deps);
 
     // create a options for command paramter
@@ -71,27 +68,12 @@ pub fn build(b: *Build) void {
             },
         },
     });
-    // _ = webui_module;
 
+    // build examples
     build_examples(b, optimize, target, webui_module, webui);
 
-    // const exe = b.addExecutable(.{
-    //     .name = "zig-webui",
-    //     .root_source_file = .{ .path = "src/main.zig" },
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    //
-    // exe.addModule("webui", webui_module);
-    // exe.linkLibrary(webui);
-    //
-    // const exe_install = b.addInstallArtifact(exe, .{});
-    //
-    // const exe_run = b.addRunArtifact(exe);
-    // exe_run.step.dependOn(&exe_install.step);
-    //
-    // const exe_run_step = b.step("run", "Run the app");
-    // exe_run_step.dependOn(&exe_run.step);
+    // this will build normal C demo text_editor
+    build_text_editor(b, optimize, target, &deps);
 }
 
 fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_module: *Module, webui_lib: *Compile) void {
