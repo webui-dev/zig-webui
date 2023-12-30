@@ -122,10 +122,10 @@ pub fn getNewWindowId() usize {
 /// @param element The HTML ID
 /// @param func The callback function
 /// @return Returns a unique bind ID.
-pub fn bind(self: *Self, element: []const u8, comptime func: fn (Event) void) usize {
+pub fn bind(self: *Self, element: []const u8, comptime func: fn (e: Event) void) usize {
     const tmp_struct = struct {
-        fn handle(e: [*c]WebUI.webui_event_t) callconv(.C) void {
-            func(Event.convertWebUIEventT2(e));
+        fn handle(tmp_e: [*c]WebUI.webui_event_t) callconv(.C) void {
+            func(Event.convertWebUIEventT2(tmp_e));
         }
     };
     return WebUI.webui_bind(self.window_handle, @ptrCast(element.ptr), tmp_struct.handle);
@@ -182,9 +182,9 @@ pub fn setDefaultRootFolder(path: []const u8) bool {
 /// Set a custom handler to serve files.
 pub fn setFileHandler(self: *Self, comptime handler: fn (filename: []const u8) []u8) void {
     const tmp_struct = struct {
-        fn handle(filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
-            const len = str_len(filename);
-            const content = handler(filename[0..len]);
+        fn handle(tmp_filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
+            const len = str_len(tmp_filename);
+            const content = handler(tmp_filename[0..len]);
             length.* = @intCast(content.len);
             return @ptrCast(content.ptr);
         }
@@ -400,8 +400,16 @@ pub fn returnBool(e: Event, b: bool) void {
     WebUI.webui_return_bool(e.e, b);
 }
 
-// TODO: webui_interface_bind
-// pub fn interfaceBind(self:*Self,element:[]const u8,) void {}
+/// Bind a specific HTML element click event with a function. Empty element means all events.
+pub fn interfaceBind(self: *Self, element: []const u8, comptime callback: fn (window_handle: usize, event_type: usize, element: []u8, event_number: usize, bind_id: usize) void) void {
+    const tmp_struct = struct {
+        fn handle(tmp_window: usize, tmp_event_type: usize, tmp_element: [*c]u8, tmp_event_number: usize, tmp_bind_id: usize) callconv(.C) void {
+            const len = str_len(tmp_element);
+            callback(tmp_window, tmp_event_type, tmp_element[0..len], tmp_event_number, tmp_bind_id);
+        }
+    };
+    WebUI.webui_interface_bind(self.window_handle, @ptrCast(element.ptr), tmp_struct.handle);
+}
 
 /// When using `interfaceBind()`, you may need this function to easily set a response.
 pub fn interfaceSetResponse(self: *Self, event_number: usize, response: []const u8) void {
