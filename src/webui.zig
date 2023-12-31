@@ -262,7 +262,7 @@ pub fn setSize(self: *Self, width: u32, height: u32) void {
 
 /// Set the window position.
 pub fn setPosition(self: *Self, x: u32, y: u32) void {
-    WebUI.webui_set_position(self.window_handle, @ptrCast(x), @ptrCast(y));
+    WebUI.webui_set_position(self.window_handle, @intCast(x), @intCast(y));
 }
 
 /// Set the web browser profile to use. An empty `name` and `path` means
