@@ -1,3 +1,4 @@
+// TODO: c_uint
 const std = @import("std");
 const flags = @import("flags");
 
@@ -180,13 +181,17 @@ pub fn setDefaultRootFolder(path: []const u8) bool {
 }
 
 /// Set a custom handler to serve files.
-pub fn setFileHandler(self: *Self, comptime handler: fn (filename: []const u8) []u8) void {
+pub fn setFileHandler(self: *Self, comptime handler: fn (filename: []const u8) ?[]u8) void {
     const tmp_struct = struct {
         fn handle(tmp_filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
             const len = str_len(tmp_filename);
             const content = handler(tmp_filename[0..len]);
-            length.* = @intCast(content.len);
-            return @ptrCast(content.ptr);
+            if (content) |val| {
+                length.* = @intCast(val.len);
+                return @ptrCast(val.ptr);
+            }
+
+            return null;
         }
     };
     WebUI.webui_set_file_handler(self.window_handle, tmp_struct.handle);
