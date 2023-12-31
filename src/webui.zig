@@ -313,7 +313,7 @@ pub fn getChildProcessId(self: *Self) usize {
 /// This can be useful to determine the HTTP link of `webui.js` in case
 /// you are trying to use WebUI with an external web-server like NGNIX
 /// @return Returns True if the port is free and usable by WebUI
-pub fn wetPort(self: *Self, port: usize) bool {
+pub fn setPort(self: *Self, port: usize) bool {
     return WebUI.webui_set_port(self.window_handle, port);
 }
 
