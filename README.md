@@ -28,6 +28,14 @@
 - Multi-platform & Multi-Browser
 - Using private profile for safety
 
+## Examples
+
+There are several examples for newbies, they are in the `examples` directory.
+
+You can use `zig build --help` to view all buildable examples.
+
+Like `zig build run_minimal`, this will build and run the `minimal` example.
+
 ## Installation
 
 ### Zig `0.11`
