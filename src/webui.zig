@@ -1,5 +1,3 @@
-// TODO: c_longlong
-// handle enableTLS
 const std = @import("std");
 const flags = @import("flags");
 
@@ -9,7 +7,7 @@ const WebUI = @cImport({
 
 const Self = @This();
 
-const Browsers = enum(u8) {
+pub const Browsers = enum(u8) {
     NoBrowser = 0, // 0. No web browser
     AnyBrowser, // 1. Default recommended web browser
     Chrome, // 2. Google Chrome
@@ -25,13 +23,13 @@ const Browsers = enum(u8) {
     ChromiumBased,
 };
 
-const Runtimes = enum(u8) {
+pub const Runtimes = enum(u8) {
     None = 0, // 0. Prevent WebUI from using any runtime for .js and .ts files
     Deno, // 1. Use Deno runtime for .js and .ts files
     NodeJS, // 2. Use Nodejs runtime for .js files
 };
 
-const Events = enum(u8) {
+pub const Events = enum(u8) {
     EVENT_DISCONNECTED = 0, // 0. Window disconnection event
     EVENT_CONNECTED, // 1. Window connection event
     EVENT_MOUSE_CLICK, // 2. Mouse click event
@@ -55,7 +53,7 @@ pub fn str_len(str: anytype) usize {
 
 pub const Event = struct {
     window_handle: usize,
-    event_type: usize,
+    event_type: Events,
     element: []u8,
     event_number: usize,
     bind_id: usize,
@@ -84,7 +82,7 @@ pub const Event = struct {
 
         return .{
             .window_handle = event.window,
-            .event_type = event.event_type,
+            .event_type = @enumFromInt(event.event_type),
             .element = event.element[0..len],
             .event_number = event.event_number,
             .bind_id = event.bind_id,
@@ -323,6 +321,9 @@ pub fn wetPort(self: *Self, port: usize) bool {
 /// format. This works only with `webui-2-secure` library. If set empty WebUI
 /// will generate a self-signed certificate.
 pub fn setTlsCertificate(certificate_pem: []const u8, private_key_pem: []const u8) bool {
+    if (comptime !flags.enableTLS) {
+        @panic("not enable tls");
+    }
     return WebUI.webui_set_tls_certificate(@ptrCast(certificate_pem.ptr), @ptrCast(private_key_pem.ptr));
 }
 
@@ -344,13 +345,13 @@ pub fn setRuntime(self: *Self, runtime: Runtimes) void {
 }
 
 /// Get an argument as integer at a specific index
-pub fn getIntAt(e: Event, index: usize) c_longlong {
-    return WebUI.webui_get_int_at(e.e, index);
+pub fn getIntAt(e: Event, index: usize) i64 {
+    return @intCast(WebUI.webui_get_int_at(e.e, index));
 }
 
 /// Get the first argument as integer
-pub fn getInt(e: Event) c_longlong {
-    return WebUI.webui_get_int(e.e);
+pub fn getInt(e: Event) i64 {
+    return @intCast(WebUI.webui_get_int(e.e));
 }
 
 /// Get an argument as string at a specific index
@@ -386,8 +387,8 @@ pub fn getSize(e: Event) usize {
 }
 
 /// Return the response to JavaScript as integer.
-pub fn returnInt(e: Event, n: c_longlong) void {
-    WebUI.webui_return_int(e.e, n);
+pub fn returnInt(e: Event, n: i64) void {
+    WebUI.webui_return_int(e.e, @intCast(n));
 }
 
 /// Return the response to JavaScript as string.
@@ -433,8 +434,9 @@ pub fn interfaceGetStringAt(self: *Self, event_number: usize, index: usize) [*c]
 }
 
 /// Get an argument as integer at a specific index
-pub fn interfaceGetIntAt(self: *Self, event_number: usize, index: usize) c_longlong {
-    return WebUI.webui_interface_get_int_at(self.window_handle, event_number, index);
+pub fn interfaceGetIntAt(self: *Self, event_number: usize, index: usize) i64 {
+    const n = WebUI.webui_interface_get_int_at(self.window_handle, event_number, index);
+    return @intCast(n);
 }
 
 /// Get an argument as boolean at a specific index
