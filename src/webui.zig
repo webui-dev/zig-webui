@@ -1,4 +1,3 @@
-// TODO: c_uint
 const std = @import("std");
 const flags = @import("flags");
 
@@ -257,13 +256,13 @@ pub fn setHide(self: *Self, status: bool) void {
 }
 
 /// Set the window size.
-pub fn setSize(self: *Self, width: c_uint, height: c_uint) void {
-    WebUI.webui_set_size(self.window_handle, width, height);
+pub fn setSize(self: *Self, width: u32, height: u32) void {
+    WebUI.webui_set_size(self.window_handle, @intCast(width), @intCast(height));
 }
 
 /// Set the window position.
-pub fn setPosition(self: *Self, x: c_uint, y: c_uint) void {
-    WebUI.webui_set_position(self.window_handle, x, y);
+pub fn setPosition(self: *Self, x: u32, y: u32) void {
+    WebUI.webui_set_position(self.window_handle, @ptrCast(x), @ptrCast(y));
 }
 
 /// Set the web browser profile to use. An empty `name` and `path` means
