@@ -105,11 +105,6 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_
                     std.os.exit(1);
                 };
 
-                const cwd = std.fmt.allocPrint(b.allocator, "src/examples/{s}", .{example_name}) catch |err| {
-                    log.err("fmt path for examples failed, err is {}", .{err});
-                    std.os.exit(1);
-                };
-
                 const exe = b.addExecutable(.{
                     .name = example_name,
                     .root_source_file = .{ .path = path },
@@ -126,10 +121,19 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_
                 exe_run.step.dependOn(&exe_install.step);
 
                 if (comptime (current_zig.minor > 11)) {
+                    const cwd = std.fmt.allocPrint(b.allocator, "src/examples/{s}", .{example_name}) catch |err| {
+                        log.err("fmt path for examples failed, err is {}", .{err});
+                        std.os.exit(1);
+                    };
                     exe_run.setCwd(.{
                         .path = cwd,
                     });
                 } else {
+                    const cwd = std.fmt.allocPrint(b.allocator, "{s}/{s}", .{ examples_path, example_name }) catch |err| {
+                        log.err("fmt path for examples failed, err is {}", .{err});
+                        std.os.exit(1);
+                    };
+                    // TODO: fix this
                     exe_run.cwd = cwd;
                 }
 
