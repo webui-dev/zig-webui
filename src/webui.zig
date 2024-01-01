@@ -396,7 +396,7 @@ pub fn returnInt(e: Event, n: i64) void {
 }
 
 /// Return the response to JavaScript as string.
-pub fn returnString(e: Event, str: []const u8) !void {
+pub fn returnString(e: Event, str: []const u8) void {
     WebUI.webui_return_string(e.e, @ptrCast(str.ptr));
 }
 
