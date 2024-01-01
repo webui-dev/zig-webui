@@ -81,6 +81,9 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_
     var lazy_path = Build.LazyPath{
         .path = "src/examples",
     };
+
+    const build_all_step = b.step("build_all", "build all examples");
+
     const examples_path = lazy_path.getPath(b);
     var iter_dir = if (comptime current_zig.minor == 11)
         std.fs.openIterableDirAbsolute(examples_path, .{}) catch |err| {
@@ -116,6 +119,8 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_
                 exe.linkLibrary(webui_lib);
 
                 const exe_install = b.addInstallArtifact(exe, .{});
+
+                build_all_step.dependOn(&exe_install.step);
 
                 const exe_run = b.addRunArtifact(exe);
                 exe_run.step.dependOn(&exe_install.step);
