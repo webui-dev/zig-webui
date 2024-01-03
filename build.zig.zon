@@ -5,7 +5,7 @@
     .dependencies = .{
         .webui = .{
             .url = "https://github.com/webui-dev/webui/archive/main.tar.gz",
-            .hash = "122086c9debcd7c220e09294b5c9759e46b88b3733e61d413e451045840ebd7e8f82",
+            .hash = "1220e0fa3a49bd3e9177d497c8a7204c8c639cac1c2647a72dacfd64a6e0dee3a392",
         },
     },
     .paths = .{
