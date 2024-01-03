@@ -138,7 +138,6 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_
                         log.err("fmt path for examples failed, err is {}", .{err});
                         std.os.exit(1);
                     };
-                    // TODO: fix this
                     exe_run.cwd = cwd;
                 }
 
