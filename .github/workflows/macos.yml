@@ -18,3 +18,5 @@ jobs:
       - uses: goto-bus-stop/setup-zig@v2
       - name: build_examples
         run: zig build build_all
+      - name: build_examples_dynamic
+        run: zig build build_all -Dis_static=false
