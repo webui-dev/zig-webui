@@ -72,6 +72,8 @@ exe.linkLibrary(zig_webui.artifact("webui"));
 
 ### Zig `nightly`
 
+> To be honest, I don’t recommend using the nightly version because the API of the build system is not yet stable, which means that there may be problems with not being able to build after nightly is updated.
+
 1. Add to `build.zig.zon`
 
 ```sh
