@@ -78,8 +78,6 @@ fn build_11(b: *Build) void {
         .is_static = isStatic,
     }).artifact("webui");
 
-    b.installArtifact(webui);
-
     // build examples
     build_examples_11(b, optimize, target, webui_module, webui);
 }
@@ -110,6 +108,13 @@ fn build_12(b: *Build) void {
     // create a new module for flags options
     const flags_module = flags_options.createModule();
 
+    const webui = b.dependency("webui", .{
+        .target = target,
+        .optimize = optimize,
+        .enable_tls = enableTLS,
+        .is_static = isStatic,
+    }).artifact("webui");
+
     const webui_module = b.addModule("webui", .{
         .root_source_file = .{
             .path = "src/webui.zig",
@@ -122,14 +127,7 @@ fn build_12(b: *Build) void {
         },
     });
 
-    const webui = b.dependency("webui", .{
-        .target = target,
-        .optimize = optimize,
-        .enable_tls = enableTLS,
-        .is_static = isStatic,
-    }).artifact("webui");
-
-    b.installArtifact(webui);
+    webui_module.linkLibrary(webui);
 
     // build examples
     build_examples_12(b, optimize, target, webui_module, webui);
