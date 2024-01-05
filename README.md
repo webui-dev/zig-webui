@@ -44,6 +44,7 @@ Like `zig build run_minimal`, this will build and run the `minimal` example.
 
 ```zig
 .@"zig-webui" = .{
+        // It is recommended to replace the following branch with commit id
         .url = "https://github.com/webui-dev/zig-webui/archive/main.tar.gz",
         .hash = <hash value>,
     },
@@ -77,6 +78,7 @@ exe.linkLibrary(zig_webui.artifact("webui"));
 1. Add to `build.zig.zon`
 
 ```sh
+# It is recommended to replace the following branch with commit id
 zig fetch --save https://github.com/webui-dev/zig-webui/archive/main.tar.gz
 ```
 
@@ -93,12 +95,16 @@ const zig_webui = b.dependency("zig-webui", .{
 });
 
 // add module
-exe.addModule("webui", zig_webui.module("webui"));
+exe.root_module.addImport("webui", zig_webui.module("webui"));
+// note: see this issue for the API changes above,
+// https://github.com/ziglang/zig/pull/18160
 
 // link library
 exe.linkLibrary(zig_webui.artifact("webui"));
 ```
 
+> It is not recommended to dynamically link libraries under Windows, which may cause some symbol duplication problems.
+> see this issue: https://github.com/ziglang/zig/issues/15107
 
 ## UI & The Web Technologies
 
