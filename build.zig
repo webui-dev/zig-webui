@@ -78,6 +78,8 @@ fn build_11(b: *Build) void {
         .is_static = isStatic,
     }).artifact("webui");
 
+    b.installArtifact(webui);
+
     // build examples
     build_examples_11(b, optimize, target, webui_module, webui);
 }
@@ -114,6 +116,8 @@ fn build_12(b: *Build) void {
         .enable_tls = enableTLS,
         .is_static = isStatic,
     }).artifact("webui");
+
+    b.installArtifact(webui);
 
     const webui_module = b.addModule("webui", .{
         .root_source_file = .{
