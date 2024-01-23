@@ -5,7 +5,7 @@ const WebUI = @cImport({
     @cInclude("webui.h");
 });
 
-const Self = @This();
+pub const Self = @This();
 
 pub const Browsers = enum(u8) {
     NoBrowser = 0, // 0. No web browser
@@ -451,4 +451,100 @@ pub fn interfaceGetBoolAt(self: *Self, event_number: usize, index: usize) bool {
 /// Get the size in bytes of an argument at a specific index
 pub fn interfaceGetSizeAt(self: *Self, event_number: usize, index: usize) usize {
     return WebUI.webui_interface_get_size_at(self.window_handle, event_number, index);
+}
+
+//////
+
+/// a very convent function for binding callback
+/// you just need to pase a function to get param
+/// no need to care webui param api
+pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usize {
+    const T = @TypeOf(callback);
+    const TInfo = @typeInfo(T);
+
+    if (TInfo != .Fn) {
+        @compileError("callback should be a function");
+    }
+
+    const fnInfo = TInfo.Fn;
+    if (fnInfo.return_type != void) {
+        @compileError("callback's return type must be void!");
+    }
+
+    if (fnInfo.is_generic) {
+        @compileError("callback can not be a generic function");
+    }
+
+    if (fnInfo.is_var_args) {
+        @compileError("callback can not have variable args");
+    }
+
+    const tmp_struct = struct {
+        const tup_t = fnParamsToTuple(fnInfo.params);
+
+        fn handle(e: Event) void {
+            var param_tup: tup_t = undefined;
+
+            inline for (fnInfo.params, 0..fnInfo.params.len) |param, i| {
+                if (param.type) |tt| {
+                    const paramTInfo = @typeInfo(tt);
+                    switch (paramTInfo) {
+                        .Bool => {
+                            const res = getBoolAt(e, i);
+                            param_tup[i] = res;
+                        },
+                        .Int => {
+                            const res = getIntAt(e, i);
+                            param_tup[i] = @intCast(res);
+                        },
+                        // TODO: add string support
+                        .Pointer => |pointer| {
+                            if (pointer.size != .Slice or pointer.child != u8 or pointer.is_const == false) {
+                                @compileError("not support other type param");
+                            }
+                            const str_ptr = getStringAt(e, i);
+                            const tmp_str_len = getSizeAt(e, i);
+                            const str: []const u8 = str_ptr[0..tmp_str_len];
+                            param_tup[i] = str;
+                        },
+                        else => {
+                            @compileError("not support other type param");
+                        },
+                    }
+                } else {
+                    @compileError("param must have type");
+                }
+            }
+
+            @call(.auto, callback, param_tup);
+        }
+    };
+
+    return self.bind(element, tmp_struct.handle);
+}
+
+fn fnParamsToTuple(comptime params: []const std.builtin.Type.Fn.Param) type {
+    const Type = std.builtin.Type;
+    const fields: [params.len]Type.StructField = blk: {
+        var res: [params.len]Type.StructField = undefined;
+
+        for (params, 0..params.len) |param, i| {
+            res[i] = Type.StructField{
+                .type = param.type.?,
+                .alignment = @alignOf(param.type.?),
+                .default_value = null,
+                .is_comptime = false,
+                .name = std.fmt.comptimePrint("{}", .{i}),
+            };
+        }
+        break :blk res;
+    };
+    return @Type(.{
+        .Struct = std.builtin.Type.Struct{
+            .layout = .Auto,
+            .is_tuple = true,
+            .decls = &.{},
+            .fields = &fields,
+        },
+    });
 }
