@@ -503,7 +503,6 @@ pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usi
                             const res = getIntAt(e, i);
                             param_tup[i] = @intCast(res);
                         },
-                        // TODO: add string support
                         .Pointer => |pointer| {
                             if (pointer.size != .Slice or pointer.child != u8 or pointer.is_const == false) {
                                 @compileError("not support other type param");
@@ -554,3 +553,6 @@ fn fnParamsToTuple(comptime params: []const std.builtin.Type.Fn.Param) type {
         },
     });
 }
+
+// TODO: move event releated function to event
+// add a abstract return function for return value
