@@ -490,8 +490,8 @@ pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usi
                     const paramTInfo = @typeInfo(tt);
                     switch (paramTInfo) {
                         .Struct => {
-                            if (tt != Event or i != 0) {
-                                @compileError("you can only use Event and Event must be the first param");
+                            if (tt != Event) {
+                                @compileError("the struct type you can use only is Event in params");
                             }
                             param_tup[i] = e;
                         },
