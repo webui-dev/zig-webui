@@ -5,7 +5,7 @@ const WebUI = @cImport({
     @cInclude("webui.h");
 });
 
-pub const Self = @This();
+const Self = @This();
 
 pub const Browsers = enum(u8) {
     NoBrowser = 0, // 0. No web browser
@@ -489,6 +489,12 @@ pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usi
                 if (param.type) |tt| {
                     const paramTInfo = @typeInfo(tt);
                     switch (paramTInfo) {
+                        .Struct => {
+                            if (tt != Event or i != 0) {
+                                @compileError("you can only use Event and Event must be the first param");
+                            }
+                            param_tup[i] = e;
+                        },
                         .Bool => {
                             const res = getBoolAt(e, i);
                             param_tup[i] = res;
