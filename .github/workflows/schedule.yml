@@ -1,0 +1,28 @@
+# http://webui.me
+# https://github.com/webui-dev/webui
+# Copyright (c) 2020-2023 Hassan Draga.
+# Licensed under MIT License.
+# All rights reserved.
+#
+# Special Thanks to Turiiya (https://github.com/ttytm)
+name: schedule
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  windows:
+    uses: ./.github/workflows/windows.yml
+    permissions:
+      contents: write
+
+  macos:
+    uses: ./.github/workflows/macos.yml
+    permissions:
+      contents: write
+
+  linux:
+    uses: ./.github/workflows/linux.yml
+    permissions:
+      contents: write
