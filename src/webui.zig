@@ -89,6 +89,54 @@ pub const Event = struct {
             .e = event,
         };
     }
+
+    /// Return the response to JavaScript as integer.
+    pub fn returnInt(e: Event, n: i64) void {
+        WebUI.webui_return_int(e.e, @intCast(n));
+    }
+
+    /// Return the response to JavaScript as string.
+    pub fn returnString(e: Event, str: []const u8) void {
+        WebUI.webui_return_string(e.e, @ptrCast(str.ptr));
+    }
+
+    /// Return the response to JavaScript as boolean.
+    pub fn returnBool(e: Event, b: bool) void {
+        WebUI.webui_return_bool(e.e, b);
+    }
+
+    /// a convenient function to return value
+    /// no need to care about the function name, you just need to call returnValue
+    pub fn returnValue(e: Event, val: anytype) void {
+        const T = @TypeOf(val);
+        const type_info = @typeInfo(T);
+        switch (type_info) {
+            .Pointer => |pointer| {
+                if (pointer.size == .Slice and pointer.child == u8) {
+                    e.returnString(val);
+                } else {
+                    @compileError("sorry, the param value only support []const u8 for Pointer");
+                }
+            },
+            .Int => |int| {
+                const bits = int.bits;
+                const is_signed = int.signedness == .signed;
+                if (is_signed and bits <= 64) {
+                    e.returnInt(@intCast(val));
+                } else if (!is_signed and bits <= 63) {
+                    e.returnInt(@intCast(val));
+                } else {
+                    @compileError("sorry, the param value is out of i64");
+                }
+            },
+            .Bool => {
+                e.returnBool(val);
+            },
+            else => {
+                @compileError("sorry, the param value only support int, bool, string([] const u8)");
+            },
+        }
+    }
 };
 
 window_handle: usize,
@@ -391,18 +439,18 @@ pub fn getSize(e: Event) usize {
 }
 
 /// Return the response to JavaScript as integer.
-pub fn returnInt(e: Event, n: i64) void {
-    WebUI.webui_return_int(e.e, @intCast(n));
+pub fn returnInt(_: Event, _: i64) void {
+    @compileError("pleaser use Event.returnInt, this will be removed when zig-webui release");
 }
 
 /// Return the response to JavaScript as string.
-pub fn returnString(e: Event, str: []const u8) void {
-    WebUI.webui_return_string(e.e, @ptrCast(str.ptr));
+pub fn returnString(_: Event, _: []const u8) void {
+    @compileError("pleaser use Event.returnString, this will be removed when zig-webui release");
 }
 
 /// Return the response to JavaScript as boolean.
-pub fn returnBool(e: Event, b: bool) void {
-    WebUI.webui_return_bool(e.e, b);
+pub fn returnBool(_: Event, _: bool) void {
+    @compileError("pleaser use Event.returnBool, this will be removed when zig-webui release");
 }
 
 /// Bind a specific HTML element click event with a function. Empty element means all events.
@@ -455,7 +503,7 @@ pub fn interfaceGetSizeAt(self: *Self, event_number: usize, index: usize) usize 
 
 //////
 
-/// a very convent function for binding callback
+/// a very convenient function for binding callback
 /// you just need to pase a function to get param
 /// no need to care webui param api
 pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usize {

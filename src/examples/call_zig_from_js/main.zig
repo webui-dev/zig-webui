@@ -54,7 +54,7 @@ fn my_function_with_response(e: webui.Event) void {
 
     std.debug.print("my_function_with_response: {} * {} = {}\n", .{ number, times, res });
 
-    webui.returnInt(e, res);
+    e.returnValue(res);
 }
 
 fn my_function_raw_binary(e: webui.Event) void {
