@@ -61,8 +61,40 @@ pub fn build_12(b: *Build) void {
 
     webui_module.linkLibrary(webui);
 
+    // generate docs
+    generate_docs(b, optimize, target, flags_module);
+
     // build examples
     build_examples_12(b, optimize, target, webui_module, webui);
+}
+
+fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
+    const webui_lib = b.addStaticLibrary(.{
+        .name = "webui_lib",
+        .root_source_file = .{
+            .path = "src/webui.zig",
+        },
+        .target = target,
+        .optimize = optimize,
+    });
+
+    webui_lib.root_module.addImport("flags", flags_module);
+
+    // webui_lib.linkLibrary(webui);
+
+    const docs_step = b.step("docs", "Emit docs");
+
+    // 构建文档
+    const docs_install = b.addInstallDirectory(.{
+        // lib 库
+        .source_dir = webui_lib.getEmittedDocs(),
+        .install_dir = .prefix,
+        // 文档子文件夹
+        .install_subdir = "docs",
+    });
+
+    // 依赖step
+    docs_step.dependOn(&docs_install.step);
 }
 
 fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, webui_lib: *Compile) void {
