@@ -1,3 +1,12 @@
+//! This is Zig Wrapping for [Webui](https://github.com/webui-dev/webui),
+//! Zig-WebUI Library
+//!
+//! WebSite: [http://webui.me](http://webui.me),
+//! Github: [https://github.com/webui-dev/zig-webui](https://github.com/webui-dev/zig-webui)
+//!
+//! Copyright (c) 2020-2023 [Jinzhongjia](https://github.com/jinzhongjia),
+//! Licensed under MIT License.
+
 const std = @import("std");
 const flags = @import("flags");
 
@@ -5,40 +14,66 @@ const WebUI = @cImport({
     @cInclude("webui.h");
 });
 
+const comptimePrint = std.fmt.comptimePrint;
+
 const Self = @This();
 
+/// Browsers for webui
 pub const Browsers = enum(u8) {
-    NoBrowser = 0, // 0. No web browser
-    AnyBrowser, // 1. Default recommended web browser
-    Chrome, // 2. Google Chrome
-    Firefox, // 3. Mozilla Firefox
-    Edge, // 4. Microsoft Edge
-    Safari, // 5. Apple Safari
-    Chromium, // 6. The Chromium Project
-    Opera, // 7. Opera Browser
-    Brave, // 8. The Brave Browser
-    Vivaldi, // 9. The Vivaldi Browser
-    Epic, // 10. The Epic Browser
-    Yandex, // 11. The Yandex Browser
+    /// 0. No web browser
+    NoBrowser = 0,
+    /// 1. Default recommended web browser
+    AnyBrowser,
+    /// 2. Google Chrome
+    Chrome,
+    /// 3. Mozilla Firefox
+    Firefox,
+    /// 4. Microsoft Edge
+    Edge,
+    /// 5. Apple Safari
+    Safari,
+    /// 6. The Chromium Project
+    Chromium,
+    /// 7. Opera Browser
+    Opera,
+    /// 8. The Brave Browser
+    Brave,
+    /// 9. The Vivaldi Browser
+    Vivaldi,
+    /// 10. The Epic Browser
+    Epic,
+    /// 11. The Yandex Browser
+    Yandex,
+    /// 12. Any Chromium based browser
     ChromiumBased,
 };
 
+/// runtime for js
 pub const Runtimes = enum(u8) {
-    None = 0, // 0. Prevent WebUI from using any runtime for .js and .ts files
-    Deno, // 1. Use Deno runtime for .js and .ts files
-    NodeJS, // 2. Use Nodejs runtime for .js files
+    /// 0. Prevent WebUI from using any runtime for .js and .ts files
+    None = 0,
+    /// 1. Use Deno runtime for .js and .ts files
+    Deno,
+    /// 2. Use Nodejs runtime for .js files
+    NodeJS,
 };
 
+/// Events for webui
 pub const Events = enum(u8) {
-    EVENT_DISCONNECTED = 0, // 0. Window disconnection event
-    EVENT_CONNECTED, // 1. Window connection event
-    EVENT_MOUSE_CLICK, // 2. Mouse click event
-    EVENT_NAVIGATION, // 3. Window navigation event
-    EVENT_CALLBACK, // 4. Function call event
+    /// 0. Window disconnection event
+    EVENT_DISCONNECTED = 0,
+    /// 1. Window connection event
+    EVENT_CONNECTED,
+    /// 2. Mouse click event
+    EVENT_MOUSE_CLICK,
+    /// 3. Window navigation event
+    EVENT_NAVIGATION,
+    /// 4. Function call event
+    EVENT_CALLBACK,
 };
 
-/// get the string length
-/// @param: str [*c]const u8
+/// Get the string length.
+/// This function is exposed to process the string returned by c
 pub fn str_len(str: anytype) usize {
     const t = @TypeOf(str);
     switch (t) {
@@ -46,28 +81,42 @@ pub fn str_len(str: anytype) usize {
             return std.mem.len(str);
         },
         else => {
-            @compileError("type is incorrect");
+            const err_msg = comptimePrint("type of str ({}) should be [*c]u8 or [*c]const u8", .{t});
+            @compileError(err_msg);
         },
     }
 }
 
+/// Event, the communication between webui and browser depends on this
 pub const Event = struct {
+    /// Window handle.
+    /// Please do not assign values ​​manually unless you know what you are doing
     window_handle: usize,
+    /// Event's type, more info to see `Events`
     event_type: Events,
+    /// the broswer HTML element ID.
+    /// not recommended to modify this value
     element: []u8,
+    /// Internal WebUI.
+    /// treated as sequence number of event
     event_number: usize,
+    /// Bind ID
     bind_id: usize,
 
+    /// c raw webui_event_t.
+    /// don't modify it directly
     e: *WebUI.webui_event_t,
 
-    // get window through Window
-    pub fn getWindow(self: *Event) Self {
+    // get window through Event
+    pub fn getWindow(self: Event) Self {
         return .{
             .window_handle = self.window_handle,
         };
     }
 
-    pub fn convetToWebUIEventT(self: *Event) WebUI.webui_event_t {
+    /// convert zig Event to c webui_event_t,
+    /// you won't use this
+    pub fn convertToWebUIEventT(self: *Event) WebUI.webui_event_t {
         return WebUI.webui_event_t{
             .window = self.window_handle,
             .event_type = self.event_type,
@@ -77,6 +126,8 @@ pub const Event = struct {
         };
     }
 
+    /// convert c webui_event_t to zig event
+    /// you also won't use this
     pub fn convertWebUIEventT2(event: *WebUI.webui_event_t) Event {
         const len = str_len(event.element);
 
@@ -115,7 +166,8 @@ pub const Event = struct {
                 if (pointer.size == .Slice and pointer.child == u8) {
                     e.returnString(val);
                 } else {
-                    @compileError("sorry, the param value only support []const u8 for Pointer");
+                    const err_msg = comptimePrint("val's type ({}), only support []const u8 for Pointer!", .{T});
+                    @compileError(err_msg);
                 }
             },
             .Int => |int| {
@@ -126,19 +178,23 @@ pub const Event = struct {
                 } else if (!is_signed and bits <= 63) {
                     e.returnInt(@intCast(val));
                 } else {
-                    @compileError("sorry, the param value is out of i64");
+                    const err_msg = comptimePrint("val's type ({}), out of i64", .{T});
+                    @compileError(err_msg);
                 }
             },
             .Bool => {
                 e.returnBool(val);
             },
             else => {
-                @compileError("sorry, the param value only support int, bool, string([] const u8)");
+                const err_msg = comptimePrint("val's type ({}), only support int, bool, string([]const u8)!", .{T});
+                @compileError(err_msg);
             },
         }
     }
 };
 
+/// the window number,
+/// please not modify this value
 window_handle: usize,
 
 /// Creating a new WebUI window object.
@@ -166,10 +222,10 @@ pub fn getNewWindowId() usize {
 }
 
 /// Bind a specific html element click event with a function.
-/// Empty element means all events.
-/// @param element The HTML ID
-/// @param func The callback function
-/// @return Returns a unique bind ID.
+/// Empty element means all events,
+/// `element` is The HTML ID,
+/// `func` is The callback function,
+/// Returns a unique bind ID.
 pub fn bind(self: *Self, element: []const u8, comptime func: fn (e: Event) void) usize {
     const tmp_struct = struct {
         fn handle(tmp_e: [*c]WebUI.webui_event_t) callconv(.C) void {
@@ -182,6 +238,7 @@ pub fn bind(self: *Self, element: []const u8, comptime func: fn (e: Event) void)
 /// Show a window using embedded HTML, or a file.
 /// If the window is already open, it will be refreshed.
 /// Returns True if showing the window is successed
+/// `content` is the html which will be shown
 pub fn show(self: *Self, content: []const u8) bool {
     return WebUI.webui_show(self.window_handle, @ptrCast(content.ptr));
 }
@@ -198,6 +255,7 @@ pub fn setKiosk(self: *Self, status: bool) void {
 }
 
 /// Wait until all opened windows get closed.
+/// This function should be **called** at the end, it will **block** the current thread
 pub fn wait() void {
     WebUI.webui_wait();
 }
@@ -212,7 +270,8 @@ pub fn destory(self: *Self) void {
     WebUI.webui_destroy(self.window_handle);
 }
 
-/// Close all open windows. `wait()` will return (Break)
+/// Close all open windows.
+/// `wait()` will return (Break)
 pub fn exit() void {
     WebUI.webui_exit();
 }
@@ -222,7 +281,8 @@ pub fn setRootFolder(self: *Self, path: []const u8) bool {
     return WebUI.webui_set_root_folder(self.window_handle, @ptrCast(path.ptr));
 }
 
-/// Set the web-server root folder path for all windows. Should be used before `show()`.
+/// Set the web-server root folder path for all windows.
+/// Should be used before `show()`.
 pub fn setDefaultRootFolder(path: []const u8) bool {
     return WebUI.webui_set_default_root_folder(@ptrCast(path.ptr));
 }
@@ -270,8 +330,9 @@ pub fn encode(str: []const u8) ?[]u8 {
     return ptr[0..len];
 }
 
-/// Base64 decoding. Use this to safely decode received Base64 text from
-/// the UI. If it fails it will return NULL.
+/// Base64 decoding.
+/// Use this to safely decode received Base64 text from the UI.
+/// If it fails it will return NULL.
 pub fn decode(str: []const u8) ?[]u8 {
     const ptr = WebUI.webui_decode(@ptrCast(str.ptr));
     if (ptr == null) {
@@ -288,6 +349,7 @@ pub fn free(buf: []u8) void {
 
 /// Safely allocate memory using the WebUI memory management system
 /// it can be safely freed using `free()` at any time.
+/// In general, you should not use this function
 pub fn malloc(size: usize) []u8 {
     const ptr = WebUI.webui_malloc(size);
     return @as([*]u8, @ptrCast(ptr))[0..size];
@@ -298,7 +360,8 @@ pub fn sendRaw(self: *Self, js_func: []const u8, raw: []u8) void {
     WebUI.webui_send_raw(self.window_handle, @ptrCast(js_func.ptr), @ptrCast(raw.ptr), raw.len);
 }
 
-/// Set a window in hidden mode. Should be called before `show()`
+/// Set a window in hidden mode.
+/// Should be called before `show()`
 pub fn setHide(self: *Self, status: bool) void {
     WebUI.webui_set_hide(self.window_handle, status);
 }
@@ -313,8 +376,9 @@ pub fn setPosition(self: *Self, x: u32, y: u32) void {
     WebUI.webui_set_position(self.window_handle, @intCast(x), @intCast(y));
 }
 
-/// Set the web browser profile to use. An empty `name` and `path` means
-/// the default user profile. Need to be called before `show()`.
+/// Set the web browser profile to use.
+/// An empty `name` and `path` means the default user profile.
+/// Need to be called before `show()`.
 pub fn setProfile(self: *Self, name: []const u8, path: []const u8) void {
     WebUI.webui_set_profile(self.window_handle, @ptrCast(name.ptr), @ptrCast(path.ptr));
 }
@@ -336,12 +400,14 @@ pub fn navigate(self: *Self, url: []const u8) void {
     WebUI.webui_navigate(self.window_handle, @ptrCast(url.ptr));
 }
 
-/// Free all memory resources. Should be called only at the end.
+/// Free all memory resources.
+/// Should be called only at the end.
 pub fn clean() void {
     WebUI.webui_clean();
 }
 
-/// Delete all local web-browser profiles folder. It should called at the end.
+/// Delete all local web-browser profiles folder.
+/// It should called at the end.
 pub fn deleteAllProfiles() void {
     WebUI.webui_delete_all_profiles();
 }
@@ -364,14 +430,15 @@ pub fn getChildProcessId(self: *Self) usize {
 /// Set a custom web-server network port to be used by WebUI.
 /// This can be useful to determine the HTTP link of `webui.js` in case
 /// you are trying to use WebUI with an external web-server like NGNIX
-/// @return Returns True if the port is free and usable by WebUI
+/// Returns True if the port is free and usable by WebUI
 pub fn setPort(self: *Self, port: usize) bool {
     return WebUI.webui_set_port(self.window_handle, port);
 }
 
-/// Set the SSL/TLS certificate and the private key content, both in PEM
-/// format. This works only with `webui-2-secure` library. If set empty WebUI
-/// will generate a self-signed certificate.
+/// Set the SSL/TLS certificate and the private key content,
+/// both in PEM format.
+/// This works only with `webui-2-secure` library.
+/// If set empty WebUI will generate a self-signed certificate.
 pub fn setTlsCertificate(certificate_pem: []const u8, private_key_pem: []const u8) bool {
     if (comptime !flags.enableTLS) {
         @panic("not enable tls");
@@ -386,7 +453,7 @@ pub fn run(self: *Self, script_content: []const u8) void {
 
 /// Run JavaScript and get the response back
 /// Make sure your local buffer can hold the response.
-/// @return Returns True if there is no execution error
+/// Return True if there is no execution error
 pub fn script(self: *Self, script_content: []const u8, timeout: usize, buffer: []u8) bool {
     return WebUI.webui_script(self.window_handle, @ptrCast(script_content.ptr), timeout, @ptrCast(buffer.ptr), buffer.len);
 }
@@ -438,22 +505,26 @@ pub fn getSize(e: Event) usize {
     return WebUI.webui_get_size(e.e);
 }
 
+/// **deprecated**: use Event.returnInt
 /// Return the response to JavaScript as integer.
 pub fn returnInt(_: Event, _: i64) void {
     @compileError("pleaser use Event.returnInt, this will be removed when zig-webui release");
 }
 
+/// **deprecated**: use Event.returnString
 /// Return the response to JavaScript as string.
 pub fn returnString(_: Event, _: []const u8) void {
     @compileError("pleaser use Event.returnString, this will be removed when zig-webui release");
 }
 
+/// **deprecated**: use Event.returnBool
 /// Return the response to JavaScript as boolean.
 pub fn returnBool(_: Event, _: bool) void {
     @compileError("pleaser use Event.returnBool, this will be removed when zig-webui release");
 }
 
-/// Bind a specific HTML element click event with a function. Empty element means all events.
+/// Bind a specific HTML element click event with a function.
+/// Empty element means all events.
 pub fn interfaceBind(self: *Self, element: []const u8, comptime callback: fn (window_handle: usize, event_type: usize, element: []u8, event_number: usize, bind_id: usize) void) void {
     const tmp_struct = struct {
         fn handle(tmp_window: usize, tmp_event_type: usize, tmp_element: [*c]u8, tmp_event_number: usize, tmp_bind_id: usize) callconv(.C) void {
@@ -464,7 +535,8 @@ pub fn interfaceBind(self: *Self, element: []const u8, comptime callback: fn (wi
     WebUI.webui_interface_bind(self.window_handle, @ptrCast(element.ptr), tmp_struct.handle);
 }
 
-/// When using `interfaceBind()`, you may need this function to easily set a response.
+/// When using `interfaceBind()`,
+/// you may need this function to easily set a response.
 pub fn interfaceSetResponse(self: *Self, event_number: usize, response: []const u8) void {
     WebUI.webui_interface_set_response(self.window_handle, event_number, @ptrCast(response.ptr));
 }
@@ -503,28 +575,32 @@ pub fn interfaceGetSizeAt(self: *Self, event_number: usize, index: usize) usize 
 
 //////
 
-/// a very convenient function for binding callback
-/// you just need to pase a function to get param
-/// no need to care webui param api
+/// a very convenient function for binding callback.
+/// you just need to pase a function to get param.
+/// no need to care webui param api.
 pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usize {
     const T = @TypeOf(callback);
     const TInfo = @typeInfo(T);
 
     if (TInfo != .Fn) {
-        @compileError("callback should be a function");
+        const err_msg = comptimePrint("callback's type ({}), it must be a function!", .{T});
+        @compileError(err_msg);
     }
 
     const fnInfo = TInfo.Fn;
     if (fnInfo.return_type != void) {
-        @compileError("callback's return type must be void!");
+        const err_msg = comptimePrint("callback's return type ({}), it must be void!", .{fnInfo.return_type});
+        @compileError(err_msg);
     }
 
     if (fnInfo.is_generic) {
-        @compileError("callback can not be a generic function");
+        const err_msg = comptimePrint("callback's type ({}), it can not be a generic function!", .{T});
+        @compileError(err_msg);
     }
 
     if (fnInfo.is_var_args) {
-        @compileError("callback can not have variable args");
+        const err_msg = comptimePrint("callback's type ({}), it can not have variable args!", .{T});
+        @compileError(err_msg);
     }
 
     const tmp_struct = struct {
@@ -539,7 +615,8 @@ pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usi
                     switch (paramTInfo) {
                         .Struct => {
                             if (tt != Event) {
-                                @compileError("the struct type you can use only is Event in params");
+                                const err_msg = comptimePrint("the struct type is ({}), the struct type you can use only is Event in params!", .{tt});
+                                @compileError(err_msg);
                             }
                             param_tup[i] = e;
                         },
@@ -553,7 +630,8 @@ pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usi
                         },
                         .Pointer => |pointer| {
                             if (pointer.size != .Slice or pointer.child != u8 or pointer.is_const == false) {
-                                @compileError("not support other type param");
+                                const err_msg = comptimePrint("the pointer type is ({}), not support other type for pointer param!", .{tt});
+                                @compileError(err_msg);
                             }
                             const str_ptr = getStringAt(e, i);
                             const tmp_str_len = getSizeAt(e, i);
@@ -561,7 +639,8 @@ pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usi
                             param_tup[i] = str;
                         },
                         else => {
-                            @compileError("not support other type param");
+                            const err_msg = comptimePrint("type is ({}), only support these types: Event, Bool, Int, []u8!", .{tt});
+                            @compileError(err_msg);
                         },
                     }
                 } else {
@@ -576,6 +655,7 @@ pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usi
     return self.bind(element, tmp_struct.handle);
 }
 
+/// this funciton will return a fn's params tuple
 fn fnParamsToTuple(comptime params: []const std.builtin.Type.Fn.Param) type {
     const Type = std.builtin.Type;
     const fields: [params.len]Type.StructField = blk: {
@@ -601,6 +681,3 @@ fn fnParamsToTuple(comptime params: []const std.builtin.Type.Fn.Param) type {
         },
     });
 }
-
-// TODO: move event releated function to event
-// add a abstract return function for return value
