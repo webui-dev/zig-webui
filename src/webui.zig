@@ -107,7 +107,7 @@ pub const Event = struct {
     /// don't modify it directly
     e: *WebUI.webui_event_t,
 
-    // get window through Event
+    /// get window through Event
     pub fn getWindow(self: Event) Self {
         return .{
             .window_handle = self.window_handle,

@@ -28,6 +28,10 @@
 - Multi-platform & Multi-Browser
 - Using private profile for safety
 
+## API Document
+
+Online Document: [https://webui-dev.github.io/zig-webui/](https://webui-dev.github.io/zig-webui/)
+
 ## Examples
 
 There are several examples for newbies, they are in the `examples` directory.
