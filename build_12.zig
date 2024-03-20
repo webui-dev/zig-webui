@@ -69,7 +69,7 @@ pub fn build_12(b: *Build) void {
 }
 
 fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
-    const webui_lib = b.addStaticLibrary(.{
+    const webui_lib = b.addObject(.{
         .name = "webui_lib",
         .root_source_file = .{
             .path = "src/webui.zig",
