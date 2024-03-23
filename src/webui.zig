@@ -8,6 +8,7 @@
 //! Licensed under MIT License.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const flags = @import("flags");
 
 const WebUI = @cImport({
@@ -208,7 +209,11 @@ pub fn newWindow() Self {
 pub fn newWindowWithId(id: usize) Self {
     if (id == 0 or id >= WebUI.WEBUI_MAX_IDS) {
         std.log.err("id {} is illegal", .{id});
-        std.os.exit(1);
+        if (comptime builtin.zig_version.minor == 11) {
+            std.os.exit(1);
+        } else if (comptime builtin.zig_version.minor == 12) {
+            std.posix.exit(1);
+        }
     }
     return .{
         .window_handle = WebUI.webui_new_window_id(id),

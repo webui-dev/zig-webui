@@ -25,7 +25,7 @@ pub fn build_12(b: *Build) void {
         log.info("enable TLS support", .{});
         if (!target.query.isNative()) {
             log.info("when enable tls, not support cross compile", .{});
-            std.os.exit(1);
+            std.posix.exit(1);
         }
     }
 
@@ -109,7 +109,7 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
     var iter_dir =
         std.fs.openDirAbsolute(examples_path, .{ .iterate = true }) catch |err| {
         log.err("open examples_path failed, err is {}", .{err});
-        std.os.exit(1);
+        std.posix.exit(1);
     };
     defer iter_dir.close();
 
@@ -121,7 +121,7 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
                 const example_name = entry.name;
                 const path = std.fmt.allocPrint(b.allocator, "src/examples/{s}/main.zig", .{example_name}) catch |err| {
                     log.err("fmt path for examples failed, err is {}", .{err});
-                    std.os.exit(1);
+                    std.posix.exit(1);
                 };
 
                 const exe = b.addExecutable(.{
@@ -143,7 +143,7 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
 
                 const cwd = std.fmt.allocPrint(b.allocator, "src/examples/{s}", .{example_name}) catch |err| {
                     log.err("fmt path for examples failed, err is {}", .{err});
-                    std.os.exit(1);
+                    std.posix.exit(1);
                 };
                 exe_run.setCwd(.{
                     .path = cwd,
@@ -151,12 +151,12 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
 
                 const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
                     log.err("fmt step_name for examples failed, err is {}", .{err});
-                    std.os.exit(1);
+                    std.posix.exit(1);
                 };
 
                 const step_desc = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
                     log.err("fmt step_desc for examples failed, err is {}", .{err});
-                    std.os.exit(1);
+                    std.posix.exit(1);
                 };
 
                 const exe_run_step = b.step(step_name, step_desc);
@@ -167,6 +167,6 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
         }
     } else |err| {
         log.err("iterate examples_path failed, err is {}", .{err});
-        std.os.exit(1);
+        std.posix.exit(1);
     }
 }
