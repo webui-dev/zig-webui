@@ -1,6 +1,8 @@
 const std = @import("std");
 const webui = @import("webui");
 
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+
 var MyWindow: webui = undefined;
 
 var MySecondWindow: webui = undefined;
@@ -49,12 +51,26 @@ fn events(e: webui.Event) void {
             std.debug.print("Click. \n", .{});
         },
         .EVENT_NAVIGATION => {
+            const allocator = gpa.allocator();
+
+            defer {
+                const deinit_status = gpa.deinit();
+
+                if (deinit_status == .leak) @panic("TEST FAIL");
+            }
+
             const url = webui.getString(e);
             const len = webui.str_len(url);
 
             var tmp_e = e;
             var win = tmp_e.getWindow();
-            win.navigate(url[0..len]);
+
+            const new_url = allocator.allocSentinel(u8, len, 0) catch unreachable;
+            defer allocator.free(new_url);
+
+            @memcpy(new_url[0..len], url[0..len]);
+
+            win.navigate(new_url);
         },
         else => {},
     }

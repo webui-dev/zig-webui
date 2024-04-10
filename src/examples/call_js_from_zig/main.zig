@@ -41,7 +41,9 @@ fn my_function_count(e: webui.Event) void {
     var js: [64]u8 = std.mem.zeroes([64]u8);
     const buf = std.fmt.bufPrint(&js, "SetCount({});", .{tmp_count}) catch unreachable;
 
-    win.run(buf);
+    // convert to a Sentinel-Terminated slice
+    const content: [:0]const u8 = js[0..buf.len :0];
+    win.run(content);
 }
 
 fn my_function_exit(e: webui.Event) void {
