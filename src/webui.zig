@@ -148,7 +148,7 @@ pub const Event = struct {
     }
 
     /// Return the response to JavaScript as string.
-    pub fn returnString(e: Event, str: []const u8) void {
+    pub fn returnString(e: Event, str: [:0]const u8) void {
         WebUI.webui_return_string(e.e, @ptrCast(str.ptr));
     }
 
@@ -164,7 +164,10 @@ pub const Event = struct {
         const type_info = @typeInfo(T);
         switch (type_info) {
             .Pointer => |pointer| {
-                if (pointer.size == .Slice and pointer.child == u8) {
+                if (pointer.size == .Slice and
+                    pointer.child == u8 and
+                    (if (pointer.sentinel) |sentinel| @as(*u8, @ptrCast(sentinel)).* == 0 else false))
+                {
                     e.returnString(val);
                 } else {
                     const err_msg = comptimePrint("val's type ({}), only support []const u8 for Pointer!", .{T});
@@ -231,7 +234,7 @@ pub fn getNewWindowId() usize {
 /// `element` is The HTML ID,
 /// `func` is The callback function,
 /// Returns a unique bind ID.
-pub fn bind(self: *Self, element: []const u8, comptime func: fn (e: Event) void) usize {
+pub fn bind(self: *Self, element: [:0]const u8, comptime func: fn (e: Event) void) usize {
     const tmp_struct = struct {
         fn handle(tmp_e: [*c]WebUI.webui_event_t) callconv(.C) void {
             func(Event.convertWebUIEventT2(tmp_e));
@@ -244,13 +247,13 @@ pub fn bind(self: *Self, element: []const u8, comptime func: fn (e: Event) void)
 /// If the window is already open, it will be refreshed.
 /// Returns True if showing the window is successed
 /// `content` is the html which will be shown
-pub fn show(self: *Self, content: []const u8) bool {
+pub fn show(self: *Self, content: [:0]const u8) bool {
     return WebUI.webui_show(self.window_handle, @ptrCast(content.ptr));
 }
 
 /// Same as `show()`. But using a specific web browser
 /// Returns True if showing the window is successed
-pub fn showBrowser(self: *Self, content: []const u8, browser: Browsers) bool {
+pub fn showBrowser(self: *Self, content: [:0]const u8, browser: Browsers) bool {
     return WebUI.webui_show_browser(self.window_handle, @ptrCast(content.ptr), @intFromEnum(browser));
 }
 
@@ -282,13 +285,13 @@ pub fn exit() void {
 }
 
 /// Set the web-server root folder path for a specific window.
-pub fn setRootFolder(self: *Self, path: []const u8) bool {
+pub fn setRootFolder(self: *Self, path: [:0]const u8) bool {
     return WebUI.webui_set_root_folder(self.window_handle, @ptrCast(path.ptr));
 }
 
 /// Set the web-server root folder path for all windows.
 /// Should be used before `show()`.
-pub fn setDefaultRootFolder(path: []const u8) bool {
+pub fn setDefaultRootFolder(path: [:0]const u8) bool {
     return WebUI.webui_set_default_root_folder(@ptrCast(path.ptr));
 }
 
@@ -320,13 +323,13 @@ pub fn setTimeout(time: usize) void {
 }
 
 /// Set the default embedded HTML favicon.
-pub fn setIcon(self: *Self, icon: []const u8, icon_type: []const u8) void {
+pub fn setIcon(self: *Self, icon: [:0]const u8, icon_type: [:0]const u8) void {
     WebUI.webui_set_icon(self.window_handle, @ptrCast(icon.ptr), @ptrCast(icon_type));
 }
 
 /// Base64 encoding. Use this to safely send text based data to the UI. If
 /// it fails it will return NULL.
-pub fn encode(str: []const u8) ?[]u8 {
+pub fn encode(str: [:0]const u8) ?[]u8 {
     const ptr = WebUI.webui_encode(@ptrCast(str.ptr));
     if (ptr == null) {
         return null;
@@ -338,7 +341,7 @@ pub fn encode(str: []const u8) ?[]u8 {
 /// Base64 decoding.
 /// Use this to safely decode received Base64 text from the UI.
 /// If it fails it will return NULL.
-pub fn decode(str: []const u8) ?[]u8 {
+pub fn decode(str: [:0]const u8) ?[]u8 {
     const ptr = WebUI.webui_decode(@ptrCast(str.ptr));
     if (ptr == null) {
         return null;
@@ -361,7 +364,7 @@ pub fn malloc(size: usize) []u8 {
 }
 
 /// Safely send raw data to the UI.
-pub fn sendRaw(self: *Self, js_func: []const u8, raw: []u8) void {
+pub fn sendRaw(self: *Self, js_func: [:0]const u8, raw: []u8) void {
     WebUI.webui_send_raw(self.window_handle, @ptrCast(js_func.ptr), @ptrCast(raw.ptr), raw.len);
 }
 
@@ -384,7 +387,7 @@ pub fn setPosition(self: *Self, x: u32, y: u32) void {
 /// Set the web browser profile to use.
 /// An empty `name` and `path` means the default user profile.
 /// Need to be called before `show()`.
-pub fn setProfile(self: *Self, name: []const u8, path: []const u8) void {
+pub fn setProfile(self: *Self, name: [:0]const u8, path: [:0]const u8) void {
     WebUI.webui_set_profile(self.window_handle, @ptrCast(name.ptr), @ptrCast(path.ptr));
 }
 
@@ -401,7 +404,7 @@ pub fn setPublic(self: *Self, status: bool) void {
 }
 
 /// Navigate to a specific URL
-pub fn navigate(self: *Self, url: []const u8) void {
+pub fn navigate(self: *Self, url: [:0]const u8) void {
     WebUI.webui_navigate(self.window_handle, @ptrCast(url.ptr));
 }
 
@@ -444,7 +447,7 @@ pub fn setPort(self: *Self, port: usize) bool {
 /// both in PEM format.
 /// This works only with `webui-2-secure` library.
 /// If set empty WebUI will generate a self-signed certificate.
-pub fn setTlsCertificate(certificate_pem: []const u8, private_key_pem: []const u8) bool {
+pub fn setTlsCertificate(certificate_pem: [:0]const u8, private_key_pem: [:0]const u8) bool {
     if (comptime !flags.enableTLS) {
         @panic("not enable tls");
     }
@@ -452,14 +455,14 @@ pub fn setTlsCertificate(certificate_pem: []const u8, private_key_pem: []const u
 }
 
 /// Run JavaScript without waiting for the response.
-pub fn run(self: *Self, script_content: []const u8) void {
+pub fn run(self: *Self, script_content: [:0]const u8) void {
     WebUI.webui_run(self.window_handle, @ptrCast(script_content.ptr));
 }
 
 /// Run JavaScript and get the response back
 /// Make sure your local buffer can hold the response.
 /// Return True if there is no execution error
-pub fn script(self: *Self, script_content: []const u8, timeout: usize, buffer: []u8) bool {
+pub fn script(self: *Self, script_content: [:0]const u8, timeout: usize, buffer: []u8) bool {
     return WebUI.webui_script(self.window_handle, @ptrCast(script_content.ptr), timeout, @ptrCast(buffer.ptr), buffer.len);
 }
 
@@ -518,7 +521,7 @@ pub fn returnInt(_: Event, _: i64) void {
 
 /// **deprecated**: use Event.returnString
 /// Return the response to JavaScript as string.
-pub fn returnString(_: Event, _: []const u8) void {
+pub fn returnString(_: Event, _: [:0]const u8) void {
     @compileError("pleaser use Event.returnString, this will be removed when zig-webui release");
 }
 
@@ -530,7 +533,7 @@ pub fn returnBool(_: Event, _: bool) void {
 
 /// Bind a specific HTML element click event with a function.
 /// Empty element means all events.
-pub fn interfaceBind(self: *Self, element: []const u8, comptime callback: fn (window_handle: usize, event_type: usize, element: []u8, event_number: usize, bind_id: usize) void) void {
+pub fn interfaceBind(self: *Self, element: [:0]const u8, comptime callback: fn (window_handle: usize, event_type: usize, element: []u8, event_number: usize, bind_id: usize) void) void {
     const tmp_struct = struct {
         fn handle(tmp_window: usize, tmp_event_type: usize, tmp_element: [*c]u8, tmp_event_number: usize, tmp_bind_id: usize) callconv(.C) void {
             const len = str_len(tmp_element);
@@ -542,7 +545,7 @@ pub fn interfaceBind(self: *Self, element: []const u8, comptime callback: fn (wi
 
 /// When using `interfaceBind()`,
 /// you may need this function to easily set a response.
-pub fn interfaceSetResponse(self: *Self, event_number: usize, response: []const u8) void {
+pub fn interfaceSetResponse(self: *Self, event_number: usize, response: [:0]const u8) void {
     WebUI.webui_interface_set_response(self.window_handle, event_number, @ptrCast(response.ptr));
 }
 
@@ -583,7 +586,7 @@ pub fn interfaceGetSizeAt(self: *Self, event_number: usize, index: usize) usize 
 /// a very convenient function for binding callback.
 /// you just need to pase a function to get param.
 /// no need to care webui param api.
-pub fn binding(self: *Self, element: []const u8, comptime callback: anytype) usize {
+pub fn binding(self: *Self, element: [:0]const u8, comptime callback: anytype) usize {
     const T = @TypeOf(callback);
     const TInfo = @typeInfo(T);
 

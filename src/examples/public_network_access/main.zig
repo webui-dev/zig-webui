@@ -41,7 +41,10 @@ pub fn main() !void {
 
     const js = std.fmt.bufPrint(&javascript, "document.getElementById('urlSpan').innerHTML = '{s}';", .{public_win_url}) catch unreachable;
 
-    private_window.run(js);
+    // convert to a Sentinel-Terminated slice
+    const content: [:0]const u8 = javascript[0..js.len :0];
+
+    private_window.run(content);
 
     webui.wait();
 
