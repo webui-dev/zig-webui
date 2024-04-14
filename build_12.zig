@@ -108,8 +108,8 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
     const examples_path = lazy_path.getPath(b);
     var iter_dir =
         std.fs.openDirAbsolute(examples_path, .{ .iterate = true }) catch |err| {
-        log.err("open examples_path failed, err is {}", .{err});
-        std.posix.exit(1);
+        log.info("open examples_path failed, err is {}", .{err});
+        return;
     };
     defer iter_dir.close();
 

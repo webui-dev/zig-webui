@@ -41,6 +41,8 @@ jobs:
               with:
                   fetch-depth: 0 # Not needed if lastUpdated is not enabled
             - uses: goto-bus-stop/setup-zig@v2
+            - name: remove ./src/examples
+              run: rm -rf examples
             - name: Generate Docs
               run: zig build docs
             - name: Deploy
