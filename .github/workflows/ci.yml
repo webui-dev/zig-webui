@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        version: [0.11.0, '']
+        version: [0.11.0, 0.12.0, '']
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
@@ -24,7 +24,6 @@ jobs:
         uses: goto-bus-stop/setup-zig@v2
       - uses: actions/checkout@v4
       - name: Build examples
-        if: runner.os != 'Windows'
         run: zig build build_all
       - name: Build examples dynamic
         if: runner.os != 'Windows'
