@@ -19,9 +19,10 @@ comptime {
 }
 
 pub fn build(b: *Build) void {
-    if (current_zig.minor == 11) {
-        build_11(b);
-    } else if (current_zig.minor == 12) {
-        build_12(b);
+    switch (current_zig.minor) {
+        11 => build_11(b),
+        12 => build_12(b),
+        13 => build_12(b),
+        else => @compileError("unknown version!"),
     }
 }
