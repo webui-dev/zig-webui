@@ -45,9 +45,17 @@ jobs:
               run: rm -rf ./src/examples
             - name: Generate Docs
               run: zig build docs
-            - name: Deploy
-              uses: peaceiris/actions-gh-pages@v3
+            - name: Upload artifact
+              uses: actions/upload-pages-artifact@v3
               with:
-                  github_token: ${{ secrets.GITHUB_TOKEN }}
-                  publish_branch: docs
-                  publish_dir: ./zig-out/docs
+                  path: ./course/.vitepress/dist
+    deploy:
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        runs-on: ubuntu-latest
+        needs: build
+        steps:
+            - name: Deploy to GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v4
