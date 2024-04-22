@@ -75,7 +75,7 @@ exe.addModule("webui", zig_webui.module("webui"));
 exe.linkLibrary(zig_webui.artifact("webui"));
 ```
 
-### Zig `nightly`
+### Zig `0.12` \ `nightly`
 
 > To be honest, I don’t recommend using the nightly version because the API of the build system is not yet stable, which means that there may be problems with not being able to build after nightly is updated.
 
@@ -84,6 +84,7 @@ exe.linkLibrary(zig_webui.artifact("webui"));
 ```sh
 # It is recommended to replace the following branch with commit id
 zig fetch --save https://github.com/webui-dev/zig-webui/archive/main.tar.gz
+# Of course, you can also use git+https to fetch this package!
 ```
 
 2. Config `build.zig`
@@ -91,6 +92,8 @@ zig fetch --save https://github.com/webui-dev/zig-webui/archive/main.tar.gz
 Add this:
 
 ```zig
+// To standardize development, maybe you should use `lazyDependency()` instead of `dependency()`
+// more info to see: https://ziglang.org/download/0.12.0/release-notes.html#toc-Lazy-Dependencies
 const zig_webui = b.dependency("zig-webui", .{
     .target = target,
     .optimize = optimize,

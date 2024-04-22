@@ -12,7 +12,7 @@ const log = std.log.scoped(.WebUI);
 const default_isStatic = true;
 const default_enableTLS = false;
 
-pub fn build_11(b: *Build) void {
+pub fn build(b: *Build) void {
     const isStatic = b.option(bool, "is_static", "whether lib is static") orelse default_isStatic;
     const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse default_enableTLS;
 
