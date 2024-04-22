@@ -94,7 +94,6 @@ fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget
 }
 
 fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, webui_lib: *Compile) void {
-    // we use lazyPath to get absolute path of package
     var lazy_path = Build.LazyPath{
         .path = "src/examples",
     };
