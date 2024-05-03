@@ -38,19 +38,10 @@ pub fn build(b: *Build) void {
     // create a new module for flags options
     const flags_module = flags_options.createModule();
 
-    const webui = b.dependency("webui", .{
-        .target = target,
-        .optimize = optimize,
-        .enable_tls = enableTLS,
-        .is_static = isStatic,
-    }).artifact("webui");
-
-    b.installArtifact(webui);
+    const webui = webui_c(b, optimize, target, isStatic, enableTLS);
 
     const webui_module = b.addModule("webui", .{
-        .root_source_file = .{
-            .path = "src/webui.zig",
-        },
+        .root_source_file = b.path("src/webui.zig"),
         .imports = &.{
             .{
                 .name = "flags",
@@ -68,12 +59,64 @@ pub fn build(b: *Build) void {
     build_examples_12(b, optimize, target, webui_module, webui);
 }
 
+/// this function to build webui from c code
+fn webui_c(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, is_static: bool, enable_tls: bool) *Compile {
+    const webui_dep = b.dependency("webui", .{});
+
+    const name = "webui";
+    const webui = if (is_static) b.addStaticLibrary(.{ .name = name, .target = target, .optimize = optimize }) else b.addSharedLibrary(.{ .name = name, .target = target, .optimize = optimize });
+
+    const extra_flags = if (target.query.os_tag == .windows or (target.query.os_tag == null and builtin.os.tag == .windows))
+        "-DMUST_IMPLEMENT_CLOCK_GETTIME"
+    else
+        "";
+
+    const cflags = if (enable_tls)
+        [_][]const u8{ "-DNDEBUG", "-DNO_CACHING", "-DNO_CGI", "-DUSE_WEBSOCKET", "-DWEBUI_TLS", "-DNO_SSL_DL", "-DOPENSSL_API_1_1", extra_flags }
+    else
+        [_][]const u8{ "-DNDEBUG", "-DNO_CACHING", "-DNO_CGI", "-DUSE_WEBSOCKET", "-DNO_SSL", extra_flags, "", "" };
+
+    webui.addCSourceFile(.{
+        .file = webui_dep.path("src/webui.c"),
+        .flags = if (enable_tls)
+            &[_][]const u8{ "-DNO_SSL", "-DWEBUI_TLS", "-DNO_SSL_DL", "-DOPENSSL_API_1_1" }
+        else
+            &[_][]const u8{"-DNO_SSL"},
+    });
+
+    webui.addCSourceFile(.{
+        .file = webui_dep.path("src/civetweb/civetweb.c"),
+        .flags = &cflags,
+    });
+
+    webui.linkLibC();
+
+    webui.addIncludePath(webui_dep.path("include"));
+    webui.installHeader(webui_dep.path(b.pathJoin(&[_][]const u8{ "include", "webui.h" })), "webui.h");
+
+    if (target.query.os_tag == .windows or (target.query.os_tag == null and builtin.os.tag == .windows)) {
+        webui.linkSystemLibrary("ws2_32");
+        if (enable_tls) {
+            webui.linkSystemLibrary("bcrypt");
+        }
+    }
+    if (enable_tls) {
+        webui.linkSystemLibrary("ssl");
+        webui.linkSystemLibrary("crypto");
+    }
+    if (target.query.abi == .msvc) {
+        webui.linkSystemLibrary("shell32");
+        webui.linkSystemLibrary("Advapi32");
+        webui.linkSystemLibrary("user32");
+    }
+
+    return webui;
+}
+
 fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
     const webui_lib = b.addObject(.{
         .name = "webui_lib",
-        .root_source_file = .{
-            .path = "src/webui.zig",
-        },
+        .root_source_file = b.path("src/webui.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -95,9 +138,7 @@ fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget
 
 fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, webui_lib: *Compile) void {
     // we use lazyPath to get absolute path of package
-    var lazy_path = Build.LazyPath{
-        .path = "src/examples",
-    };
+    var lazy_path = b.path("src/examples");
 
     const build_all_step = b.step("build_all", "build all examples");
 
@@ -122,7 +163,7 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
 
                 const exe = b.addExecutable(.{
                     .name = example_name,
-                    .root_source_file = .{ .path = path },
+                    .root_source_file = b.path(path),
                     .target = target,
                     .optimize = optimize,
                 });
@@ -141,9 +182,7 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
                     log.err("fmt path for examples failed, err is {}", .{err});
                     std.posix.exit(1);
                 };
-                exe_run.setCwd(.{
-                    .path = cwd,
-                });
+                exe_run.setCwd(b.path(cwd));
 
                 const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
                     log.err("fmt step_name for examples failed, err is {}", .{err});
