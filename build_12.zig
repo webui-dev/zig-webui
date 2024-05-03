@@ -40,8 +40,6 @@ pub fn build(b: *Build) void {
 
     const webui = webui_c(b, optimize, target, isStatic, enableTLS);
 
-    b.installArtifact(webui);
-
     const webui_module = b.addModule("webui", .{
         .root_source_file = b.path("src/webui.zig"),
         .imports = &.{
