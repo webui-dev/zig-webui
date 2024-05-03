@@ -103,11 +103,6 @@ const zig_webui = b.dependency("zig-webui", .{
 
 // add module
 exe.root_module.addImport("webui", zig_webui.module("webui"));
-// note: see this issue for the API changes above,
-// https://github.com/ziglang/zig/pull/18160
-
-// link library
-exe.linkLibrary(zig_webui.artifact("webui"));
 ```
 
 > It is not recommended to dynamically link libraries under Windows, which may cause some symbol duplication problems.
