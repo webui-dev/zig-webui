@@ -4,7 +4,7 @@
     .minimum_zig_version = "0.11.0",
     .dependencies = .{
         .webui = .{
-            .url = "https://github.com/webui-dev/webui/archive/fix.tar.gz",
+            .url = "https://github.com/webui-dev/webui/archive/main.tar.gz",
             .hash = "122044f8a74117a0b480ca05c8c67e421bd20b7ef014035f2523bbad769c0ae57223",
         },
     },
