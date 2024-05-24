@@ -52,6 +52,9 @@ pub fn build(b: *Build) void {
 
     webui_module.linkLibrary(webui);
 
+    // install webui c lib
+    install_webui_c(b, webui);
+
     // generate docs
     generate_docs(b, optimize, target, flags_module);
 
@@ -113,6 +116,11 @@ fn webui_c(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, is_s
     return webui;
 }
 
+fn install_webui_c(b: *Build, lib: *Compile) void {
+    const step = b.step("lib", "Install lib");
+    step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+}
+
 fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
     const webui_lib = b.addObject(.{
         .name = "webui_lib",
@@ -123,9 +131,7 @@ fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget
 
     webui_lib.root_module.addImport("flags", flags_module);
 
-    // webui_lib.linkLibrary(webui);
-
-    const docs_step = b.step("docs", "Emit docs");
+    const docs_step = b.step("docs", "Generate docs");
 
     const docs_install = b.addInstallDirectory(.{
         .source_dir = webui_lib.getEmittedDocs(),
