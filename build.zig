@@ -18,11 +18,11 @@ comptime {
     }
 }
 
-pub fn build(b: *Build) void {
+pub fn build(b: *Build) !void {
     switch (current_zig.minor) {
         11 => build_11(b),
-        12 => build_12(b),
-        13 => build_12(b),
+        12 => try build_12(b),
+        13 => try build_12(b),
         else => @compileError("unknown version!"),
     }
 }

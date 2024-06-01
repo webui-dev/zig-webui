@@ -12,7 +12,7 @@ const log = std.log.scoped(.WebUI);
 const default_isStatic = true;
 const default_enableTLS = false;
 
-pub fn build(b: *Build) void {
+pub fn build(b: *Build) !void {
     const isStatic = b.option(bool, "is_static", "whether lib is static") orelse default_isStatic;
     const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse default_enableTLS;
 
@@ -38,7 +38,7 @@ pub fn build(b: *Build) void {
     // create a new module for flags options
     const flags_module = flags_options.createModule();
 
-    const webui = webui_c(b, optimize, target, isStatic, enableTLS);
+    const webui = try webui_c(b, optimize, target, isStatic, enableTLS);
 
     const webui_module = b.addModule("webui", .{
         .root_source_file = b.path("src/webui.zig"),
@@ -63,33 +63,45 @@ pub fn build(b: *Build) void {
 }
 
 /// this function to build webui from c code
-fn webui_c(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, is_static: bool, enable_tls: bool) *Compile {
+fn webui_c(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, is_static: bool, enable_tls: bool) !*Compile {
     const webui_dep = b.dependency("webui", .{});
 
     const name = "webui";
-    const webui = if (is_static) b.addStaticLibrary(.{ .name = name, .target = target, .optimize = optimize }) else b.addSharedLibrary(.{ .name = name, .target = target, .optimize = optimize });
+    const webui = if (is_static) b.addStaticLibrary(.{
+        .name = name,
+        .target = target,
+        .optimize = optimize,
+    }) else b.addSharedLibrary(.{
+        .name = name,
+        .target = target,
+        .optimize = optimize,
+    });
 
-    const extra_flags = if (target.query.os_tag == .windows or (target.query.os_tag == null and builtin.os.tag == .windows))
-        "-DMUST_IMPLEMENT_CLOCK_GETTIME"
-    else
-        "";
+    // basical flags for civetweb
+    const basic_flags = [_][]const u8{ "-DNDEBUG", "-DNO_CACHING", "-DNO_CGI", "-DUSE_WEBSOCKET" };
 
-    const cflags = if (enable_tls)
-        [_][]const u8{ "-DNDEBUG", "-DNO_CACHING", "-DNO_CGI", "-DUSE_WEBSOCKET", "-DWEBUI_TLS", "-DNO_SSL_DL", "-DOPENSSL_API_1_1", extra_flags }
-    else
-        [_][]const u8{ "-DNDEBUG", "-DNO_CACHING", "-DNO_CGI", "-DUSE_WEBSOCKET", "-DNO_SSL", extra_flags, "", "" };
+    // when enable tls
+    const tls_flags = [_][]const u8{ "-DWEBUI_TLS", "-DNO_SSL_DL", "-DOPENSSL_API_1_1" };
+    // when disable tls
+    const no_tls_flags = [_][]const u8{"-DNO_SSL"};
+
+    var civetweb_flags = std.ArrayList([]const u8).init(b.allocator);
+    defer civetweb_flags.deinit();
+
+    try civetweb_flags.appendSlice(&basic_flags);
+    try civetweb_flags.appendSlice(if (enable_tls) &tls_flags else &no_tls_flags);
+    if (target.result.os.tag == .windows) {
+        try civetweb_flags.append("-DMUST_IMPLEMENT_CLOCK_GETTIME");
+    }
 
     webui.addCSourceFile(.{
         .file = webui_dep.path("src/webui.c"),
-        .flags = if (enable_tls)
-            &[_][]const u8{ "-DNO_SSL", "-DWEBUI_TLS", "-DNO_SSL_DL", "-DOPENSSL_API_1_1" }
-        else
-            &[_][]const u8{"-DNO_SSL"},
+        .flags = if (enable_tls) &tls_flags else &no_tls_flags,
     });
 
     webui.addCSourceFile(.{
         .file = webui_dep.path("src/civetweb/civetweb.c"),
-        .flags = &cflags,
+        .flags = civetweb_flags.items,
     });
 
     webui.linkLibC();
@@ -97,20 +109,30 @@ fn webui_c(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, is_s
     webui.addIncludePath(webui_dep.path("include"));
     webui.installHeader(webui_dep.path(b.pathJoin(&[_][]const u8{ "include", "webui.h" })), "webui.h");
 
-    if (target.query.os_tag == .windows or (target.query.os_tag == null and builtin.os.tag == .windows)) {
+    // for windows build
+    if (target.result.os.tag == .windows) {
         webui.linkSystemLibrary("ws2_32");
+        webui.linkSystemLibrary("Ole32");
+        if (target.result.abi == .msvc) {
+            webui.linkSystemLibrary("Advapi32");
+            webui.linkSystemLibrary("Shell32");
+            webui.linkSystemLibrary("user32");
+        }
         if (enable_tls) {
             webui.linkSystemLibrary("bcrypt");
         }
+    } else if (target.result.os.tag == .macos) {
+        webui.addCSourceFile(.{
+            .file = webui_dep.path("src/webview/wkwebview.m"),
+            .flags = &.{},
+        });
+        webui.linkFramework("Cocoa");
+        webui.linkFramework("WebKit");
     }
+
     if (enable_tls) {
         webui.linkSystemLibrary("ssl");
         webui.linkSystemLibrary("crypto");
-    }
-    if (target.query.abi == .msvc) {
-        webui.linkSystemLibrary("shell32");
-        webui.linkSystemLibrary("Advapi32");
-        webui.linkSystemLibrary("user32");
     }
 
     return webui;
