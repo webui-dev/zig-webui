@@ -73,6 +73,13 @@ pub const Events = enum(u8) {
     EVENT_CALLBACK,
 };
 
+pub const Configs = enum(u8) {
+    // Control if `show()` should wait
+    // for the window to connect before returns or not.
+    // Default: True
+    show_wait_connection = 0,
+};
+
 /// Get the string length.
 /// This function is exposed to process the string returned by c
 pub fn str_len(str: anytype) usize {
@@ -145,6 +152,11 @@ pub const Event = struct {
     /// Return the response to JavaScript as integer.
     pub fn returnInt(e: Event, n: i64) void {
         WebUI.webui_return_int(e.e, @intCast(n));
+    }
+
+    /// Return the response to JavaScript as float.
+    pub fn returnFloat(e: Event, f: f64) void {
+        WebUI.webui_return_float(e.e, f);
     }
 
     /// Return the response to JavaScript as string.
@@ -243,6 +255,14 @@ pub fn bind(self: *Self, element: [:0]const u8, comptime func: fn (e: Event) voi
     return WebUI.webui_bind(self.window_handle, @ptrCast(element.ptr), tmp_struct.handle);
 }
 
+/// Get the "best" browser to be used. If running "show()"
+/// or passing AnyBrowser to "showBrowser()", this function will
+/// return the same browser that will be used.
+pub fn getBestBrowser(self: *Self) Browsers {
+    const res = WebUI.webui_get_best_browser(self.window_handle);
+    return @enumFromInt(res);
+}
+
 /// Show a window using embedded HTML, or a file.
 /// If the window is already open, it will be refreshed.
 /// Returns True if showing the window is successed
@@ -255,6 +275,13 @@ pub fn show(self: *Self, content: [:0]const u8) bool {
 /// Returns True if showing the window is successed
 pub fn showBrowser(self: *Self, content: [:0]const u8, browser: Browsers) bool {
     return WebUI.webui_show_browser(self.window_handle, @ptrCast(content.ptr), @intFromEnum(browser));
+}
+
+/// Show a WebView window using embedded HTML, or a file. If the window is already
+/// opend, it will be refreshed. Note: Win32 need `WebView2Loader.dll`.
+/// Returns True if if showing the WebView window is successed.
+pub fn showWv(self: *Self, content: [:0]const u8) bool {
+    WebUI.webui_show_wv(self.window_handle, @ptrCast(content.ptr));
 }
 
 /// Set the window in Kiosk mode (Full screen)
@@ -443,6 +470,11 @@ pub fn setPort(self: *Self, port: usize) bool {
     return WebUI.webui_set_port(self.window_handle, port);
 }
 
+/// Control the WebUI behaviour. It's better to call at the beginning.
+pub fn config(option: Configs, status: bool) void {
+    WebUI.webui_config(@intCast(@intFromEnum(option)), status);
+}
+
 /// Set the SSL/TLS certificate and the private key content,
 /// both in PEM format.
 /// This works only with `webui-2-secure` library.
@@ -471,6 +503,11 @@ pub fn setRuntime(self: *Self, runtime: Runtimes) void {
     WebUI.webui_set_runtime(self.window_handle, @intFromEnum(runtime));
 }
 
+/// Get how many arguments there are in an event
+pub fn getCount(e: Event) usize {
+    return WebUI.webui_get_count(e.e);
+}
+
 /// Get an argument as integer at a specific index
 pub fn getIntAt(e: Event, index: usize) i64 {
     return @intCast(WebUI.webui_get_int_at(e.e, index));
@@ -479,6 +516,16 @@ pub fn getIntAt(e: Event, index: usize) i64 {
 /// Get the first argument as integer
 pub fn getInt(e: Event) i64 {
     return @intCast(WebUI.webui_get_int(e.e));
+}
+
+/// Get an argument as float at a specific index
+pub fn getFloatAt(e: Event, index: usize) f64 {
+    return WebUI.webui_get_float_at(e.e, index);
+}
+
+/// Get the first argument as float
+pub fn getFloat(e: Event) f64 {
+    WebUI.webui_get_float(e.e);
 }
 
 /// Get an argument as string at a specific index
