@@ -166,7 +166,7 @@ fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget
 
 fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, webui_lib: *Compile) void {
     // we use lazyPath to get absolute path of package
-    var lazy_path = b.path("src/examples");
+    var lazy_path = b.path("examples");
 
     const build_all_step = b.step("build_all", "build all examples");
 
@@ -185,7 +185,7 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
         if (val) |entry| {
             if (entry.kind == .directory) {
                 const example_name = entry.name;
-                const path = b.pathJoin(&[_][]const u8{ "src", "examples", example_name, "main.zig" });
+                const path = b.pathJoin(&[_][]const u8{ "examples", example_name, "main.zig" });
 
                 const exe = b.addExecutable(.{
                     .name = example_name,
@@ -204,7 +204,7 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
                 const exe_run = b.addRunArtifact(exe);
                 exe_run.step.dependOn(&exe_install.step);
 
-                const cwd = b.path(b.pathJoin(&[_][]const u8{ "src", "examples", example_name }));
+                const cwd = b.path(b.pathJoin(&[_][]const u8{ "examples", example_name }));
 
                 exe_run.setCwd(cwd);
 

@@ -66,7 +66,7 @@ pub fn build(b: *Build) void {
 fn build_examples_11(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_module: *Module, webui_lib: *Compile) void {
     // we use lazyPath to get absolute path of package
     var lazy_path = Build.LazyPath{
-        .path = "src/examples",
+        .path = "examples",
     };
 
     const build_all_step = b.step("build_all", "build all examples");
@@ -85,7 +85,7 @@ fn build_examples_11(b: *Build, optimize: OptimizeMode, target: CrossTarget, web
         if (val) |entry| {
             if (entry.kind == .directory) {
                 const example_name = entry.name;
-                const path = std.fmt.allocPrint(b.allocator, "src/examples/{s}/main.zig", .{example_name}) catch |err| {
+                const path = std.fmt.allocPrint(b.allocator, "examples/{s}/main.zig", .{example_name}) catch |err| {
                     log.err("fmt path for examples failed, err is {}", .{err});
                     std.os.exit(1);
                 };
