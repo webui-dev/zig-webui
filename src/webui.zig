@@ -201,6 +201,9 @@ pub const Event = struct {
             .Bool => {
                 e.returnBool(val);
             },
+            .Float => {
+                e.returnFloat(val);
+            },
             else => {
                 const err_msg = comptimePrint("val's type ({}), only support int, bool, string([]const u8)!", .{T});
                 @compileError(err_msg);
@@ -682,6 +685,10 @@ pub fn binding(self: *Self, element: [:0]const u8, comptime callback: anytype) u
                         .Int => {
                             const res = getIntAt(e, i);
                             param_tup[i] = @intCast(res);
+                        },
+                        .Float => {
+                            const res = getFloatAt(e, i);
+                            param_tup[i] = res;
                         },
                         .Pointer => |pointer| {
                             if (pointer.size != .Slice or pointer.child != u8 or pointer.is_const == false) {
