@@ -30,6 +30,10 @@ fn my_function_string(e: webui.Event) void {
 }
 
 fn my_function_integer(e: webui.Event) void {
+    const count = webui.getCount(e);
+
+    std.debug.print("my_function_integer: There is {} arguments in this event\n", .{count});
+
     const number_1 = webui.getInt(e);
     const number_2 = webui.getIntAt(e, 1);
     const number_3 = webui.getIntAt(e, 2);
@@ -37,6 +41,9 @@ fn my_function_integer(e: webui.Event) void {
     std.debug.print("my_function_integer 1: {}\n", .{number_1});
     std.debug.print("my_function_integer 2: {}\n", .{number_2});
     std.debug.print("my_function_integer 3: {}\n", .{number_3});
+
+    const float_1 = webui.getFloatAt(e, 3);
+    std.debug.print("my_function_integer 4: {}\n", .{float_1});
 }
 
 fn my_function_boolean(e: webui.Event) void {
