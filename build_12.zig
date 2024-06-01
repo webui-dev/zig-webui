@@ -171,6 +171,7 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
     const build_all_step = b.step("build_all", "build all examples");
 
     const examples_path = lazy_path.getPath(b);
+
     var iter_dir =
         std.fs.openDirAbsolute(examples_path, .{ .iterate = true }) catch |err| {
         log.info("open examples_path failed, err is {}", .{err});
@@ -184,10 +185,7 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
         if (val) |entry| {
             if (entry.kind == .directory) {
                 const example_name = entry.name;
-                const path = std.fmt.allocPrint(b.allocator, "src/examples/{s}/main.zig", .{example_name}) catch |err| {
-                    log.err("fmt path for examples failed, err is {}", .{err});
-                    std.posix.exit(1);
-                };
+                const path = b.pathJoin(&[_][]const u8{ "src", "examples", example_name, "main.zig" });
 
                 const exe = b.addExecutable(.{
                     .name = example_name,
@@ -206,11 +204,9 @@ fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTa
                 const exe_run = b.addRunArtifact(exe);
                 exe_run.step.dependOn(&exe_install.step);
 
-                const cwd = std.fmt.allocPrint(b.allocator, "src/examples/{s}", .{example_name}) catch |err| {
-                    log.err("fmt path for examples failed, err is {}", .{err});
-                    std.posix.exit(1);
-                };
-                exe_run.setCwd(b.path(cwd));
+                const cwd = b.path(b.pathJoin(&[_][]const u8{ "src", "examples", example_name }));
+
+                exe_run.setCwd(cwd);
 
                 const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
                     log.err("fmt step_name for examples failed, err is {}", .{err});
