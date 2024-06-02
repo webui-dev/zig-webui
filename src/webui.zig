@@ -4,7 +4,7 @@
 //! WebSite: [http://webui.me](http://webui.me),
 //! Github: [https://github.com/webui-dev/zig-webui](https://github.com/webui-dev/zig-webui)
 //!
-//! Copyright (c) 2020-2023 [Jinzhongjia](https://github.com/jinzhongjia),
+//! Copyright (c) 2020-2024 [Jinzhongjia](https://github.com/jinzhongjia),
 //! Licensed under MIT License.
 
 const std = @import("std");
@@ -258,9 +258,8 @@ pub fn bind(self: *Self, element: [:0]const u8, comptime func: fn (e: Event) voi
     return WebUI.webui_bind(self.window_handle, @ptrCast(element.ptr), tmp_struct.handle);
 }
 
-/// Get the "best" browser to be used. If running "show()"
-/// or passing AnyBrowser to "showBrowser()", this function will
-/// return the same browser that will be used.
+/// Get the recommended web browser ID to use. If you 
+/// are already using one, this function will return the same ID.
 pub fn getBestBrowser(self: *Self) Browsers {
     const res = WebUI.webui_get_best_browser(self.window_handle);
     return @enumFromInt(res);
