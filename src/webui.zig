@@ -73,8 +73,8 @@ pub const Events = enum(u8) {
     EVENT_CALLBACK,
 };
 
-pub const Configs = enum(u8) {
-    // Control if `show()` should wait
+pub const Config = enum(u8) {
+    // Control if `show()`,`webui_show_browser`,`webui_show_wv` should wait
     // for the window to connect before returns or not.
     // Default: True
     show_wait_connection = 0,
@@ -258,7 +258,7 @@ pub fn bind(self: *Self, element: [:0]const u8, comptime func: fn (e: Event) voi
     return WebUI.webui_bind(self.window_handle, @ptrCast(element.ptr), tmp_struct.handle);
 }
 
-/// Get the recommended web browser ID to use. If you 
+/// Get the recommended web browser ID to use. If you
 /// are already using one, this function will return the same ID.
 pub fn getBestBrowser(self: *Self) Browsers {
     const res = WebUI.webui_get_best_browser(self.window_handle);
@@ -473,8 +473,8 @@ pub fn setPort(self: *Self, port: usize) bool {
 }
 
 /// Control the WebUI behaviour. It's better to call at the beginning.
-pub fn config(option: Configs, status: bool) void {
-    WebUI.webui_config(@intCast(@intFromEnum(option)), status);
+pub fn setConfig(option: Config, status: bool) void {
+    WebUI.webui_set_config(@intCast(@intFromEnum(option)), status);
 }
 
 /// Set the SSL/TLS certificate and the private key content,
