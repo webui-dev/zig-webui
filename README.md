@@ -20,6 +20,8 @@
 
 </div>
 
+> v2.5.0-1-0 is coming!
+
 ## Features
 
 - Portable (*Needs only a web browser or a WebView at runtime*)
