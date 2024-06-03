@@ -1,6 +1,6 @@
 <div align="center">
 
-# WebUI Zig
+# WebUI Zig v2.5.0-Beta-1
 
 <!-- [build-status]: https://img.shields.io/github/actions/workflow/status/webui-dev/go-webui/ci.yml?branch=main&style=for-the-badge&logo=V&labelColor=414868&logoColor=C0CAF5 -->
 
