@@ -5,30 +5,35 @@
 
 name: CI
 on:
-    push:
-        paths-ignore: ["**/*.md"]
-    pull_request:
-        branches: [main]
-        paths-ignore: ["**/*.md"]
-    schedule:
-        - cron: "0 2 * * *"
-
+  push:
+    paths:
+      - "**.zig"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.zig"
+  schedule:
+    - cron: "0 2 * * *"
 jobs:
-    build:
-        strategy:
-            matrix:
-                os: [ubuntu-latest, macos-latest, windows-latest]
-                version: [0.11.0, 0.12.0, ""]
-            fail-fast: false
-        runs-on: ${{ matrix.os }}
-        steps:
-            - name: Setup Zig
-              uses: goto-bus-stop/setup-zig@v2
-              with:
-                version: ${{ matrix.version }}
-            - uses: actions/checkout@v4
-            - name: Build examples
-              run: zig build build_all
-            - name: Build examples dynamic
-              if: runner.os != 'Windows'
-              run: zig build build_all -Dis_static=false
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        version: [0.11.0, 0.12.0, ""]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: runner.os == 'macOS'
+        with:
+          xcode-version: latest-stable
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ matrix.version }}
+      - uses: actions/checkout@v4
+      - name: Build examples
+        run: zig build build_all
+      - name: Build examples dynamic
+        if: runner.os != 'Windows'
+        run: zig build build_all -Dis_static=false

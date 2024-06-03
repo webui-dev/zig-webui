@@ -1,6 +1,6 @@
 <div align="center">
 
-# WebUI Zig
+# WebUI Zig v2.5.0-Beta-1
 
 <!-- [build-status]: https://img.shields.io/github/actions/workflow/status/webui-dev/go-webui/ci.yml?branch=main&style=for-the-badge&logo=V&labelColor=414868&logoColor=C0CAF5 -->
 
@@ -14,19 +14,23 @@
 <!-- [![][release-version]](https://github.com/webui-dev/go-webui/releases/latest) -->
 [![][license]](https://github.com/webui-dev/zig-webui/blob/main/LICENSE)
 
-> WebUI is not a web-server solution or a framework, but it allows you to use any web browser as a GUI, with your preferred language in the backend and HTML5 in the frontend. All in a lightweight portable lib.
+> Use any web browser or WebView as GUI, with your preferred language in the backend and modern web technologies in the frontend, all in a lightweight portable lib.
 
-![Screenshot](https://github.com/webui-dev/webui/assets/34311583/57992ef1-4f7f-4d60-8045-7b07df4088c6)
+![Screenshot](https://github.com/webui-dev/webui/assets/16948659/39c5b000-83eb-4779-a7ce-9769d3acf204)
 
 </div>
 
+> v2.5.0-1-0 is coming!
+
 ## Features
 
-- Parent library written in pure C
-- Lightweight ~200 Kb & Small memory footprint
-- Fast binary communication protocol between WebUI and the browser (_Instead of JSON_)
+- Portable (*Needs only a web browser or a WebView at runtime*)
+- One header file
+- Lightweight (*Few Kb library*) & Small memory footprint
+- Fast binary communication protocol
 - Multi-platform & Multi-Browser
 - Using private profile for safety
+- Cross-platform WebView
 
 ## API Document
 
@@ -160,6 +164,14 @@ Think of WebUI like a WebView controller, but instead of embedding the WebView c
 | Epic            | ✔️              | ✔️            | _not available_ |
 | Apple Safari    | _not available_ | _coming soon_ | _not available_ |
 | Opera           | _coming soon_   | _coming soon_ | _coming soon_   |
+
+## Supported WebView
+
+| WebView         | Status         |
+| --------------- | --------------- |
+| Windows WebView2 | ✔️ |
+| Linux GTK WebView   | ✔️ |
+| macOS WKWebView  | ✔️ |
 
 ### License
 
