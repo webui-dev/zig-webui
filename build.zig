@@ -107,18 +107,26 @@ pub const V0_12 = struct {
         // when disable tls
         const no_tls_flags = [_][]const u8{"-DNO_SSL"};
 
+        // solve UBSAN
+        const ubsan_flags = [_][]const u8{"-fno-sanitize=undefined"};
+
         var civetweb_flags = std.ArrayList([]const u8).init(b.allocator);
         defer civetweb_flags.deinit();
-
+        try civetweb_flags.appendSlice(&ubsan_flags);
         try civetweb_flags.appendSlice(&basic_flags);
         try civetweb_flags.appendSlice(if (enable_tls) &tls_flags else &no_tls_flags);
         if (target.result.os.tag == .windows) {
             try civetweb_flags.append("-DMUST_IMPLEMENT_CLOCK_GETTIME");
         }
 
+        var webui_flags = std.ArrayList([]const u8).init(b.allocator);
+        defer webui_flags.deinit();
+        try webui_flags.appendSlice(&ubsan_flags);
+        try webui_flags.appendSlice(if (enable_tls) &tls_flags else &no_tls_flags);
+
         webui.addCSourceFile(.{
             .file = webui_dep.path(b.pathJoin(&.{ "src", "webui.c" })),
-            .flags = if (enable_tls) &tls_flags else &no_tls_flags,
+            .flags = webui_flags.items,
         });
 
         webui.addCSourceFile(.{
