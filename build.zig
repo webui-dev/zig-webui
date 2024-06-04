@@ -304,8 +304,8 @@ pub const V0_11 = struct {
         const webui = b.dependency("webui", .{
             .target = target,
             .optimize = optimize,
-            .enable_tls = enableTLS,
-            .is_static = isStatic,
+            .@"enable-tls" = enableTLS,
+            .dynamic = !isStatic,
         }).artifact("webui");
 
         b.installArtifact(webui);
