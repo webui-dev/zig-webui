@@ -73,7 +73,7 @@ const zig_webui = b.dependency("zig-webui", .{
 });
 
 // add module
-exe.addModule("webui", zig_webui.module("webui"));
+b.addModule("webui", zig_webui.module("webui"));
 
 // link library
 exe.linkLibrary(zig_webui.artifact("webui"));
