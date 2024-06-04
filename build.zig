@@ -272,8 +272,6 @@ pub const V0_11 = struct {
         const target = b.standardTargetOptions(.{});
         const optimize = b.standardOptimizeOption(.{});
 
-        log.info("link mode is {s}", .{if (isStatic) "static" else "dynamic"});
-
         if (enableTLS) {
             log.info("enable TLS support", .{});
             if (!target.isNative()) {
