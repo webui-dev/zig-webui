@@ -700,7 +700,7 @@ pub fn binding(self: *Self, element: [:0]const u8, comptime callback: anytype) u
                             param_tup[i] = str;
                         },
                         else => {
-                            const err_msg = comptimePrint("type is ({}), only support these types: Event, Bool, Int, []u8!", .{tt});
+                            const err_msg = comptimePrint("type is ({}), only support these types: Event, Bool, Int, Float, []u8!", .{tt});
                             @compileError(err_msg);
                         },
                     }
