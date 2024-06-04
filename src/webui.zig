@@ -283,7 +283,7 @@ pub fn showBrowser(self: *Self, content: [:0]const u8, browser: Browsers) bool {
 /// opend, it will be refreshed. Note: Win32 need `WebView2Loader.dll`.
 /// Returns True if if showing the WebView window is successed.
 pub fn showWv(self: *Self, content: [:0]const u8) bool {
-    WebUI.webui_show_wv(self.window_handle, @ptrCast(content.ptr));
+    return WebUI.webui_show_wv(self.window_handle, @ptrCast(content.ptr));
 }
 
 /// Set the window in Kiosk mode (Full screen)
