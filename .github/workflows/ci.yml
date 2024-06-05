@@ -6,12 +6,10 @@
 name: CI
 on:
   push:
-    paths:
-      - "**.zig"
+    paths: ["**.zig.*"]
   pull_request:
     branches: [main]
-    paths:
-      - "**.zig"
+    paths: ["**.zig.*"]
   schedule:
     - cron: "0 2 * * *"
 jobs:
