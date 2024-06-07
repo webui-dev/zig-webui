@@ -79,7 +79,7 @@ exe.addModule("webui", zig_webui.module("webui"));
 exe.linkLibrary(zig_webui.artifact("webui"));
 ```
 
-### Zig `0.12` \ `nightly`
+### Zig `0.12` \ `0.13.0` \ `nightly`
 
 > To be honest, I don’t recommend using the nightly version because the API of the build system is not yet stable, which means that there may be problems with not being able to build after nightly is updated.
 
