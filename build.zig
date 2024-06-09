@@ -18,8 +18,7 @@ comptime {
 pub fn build(b: *Build) !void {
     switch (comptime current_zig.minor) {
         11 => V0_11.build(b),
-        12 => try V0_12.build(b),
-        13 => try V0_12.build(b),
+        12, 13, 14 => try V0_12.build(b),
         else => @compileError("unknown version!"),
     }
 }
