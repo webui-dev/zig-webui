@@ -80,7 +80,10 @@ pub const V0_12 = struct {
         generate_docs(b, optimize, target, flags_module);
 
         // build examples
-        build_examples_12(b, optimize, target, webui_module, webui);
+        build_examples_12(b, optimize, target, webui_module, webui) catch |err| {
+            log.err("failed to build examples: {}", .{err});
+            std.process.exit(1);
+        };
     }
 
     /// this function to build webui from c code
@@ -193,7 +196,7 @@ pub const V0_12 = struct {
         docs_step.dependOn(&docs_install.step);
     }
 
-    fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, webui_lib: *Compile) void {
+    fn build_examples_12(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, webui_lib: *Compile) !void {
 
         // we use lazyPath to get absolute path of package
         var lazy_path = b.path("examples");
@@ -238,15 +241,9 @@ pub const V0_12 = struct {
 
                     exe_run.setCwd(cwd);
 
-                    const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
-                        log.err("fmt step_name for examples failed, err is {}", .{err});
-                        std.posix.exit(1);
-                    };
+                    const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
 
-                    const step_desc = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
-                        log.err("fmt step_desc for examples failed, err is {}", .{err});
-                        std.posix.exit(1);
-                    };
+                    const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
 
                     const exe_run_step = b.step(step_name, step_desc);
                     exe_run_step.dependOn(&exe_run.step);
@@ -318,10 +315,13 @@ pub const V0_11 = struct {
         b.installArtifact(webui);
 
         // build examples
-        build_examples_11(b, optimize, target, webui_module, webui);
+        build_examples_11(b, optimize, target, webui_module, webui)  catch |err| {
+            log.err("failed to build examples: {}", .{err});
+            std.os.exit(1);
+        };
     }
 
-    fn build_examples_11(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_module: *Module, webui_lib: *Compile) void {
+    fn build_examples_11(b: *Build, optimize: OptimizeMode, target: CrossTarget, webui_module: *Module, webui_lib: *Compile) !void {
         // we use lazyPath to get absolute path of package
         var lazy_path = Build.LazyPath{
             .path = "examples",
@@ -330,11 +330,7 @@ pub const V0_11 = struct {
         const build_all_step = b.step("build_all", "build all examples");
 
         const examples_path = lazy_path.getPath(b);
-        var iter_dir =
-            std.fs.openIterableDirAbsolute(examples_path, .{}) catch |err| {
-            log.err("open examples_path failed, err is {}", .{err});
-            std.os.exit(1);
-        };
+        var iter_dir = try std.fs.openIterableDirAbsolute(examples_path, .{});
         defer iter_dir.close();
 
         var itera = iter_dir.iterate();
@@ -343,10 +339,7 @@ pub const V0_11 = struct {
             if (val) |entry| {
                 if (entry.kind == .directory) {
                     const example_name = entry.name;
-                    const path = std.fmt.allocPrint(b.allocator, "examples/{s}/main.zig", .{example_name}) catch |err| {
-                        log.err("fmt path for examples failed, err is {}", .{err});
-                        std.os.exit(1);
-                    };
+                    const path = try std.fmt.allocPrint(b.allocator, "examples/{s}/main.zig", .{example_name});
 
                     const exe = b.addExecutable(.{
                         .name = example_name,
@@ -365,21 +358,12 @@ pub const V0_11 = struct {
                     const exe_run = b.addRunArtifact(exe);
                     exe_run.step.dependOn(&exe_install.step);
 
-                    const cwd = std.fmt.allocPrint(b.allocator, "{s}/{s}", .{ examples_path, example_name }) catch |err| {
-                        log.err("fmt path for examples failed, err is {}", .{err});
-                        std.os.exit(1);
-                    };
+                    const cwd = try std.fmt.allocPrint(b.allocator, "{s}/{s}", .{ examples_path, example_name });
                     exe_run.cwd = cwd;
 
-                    const step_name = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
-                        log.err("fmt step_name for examples failed, err is {}", .{err});
-                        std.os.exit(1);
-                    };
+                    const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
 
-                    const step_desc = std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name}) catch |err| {
-                        log.err("fmt step_desc for examples failed, err is {}", .{err});
-                        std.os.exit(1);
-                    };
+                    const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
 
                     const exe_run_step = b.step(step_name, step_desc);
                     exe_run_step.dependOn(&exe_run.step);
