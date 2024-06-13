@@ -427,6 +427,11 @@ pub fn setProfile(self: *Self, name: [:0]const u8, path: [:0]const u8) void {
     WebUI.webui_set_profile(self.window_handle, @ptrCast(name.ptr), @ptrCast(path.ptr));
 }
 
+/// Set the web browser proxy_server to use. Need to be called before `show()`
+pub fn setProxy(self: *Self, proxy_server: [:0]const u8) void {
+    WebUI.webui_set_proxy(self.window_handle, proxy_server);
+}
+
 /// Get the full current URL.
 pub fn getUrl(self: *Self) []const u8 {
     const ptr = WebUI.webui_get_url(self.window_handle);
