@@ -315,7 +315,7 @@ pub const V0_11 = struct {
         b.installArtifact(webui);
 
         // build examples
-        build_examples_11(b, optimize, target, webui_module, webui)  catch |err| {
+        build_examples_11(b, optimize, target, webui_module, webui) catch |err| {
             log.err("failed to build examples: {}", .{err});
             std.os.exit(1);
         };
