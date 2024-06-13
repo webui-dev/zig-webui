@@ -144,7 +144,7 @@ pub const V0_12 = struct {
         // for windows build
         if (target.result.os.tag == .windows) {
             webui.linkSystemLibrary("ws2_32");
-            webui.linkSystemLibrary("Ole32");
+            webui.linkSystemLibrary("ole32");
             if (target.result.abi == .msvc) {
                 webui.linkSystemLibrary("Advapi32");
                 webui.linkSystemLibrary("Shell32");
