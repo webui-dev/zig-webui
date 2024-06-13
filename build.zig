@@ -211,40 +211,40 @@ pub const V0_12 = struct {
         var itera = iter_dir.iterate();
 
         while (try itera.next()) |val| {
-            if (val.kind == .directory) {
-                const example_name = val.name;
-                const path = b.pathJoin(&.{ "examples", example_name, "main.zig" });
-
-                const exe = b.addExecutable(.{
-                    .name = example_name,
-                    .root_source_file = b.path(path),
-                    .target = target,
-                    .optimize = optimize,
-                });
-
-                exe.root_module.addImport("webui", webui_module);
-                exe.linkLibrary(webui_lib);
-
-                const exe_install = b.addInstallArtifact(exe, .{});
-
-                build_all_step.dependOn(&exe_install.step);
-
-                const exe_run = b.addRunArtifact(exe);
-                exe_run.step.dependOn(&exe_install.step);
-
-                const cwd = b.path(b.pathJoin(&.{ "examples", example_name }));
-
-                exe_run.setCwd(cwd);
-
-                const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-
-                const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-
-                const exe_run_step = b.step(step_name, step_desc);
-                exe_run_step.dependOn(&exe_run.step);
-            } else {
-                break;
+            if (val.kind != .directory) {
+                continue;
             }
+
+            const example_name = val.name;
+            const path = b.pathJoin(&.{ "examples", example_name, "main.zig" });
+
+            const exe = b.addExecutable(.{
+                .name = example_name,
+                .root_source_file = b.path(path),
+                .target = target,
+                .optimize = optimize,
+            });
+
+            exe.root_module.addImport("webui", webui_module);
+            exe.linkLibrary(webui_lib);
+
+            const exe_install = b.addInstallArtifact(exe, .{});
+
+            build_all_step.dependOn(&exe_install.step);
+
+            const exe_run = b.addRunArtifact(exe);
+            exe_run.step.dependOn(&exe_install.step);
+
+            const cwd = b.path(b.pathJoin(&.{ "examples", example_name }));
+
+            exe_run.setCwd(cwd);
+
+            const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
+
+            const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
+
+            const exe_run_step = b.step(step_name, step_desc);
+            exe_run_step.dependOn(&exe_run.step);
         }
     }
 };
@@ -327,39 +327,39 @@ pub const V0_11 = struct {
         var itera = iter_dir.iterate();
 
         while (try itera.next()) |val| {
-            if (val.kind == .directory) {
-                const example_name = val.name;
-                const path = try std.fmt.allocPrint(b.allocator, "examples/{s}/main.zig", .{example_name});
-
-                const exe = b.addExecutable(.{
-                    .name = example_name,
-                    .root_source_file = .{ .path = path },
-                    .target = target,
-                    .optimize = optimize,
-                });
-
-                exe.addModule("webui", webui_module);
-                exe.linkLibrary(webui_lib);
-
-                const exe_install = b.addInstallArtifact(exe, .{});
-
-                build_all_step.dependOn(&exe_install.step);
-
-                const exe_run = b.addRunArtifact(exe);
-                exe_run.step.dependOn(&exe_install.step);
-
-                const cwd = try std.fmt.allocPrint(b.allocator, "{s}/{s}", .{ examples_path, example_name });
-                exe_run.cwd = cwd;
-
-                const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-
-                const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-
-                const exe_run_step = b.step(step_name, step_desc);
-                exe_run_step.dependOn(&exe_run.step);
-            } else {
-                break;
+            if (val.kind != .directory) {
+                continue;
             }
+
+            const example_name = val.name;
+            const path = try std.fmt.allocPrint(b.allocator, "examples/{s}/main.zig", .{example_name});
+
+            const exe = b.addExecutable(.{
+                .name = example_name,
+                .root_source_file = .{ .path = path },
+                .target = target,
+                .optimize = optimize,
+            });
+
+            exe.addModule("webui", webui_module);
+            exe.linkLibrary(webui_lib);
+
+            const exe_install = b.addInstallArtifact(exe, .{});
+
+            build_all_step.dependOn(&exe_install.step);
+
+            const exe_run = b.addRunArtifact(exe);
+            exe_run.step.dependOn(&exe_install.step);
+
+            const cwd = try std.fmt.allocPrint(b.allocator, "{s}/{s}", .{ examples_path, example_name });
+            exe_run.cwd = cwd;
+
+            const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
+
+            const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
+
+            const exe_run_step = b.step(step_name, step_desc);
+            exe_run_step.dependOn(&exe_run.step);
         }
     }
 };
