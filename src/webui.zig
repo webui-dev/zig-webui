@@ -74,10 +74,17 @@ pub const Events = enum(u8) {
 };
 
 pub const Config = enum(u8) {
-    // Control if `show()`,`webui_show_browser`,`webui_show_wv` should wait
-    // for the window to connect before returns or not.
-    // Default: True
+    /// Control if `show()`,`webui_show_browser`,`webui_show_wv` should wait
+    /// for the window to connect before returns or not.
+    /// Default: True
     show_wait_connection = 0,
+    /// Control if WebUI should block and process the UI events
+    /// one a time in a single thread `True`, or process every
+    /// event in a new non-blocking thread `False`. This updates
+    /// all windows. You can use `setEventBlocking()` for
+    /// a specific single window update.
+    /// Default: False
+    ui_event_blocking = 1,
 };
 
 /// Get the string length.
@@ -475,6 +482,14 @@ pub fn setPort(self: *Self, port: usize) bool {
 /// Control the WebUI behaviour. It's better to call at the beginning.
 pub fn setConfig(option: Config, status: bool) void {
     WebUI.webui_set_config(@intCast(@intFromEnum(option)), status);
+}
+
+/// Control if UI events comming from this window should be processed
+/// one a time in a single blocking thread `True`, or process every event in
+/// a new non-blocking thread `False`. This update single window. You can use
+/// `setConfig(ui_event_blocking, ...)` to update all windows.
+pub fn setEventBlocking(self: *Self, status: bool) void {
+    WebUI.webui_set_event_blocking(self.window_handle, status);
 }
 
 /// Set the SSL/TLS certificate and the private key content,
