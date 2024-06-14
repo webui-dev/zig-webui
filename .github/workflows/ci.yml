@@ -37,3 +37,10 @@ jobs:
       - name: Build examples dynamic
         if: runner.os != 'Windows'
         run: zig build build_all -Dis_static=false
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+    - name: Verify formatting
+      run: zig fmt .
