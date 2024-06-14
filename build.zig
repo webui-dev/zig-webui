@@ -205,55 +205,46 @@ pub const V0_12 = struct {
 
         const examples_path = lazy_path.getPath(b);
 
-        var iter_dir =
-            std.fs.openDirAbsolute(examples_path, .{ .iterate = true }) catch |err| {
-            log.info("open examples_path failed, err is {}", .{err});
-            return;
-        };
+        var iter_dir = try std.fs.openDirAbsolute(examples_path, .{ .iterate = true });
         defer iter_dir.close();
 
         var itera = iter_dir.iterate();
 
-        while (itera.next()) |val| {
-            if (val) |entry| {
-                if (entry.kind == .directory) {
-                    const example_name = entry.name;
-                    const path = b.pathJoin(&.{ "examples", example_name, "main.zig" });
-
-                    const exe = b.addExecutable(.{
-                        .name = example_name,
-                        .root_source_file = b.path(path),
-                        .target = target,
-                        .optimize = optimize,
-                    });
-
-                    exe.root_module.addImport("webui", webui_module);
-                    exe.linkLibrary(webui_lib);
-
-                    const exe_install = b.addInstallArtifact(exe, .{});
-
-                    build_all_step.dependOn(&exe_install.step);
-
-                    const exe_run = b.addRunArtifact(exe);
-                    exe_run.step.dependOn(&exe_install.step);
-
-                    const cwd = b.path(b.pathJoin(&.{ "examples", example_name }));
-
-                    exe_run.setCwd(cwd);
-
-                    const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-
-                    const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-
-                    const exe_run_step = b.step(step_name, step_desc);
-                    exe_run_step.dependOn(&exe_run.step);
-                }
-            } else {
-                break;
+        while (try itera.next()) |val| {
+            if (val.kind != .directory) {
+                continue;
             }
-        } else |err| {
-            log.err("iterate examples_path failed, err is {}", .{err});
-            std.posix.exit(1);
+
+            const example_name = val.name;
+            const path = b.pathJoin(&.{ "examples", example_name, "main.zig" });
+
+            const exe = b.addExecutable(.{
+                .name = example_name,
+                .root_source_file = b.path(path),
+                .target = target,
+                .optimize = optimize,
+            });
+
+            exe.root_module.addImport("webui", webui_module);
+            exe.linkLibrary(webui_lib);
+
+            const exe_install = b.addInstallArtifact(exe, .{});
+
+            build_all_step.dependOn(&exe_install.step);
+
+            const exe_run = b.addRunArtifact(exe);
+            exe_run.step.dependOn(&exe_install.step);
+
+            const cwd = b.path(b.pathJoin(&.{ "examples", example_name }));
+
+            exe_run.setCwd(cwd);
+
+            const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
+
+            const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
+
+            const exe_run_step = b.step(step_name, step_desc);
+            exe_run_step.dependOn(&exe_run.step);
         }
     }
 };
@@ -335,45 +326,40 @@ pub const V0_11 = struct {
 
         var itera = iter_dir.iterate();
 
-        while (itera.next()) |val| {
-            if (val) |entry| {
-                if (entry.kind == .directory) {
-                    const example_name = entry.name;
-                    const path = try std.fmt.allocPrint(b.allocator, "examples/{s}/main.zig", .{example_name});
-
-                    const exe = b.addExecutable(.{
-                        .name = example_name,
-                        .root_source_file = .{ .path = path },
-                        .target = target,
-                        .optimize = optimize,
-                    });
-
-                    exe.addModule("webui", webui_module);
-                    exe.linkLibrary(webui_lib);
-
-                    const exe_install = b.addInstallArtifact(exe, .{});
-
-                    build_all_step.dependOn(&exe_install.step);
-
-                    const exe_run = b.addRunArtifact(exe);
-                    exe_run.step.dependOn(&exe_install.step);
-
-                    const cwd = try std.fmt.allocPrint(b.allocator, "{s}/{s}", .{ examples_path, example_name });
-                    exe_run.cwd = cwd;
-
-                    const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-
-                    const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-
-                    const exe_run_step = b.step(step_name, step_desc);
-                    exe_run_step.dependOn(&exe_run.step);
-                }
-            } else {
-                break;
+        while (try itera.next()) |val| {
+            if (val.kind != .directory) {
+                continue;
             }
-        } else |err| {
-            log.err("iterate examples_path failed, err is {}", .{err});
-            std.os.exit(1);
+
+            const example_name = val.name;
+            const path = try std.fmt.allocPrint(b.allocator, "examples/{s}/main.zig", .{example_name});
+
+            const exe = b.addExecutable(.{
+                .name = example_name,
+                .root_source_file = .{ .path = path },
+                .target = target,
+                .optimize = optimize,
+            });
+
+            exe.addModule("webui", webui_module);
+            exe.linkLibrary(webui_lib);
+
+            const exe_install = b.addInstallArtifact(exe, .{});
+
+            build_all_step.dependOn(&exe_install.step);
+
+            const exe_run = b.addRunArtifact(exe);
+            exe_run.step.dependOn(&exe_install.step);
+
+            const cwd = try std.fmt.allocPrint(b.allocator, "{s}/{s}", .{ examples_path, example_name });
+            exe_run.cwd = cwd;
+
+            const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
+
+            const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
+
+            const exe_run_step = b.step(step_name, step_desc);
+            exe_run_step.dependOn(&exe_run.step);
         }
     }
 };
