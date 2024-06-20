@@ -1,3 +1,4 @@
+//!Serve a Folder Example
 const std = @import("std");
 const webui = @import("webui");
 

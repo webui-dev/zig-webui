@@ -1,23 +1,40 @@
+//! Custom web Server Example
 const std = @import("std");
 const webui = @import("webui");
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 pub fn main() !void {
+    // Create new windows
     var nwin = webui.newWindow();
+
+    // Bind all events
     _ = nwin.bind("", events);
 
+    // Bind HTML elements with C functions
     _ = nwin.bind("my_backend_func", my_backend_func);
 
+    // Set the web-server/WebSocket port that WebUI should
+    // use. This means `webui.js` will be available at:
+    // http://localhost:MY_PORT_NUMBER/webui.js
     _ = nwin.setPort(8081);
 
+    // Show a new window and show our custom web server
+    // Assuming the custom web server is running on port
+    // 8080...
     _ = nwin.show("http://localhost:8080/");
 
+    // Wait until all windows get closed
     webui.wait();
+
+    // Free all memory resources (Optional)
     webui.clean();
 }
 
 fn events(e: webui.Event) void {
+    // This function gets called every time
+    // there is an event
+
     switch (e.event_type) {
         .EVENT_CONNECTED => {
             std.debug.print("Connected. \n", .{});
@@ -34,21 +51,29 @@ fn events(e: webui.Event) void {
             defer {
                 const deinit_status = gpa.deinit();
 
-                if (deinit_status == .leak) @panic("TEST FAIL");
+                if (deinit_status == .leak) @panic("memory leak!");
             }
 
+            // get the url string
             const url = webui.getString(e);
+            // get the len of url
             const len = webui.str_len(url);
 
+            // we use this to get widnow
             var tmp_e = e;
             var win = tmp_e.getWindow();
 
+            // we generate the new url!
             const new_url = allocator.allocSentinel(u8, len, 0) catch unreachable;
             defer allocator.free(new_url);
 
             std.debug.print("Starting navigation to: {s}\n", .{url});
 
             @memcpy(new_url[0..len], url[0..len]);
+
+            // Because we used `bind(MyWindow, "", events);`
+            // WebUI will block all `href` link clicks and sent here instead.
+            // We can then control the behaviour of links as needed.
 
             win.navigate(new_url);
         },
@@ -57,6 +82,10 @@ fn events(e: webui.Event) void {
 }
 
 fn my_backend_func(e: webui.Event) void {
+    // JavaScript:
+    // my_backend_func(123, 456, 789);
+    // or webui.my_backend_func(...);
+
     const number_1 = webui.getInt(e);
     const number_2 = webui.getIntAt(e, 1);
     const number_3 = webui.getIntAt(e, 2);

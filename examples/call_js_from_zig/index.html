@@ -49,13 +49,13 @@
 		<br />
 		<h1 id="count">0</h1>
 		<br />
-		<button id="MyButton1">Manual Count</button>
+		<button OnClick="my_function_count();">Manual Count</button>
 		<br />
 		<button id="MyTest" OnClick="AutoTest();">
 			Auto Count (Every 10ms)
 		</button>
 		<br />
-		<button id="MyButton2">Exit</button>
+		<button OnClick="my_function_exit();">Exit</button>
 		<script>
 			let count = 0;
 			function GetCount() {
@@ -69,7 +69,7 @@
 			function AutoTest(number) {
               if(interval == -1){
 				    interval = setInterval(function () {
-					    webui.call("MyButton1");
+					    my_function_count();
 				    }, 10);
               } else {
                   clearInterval(interval);
