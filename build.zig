@@ -318,7 +318,7 @@ pub const V0_11 = struct {
             .path = "examples",
         };
 
-        const build_all_step = b.step("build_all", "build all examples");
+        const build_all_step = b.step("examples", "build all examples");
 
         const examples_path = lazy_path.getPath(b);
         var iter_dir = try std.fs.openIterableDirAbsolute(examples_path, .{});

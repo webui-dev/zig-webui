@@ -33,10 +33,10 @@ jobs:
           version: ${{ matrix.version }}
       - uses: actions/checkout@v4
       - name: Build examples
-        run: zig build build_all
+        run: zig build examples
       - name: Build examples dynamic
         if: runner.os != 'Windows'
-        run: zig build build_all -Dis_static=false
+        run: zig build examples -Dis_static=false
   lint:
     runs-on: ubuntu-latest
     steps:
