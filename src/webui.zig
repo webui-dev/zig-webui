@@ -332,7 +332,7 @@ pub fn setDefaultRootFolder(path: [:0]const u8) bool {
 }
 
 /// Set a custom handler to serve files.
-pub fn setFileHandler(self: *Self, comptime handler: fn (filename: []const u8) ?[]u8) void {
+pub fn setFileHandler(self: *Self, comptime handler: fn (filename: []const u8) ?[]const u8) void {
     const tmp_struct = struct {
         fn handle(tmp_filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
             const len = str_len(tmp_filename);
@@ -387,8 +387,8 @@ pub fn decode(str: [:0]const u8) ?[]u8 {
 }
 
 /// Safely free a buffer allocated by WebUI using
-pub fn free(buf: []u8) void {
-    WebUI.webui_free(@ptrCast(buf.ptr));
+pub fn free(buf: []const u8) void {
+    WebUI.webui_free(@ptrCast(@constCast(buf.ptr)));
 }
 
 /// Safely allocate memory using the WebUI memory management system
