@@ -298,6 +298,11 @@ pub fn setKiosk(self: *Self, status: bool) void {
     WebUI.webui_set_kiosk(self.window_handle, status);
 }
 
+/// Check if a web browser is installed.
+pub fn browserExist(browser: Browsers) bool {
+    return WebUI.webui_browser_exist(@intFromEnum(browser));
+}
+
 /// Wait until all opened windows get closed.
 /// This function should be **called** at the end, it will **block** the current thread
 pub fn wait() void {
