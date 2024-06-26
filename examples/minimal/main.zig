@@ -6,7 +6,7 @@ pub fn main() !void {
     var nwin = webui.newWindow();
 
     // show the content
-    _ = nwin.show("<html><head><script src=\"webui.js\"></script></head> Hello World ! </html>");
+    _ = nwin.show("<html><head><script src=\"/webui.js\"></script></head> Hello World ! </html>");
 
     // wait the window exit
     webui.wait();

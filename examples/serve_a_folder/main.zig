@@ -109,7 +109,7 @@ fn my_files_handler(filename: []const u8) ?[]u8 {
             \\  <html>
             \\      This is a dynamic file content example. <br>
             \\	    Count: {} <a href="dynamic.html">[Refresh]</a><br>
-            \\	    <script src="webui.js"></script> 
+            \\	    <script src="/webui.js"></script> 
             \\  </html>
         , .{count}) catch unreachable;
 
