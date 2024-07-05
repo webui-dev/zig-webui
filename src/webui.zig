@@ -708,6 +708,11 @@ pub fn interfaceGetIntAt(self: *Self, event_number: usize, index: usize) i64 {
     return @intCast(n);
 }
 
+/// Get an argument as float at a specific index.
+pub fn interfaceGetFloatAt(self: *Self, event_number: usize, index: usize) f64 {
+    return WebUI.webui_interface_get_float_at(self.window_handle, event_number, index);
+}
+
 /// Get an argument as boolean at a specific index
 pub fn interfaceGetBoolAt(self: *Self, event_number: usize, index: usize) bool {
     return WebUI.webui_interface_get_bool_at(self.window_handle, event_number, index);
