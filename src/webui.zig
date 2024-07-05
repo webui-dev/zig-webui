@@ -128,6 +128,8 @@ pub const Event = struct {
     event_number: usize,
     /// Bind ID
     bind_id: usize,
+    /// Client id
+    client_id: usize,
 
     /// c raw webui_event_t.
     /// don't modify it directly
@@ -149,6 +151,7 @@ pub const Event = struct {
             .element = @ptrCast(self.element.ptr),
             .event_number = self.event_number,
             .bind_id = self.bind_id,
+            .client_id = self.client_id,
         };
     }
 
@@ -163,6 +166,7 @@ pub const Event = struct {
             .element = event.element[0..len],
             .event_number = event.event_number,
             .bind_id = event.bind_id,
+            .client_id = event.client_id,
             .e = event,
         };
     }
