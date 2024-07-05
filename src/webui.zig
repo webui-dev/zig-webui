@@ -47,6 +47,8 @@ pub const Browsers = enum(u8) {
     Yandex,
     /// 12. Any Chromium based browser
     ChromiumBased,
+    /// 13. WebView (Non-web-browser)
+    WebView,
 };
 
 /// runtime for js
@@ -85,6 +87,15 @@ pub const Config = enum(u8) {
     /// a specific single window update.
     /// Default: False
     ui_event_blocking = 1,
+    /// Automatically refresh the window UI when any file in the
+    /// root folder gets changed.
+    /// Default: False
+    folder_monitor,
+    /// Allow multiple clients to connect to the same window,
+    /// This is helpful for web apps (non-desktop software),
+    /// Please see the documentation for more details.
+    /// Default: False
+    multi_client,
 };
 
 /// Get the string length.
@@ -105,7 +116,7 @@ pub fn str_len(str: anytype) usize {
 /// Event, the communication between webui and browser depends on this
 pub const Event = struct {
     /// Window handle.
-    /// Please do not assign values ​​manually unless you know what you are doing
+    /// Please do not assign values manually unless you know what you are doing
     window_handle: usize,
     /// Event's type, more info to see `Events`
     event_type: Events,
@@ -117,6 +128,8 @@ pub const Event = struct {
     event_number: usize,
     /// Bind ID
     bind_id: usize,
+    /// Client id
+    client_id: usize,
 
     /// c raw webui_event_t.
     /// don't modify it directly
@@ -138,6 +151,7 @@ pub const Event = struct {
             .element = @ptrCast(self.element.ptr),
             .event_number = self.event_number,
             .bind_id = self.bind_id,
+            .client_id = self.client_id,
         };
     }
 
@@ -152,8 +166,47 @@ pub const Event = struct {
             .element = event.element[0..len],
             .event_number = event.event_number,
             .bind_id = event.bind_id,
+            .client_id = event.client_id,
             .e = event,
         };
+    }
+
+    /// Show a window using embedded HTML, or a file.
+    /// If the window is already open, it will be refreshed. Single client.
+    pub fn showClient(self: Event, content: [:0]const u8) bool {
+        return WebUI.webui_show_client(self.e, @ptrCast(content.ptr));
+    }
+
+    /// Close a specific client.
+    pub fn closeClient(self: Event) void {
+        WebUI.webui_close_client(self.e);
+    }
+
+    /// Safely send raw data to the UI. Single client.
+    pub fn sendRawClient(self: Event, function: [:0]const u8, buffer: []const u8) void {
+        WebUI.webui_send_raw_client(self.e, @ptrCast(function.ptr), @ptrCast(buffer.ptr), buffer.len);
+    }
+
+    /// Navigate to a specific URL. Single client.
+    pub fn navigateClient(self: Event, url: [:0]const u8) void {
+        WebUI.webui_navigate_client(self.e, @ptrCast(url.ptr));
+    }
+
+    /// Run JavaScript without waiting for the response. Single client.
+    pub fn runClient(self: Event, script_content: [:0]const u8) void {
+        WebUI.webui_run_client(self.e, @ptrCast(script_content.ptr));
+    }
+
+    /// Run JavaScript and get the response back. Single client.
+    /// Make sure your local buffer can hold the response.
+    pub fn scriptClient(self: Event, script_content: [:0]const u8, timeout: usize, buffer: []u8) bool {
+        return WebUI.webui_script_client(
+            self.e,
+            @ptrCast(script_content.ptr),
+            timeout,
+            @ptrCast(buffer.ptr),
+            buffer.len,
+        );
     }
 
     /// Return the response to JavaScript as integer.
@@ -251,9 +304,9 @@ pub fn getNewWindowId() usize {
     return WebUI.webui_get_new_window_id();
 }
 
-/// Bind a specific html element click event with a function.
-/// Empty element means all events,
-/// `element` is The HTML ID,
+/// Bind an HTML element and a JavaScript object with a backend function.
+/// Empty element name means all events.
+/// `element` The HTML element / JavaScript object
 /// `func` is The callback function,
 /// Returns a unique bind ID.
 pub fn bind(self: *Self, element: [:0]const u8, comptime func: fn (e: Event) void) usize {
@@ -274,6 +327,7 @@ pub fn getBestBrowser(self: *Self) Browsers {
 
 /// Show a window using embedded HTML, or a file.
 /// If the window is already open, it will be refreshed.
+/// This will refresh all windows in multi-client mode.
 /// Returns True if showing the window is successed
 /// `content` is the html which will be shown
 pub fn show(self: *Self, content: [:0]const u8) bool {
@@ -284,6 +338,13 @@ pub fn show(self: *Self, content: [:0]const u8) bool {
 /// Returns True if showing the window is successed
 pub fn showBrowser(self: *Self, content: [:0]const u8, browser: Browsers) bool {
     return WebUI.webui_show_browser(self.window_handle, @ptrCast(content.ptr), @intFromEnum(browser));
+}
+
+/// Start only the web server and return the URL. This is useful for web app.
+pub fn startServer(self: *Self, path: [:0]const u8) []const u8 {
+    const url = WebUI.webui_start_server(self.window_handle, @ptrCast(path.ptr));
+    const url_len = str_len(url);
+    return url[0..url_len];
 }
 
 /// Show a WebView window using embedded HTML, or a file. If the window is already
@@ -310,6 +371,7 @@ pub fn wait() void {
 }
 
 /// Close a specific window only. The window object will still exist.
+/// All clients.
 pub fn close(self: *Self) void {
     WebUI.webui_close(self.window_handle);
 }
@@ -358,7 +420,8 @@ pub fn isShown(self: *Self) bool {
     return WebUI.webui_is_shown(self.window_handle);
 }
 
-/// Set the maximum time in seconds to wait for the browser to start.
+/// Set the maximum time in seconds to wait for the window to connect
+/// This effect `show()` and `wait()`. Value of `0` means wait forever.
 pub fn setTimeout(time: usize) void {
     WebUI.webui_set_timeout(time);
 }
@@ -404,7 +467,7 @@ pub fn malloc(size: usize) []u8 {
     return @as([*]u8, @ptrCast(ptr))[0..size];
 }
 
-/// Safely send raw data to the UI.
+/// Safely send raw data to the UI. All clients.
 pub fn sendRaw(self: *Self, js_func: [:0]const u8, raw: []u8) void {
     WebUI.webui_send_raw(self.window_handle, @ptrCast(js_func.ptr), @ptrCast(raw.ptr), raw.len);
 }
@@ -449,7 +512,7 @@ pub fn setPublic(self: *Self, status: bool) void {
     WebUI.webui_set_public(self.window_handle, status);
 }
 
-/// Navigate to a specific URL
+/// Navigate to a specific URL. All clients.
 pub fn navigate(self: *Self, url: [:0]const u8) void {
     WebUI.webui_navigate(self.window_handle, @ptrCast(url.ptr));
 }
@@ -489,7 +552,7 @@ pub fn setPort(self: *Self, port: usize) bool {
     return WebUI.webui_set_port(self.window_handle, port);
 }
 
-/// Control the WebUI behaviour. It's better to call at the beginning.
+/// Control the WebUI behaviour. It's recommended to be called at the beginning.
 pub fn setConfig(option: Config, status: bool) void {
     WebUI.webui_set_config(@intCast(@intFromEnum(option)), status);
 }
@@ -513,12 +576,12 @@ pub fn setTlsCertificate(certificate_pem: [:0]const u8, private_key_pem: [:0]con
     return WebUI.webui_set_tls_certificate(@ptrCast(certificate_pem.ptr), @ptrCast(private_key_pem.ptr));
 }
 
-/// Run JavaScript without waiting for the response.
+/// Run JavaScript without waiting for the response.All clients.
 pub fn run(self: *Self, script_content: [:0]const u8) void {
     WebUI.webui_run(self.window_handle, @ptrCast(script_content.ptr));
 }
 
-/// Run JavaScript and get the response back
+/// Run JavaScript and get the response back. Work only in single client mode.
 /// Make sure your local buffer can hold the response.
 /// Return True if there is no execution error
 pub fn script(self: *Self, script_content: [:0]const u8, timeout: usize, buffer: []u8) bool {
@@ -643,6 +706,11 @@ pub fn interfaceGetStringAt(self: *Self, event_number: usize, index: usize) [*c]
 pub fn interfaceGetIntAt(self: *Self, event_number: usize, index: usize) i64 {
     const n = WebUI.webui_interface_get_int_at(self.window_handle, event_number, index);
     return @intCast(n);
+}
+
+/// Get an argument as float at a specific index.
+pub fn interfaceGetFloatAt(self: *Self, event_number: usize, index: usize) f64 {
+    return WebUI.webui_interface_get_float_at(self.window_handle, event_number, index);
 }
 
 /// Get an argument as boolean at a specific index
