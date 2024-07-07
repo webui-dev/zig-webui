@@ -19,9 +19,9 @@ pub fn main() !void {
     // Bind HTML elements with the specified ID to C functions
     _ = mainW.bind("close_app", close);
 
-    // Show the window, preferably in a chromium based browser
-    if (!mainW.showBrowser("index.html", .ChromiumBased))
-        _ = mainW.show("index.html");
+    // Show the window, this will select the best browser to show
+    // and you can use showBrowser to select which browser will be used
+    _ = mainW.show("index.html");
 
     // Wait until all windows get closed
     webui.wait();
