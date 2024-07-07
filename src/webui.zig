@@ -96,6 +96,11 @@ pub const Config = enum(u8) {
     /// Please see the documentation for more details.
     /// Default: False
     multi_client,
+    /// Allow multiple clients to connect to the same window,
+    /// This is helpful for web apps (non-desktop software),
+    /// Please see the documentation for more details.
+    /// Default: False
+    use_package,
 };
 
 /// Get the string length.
@@ -128,8 +133,12 @@ pub const Event = struct {
     event_number: usize,
     /// Bind ID
     bind_id: usize,
-    /// Client id
+    /// Client's unique ID
     client_id: usize,
+    /// Client's connection ID
+    connection_id: usize,
+    /// Client's full cookies
+    cookies: []u8,
 
     /// c raw webui_event_t.
     /// don't modify it directly
@@ -152,21 +161,26 @@ pub const Event = struct {
             .event_number = self.event_number,
             .bind_id = self.bind_id,
             .client_id = self.client_id,
+            .connection_id = self.connection_id,
+            .cookies = @ptrCast(self.cookies),
         };
     }
 
     /// convert c webui_event_t to zig event
     /// you also won't use this
     pub fn convertWebUIEventT2(event: *WebUI.webui_event_t) Event {
-        const len = str_len(event.element);
+        const element: []u8 = event.element[0..str_len(event.element)];
+        const cookies: []u8 = event.cookies[0..str_len(event.cookies)];
 
         return .{
             .window_handle = event.window,
             .event_type = @enumFromInt(event.event_type),
-            .element = event.element[0..len],
+            .element = element,
             .event_number = event.event_number,
             .bind_id = event.bind_id,
             .client_id = event.client_id,
+            .connection_id = event.connection_id,
+            .cookies = cookies,
             .e = event,
         };
     }
@@ -340,7 +354,8 @@ pub fn showBrowser(self: *Self, content: [:0]const u8, browser: Browsers) bool {
     return WebUI.webui_show_browser(self.window_handle, @ptrCast(content.ptr), @intFromEnum(browser));
 }
 
-/// Start only the web server and return the URL. This is useful for web app.
+/// Same as `show()`. But start only the web server and return the URL.
+/// No window will be shown.
 pub fn startServer(self: *Self, path: [:0]const u8) []const u8 {
     const url = WebUI.webui_start_server(self.window_handle, @ptrCast(path.ptr));
     const url_len = str_len(url);
@@ -497,7 +512,7 @@ pub fn setProfile(self: *Self, name: [:0]const u8, path: [:0]const u8) void {
 
 /// Set the web browser proxy_server to use. Need to be called before `show()`
 pub fn setProxy(self: *Self, proxy_server: [:0]const u8) void {
-    WebUI.webui_set_proxy(self.window_handle, proxy_server);
+    WebUI.webui_set_proxy(self.window_handle, @ptrCast(proxy_server.ptr));
 }
 
 /// Get the full current URL.
@@ -505,6 +520,11 @@ pub fn getUrl(self: *Self) []const u8 {
     const ptr = WebUI.webui_get_url(self.window_handle);
     const len = str_len(ptr);
     return ptr[0..len];
+}
+
+/// Open an URL in the native default web browser.
+pub fn openUrl(url: [:0]const u8) void {
+    WebUI.webui_open_url(@ptrCast(url.ptr));
 }
 
 /// Allow a specific window address to be accessible from a public network

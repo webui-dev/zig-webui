@@ -24,6 +24,15 @@ fn public_window_events(e: webui.Event) void {
     }
 }
 
+fn private_window_events(e: webui.Event) void {
+    if (e.event_type == .EVENT_CONNECTED) {
+        const public_win_url = public_window.getUrl();
+        var buf = std.mem.zeroes([1024]u8);
+        const js = std.fmt.bufPrintZ(&buf, "document.getElementById('urlSpan').innerHTML = '{s}';", .{public_win_url}) catch unreachable;
+        private_window.run(js);
+    }
+}
+
 pub fn main() !void {
     // Create windows
     private_window = webui.newWindow();
@@ -42,26 +51,16 @@ pub fn main() !void {
     // Set public window HTML
     _ = public_window.showBrowser(public_html, .NoBrowser);
 
-    // Get URL of public window
-    const public_win_url = public_window.getUrl();
-
     // Main Private Window
+
+    // Run Js
+    _ = private_window.bind("", private_window_events);
 
     // Bind exit button
     _ = private_window.bind("Exit", app_exit);
 
     // Show the window
     _ = private_window.show(private_html);
-
-    // Set URL in the UI
-    var javascript = std.mem.zeroes([1024]u8);
-    const js = std.fmt.bufPrint(&javascript, "document.getElementById('urlSpan').innerHTML = '{s}';", .{public_win_url}) catch unreachable;
-
-    // convert to a Sentinel-Terminated slice
-    const content: [:0]const u8 = javascript[0..js.len :0];
-
-    // run script
-    private_window.run(content);
 
     // Wait until all windows get closed
     webui.wait();
