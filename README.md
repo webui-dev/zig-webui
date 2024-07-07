@@ -1,5 +1,7 @@
 <div align="center">
 
+![Logo](https://raw.githubusercontent.com/webui-dev/webui-logo/main/webui_zig.png)
+
 # WebUI Zig v2.5.0-Beta-1
 
 <!-- [build-status]: https://img.shields.io/github/actions/workflow/status/webui-dev/go-webui/ci.yml?branch=main&style=for-the-badge&logo=V&labelColor=414868&logoColor=C0CAF5 -->
@@ -14,9 +16,9 @@
 <!-- [![][release-version]](https://github.com/webui-dev/go-webui/releases/latest) -->
 [![][license]](https://github.com/webui-dev/zig-webui/blob/main/LICENSE)
 
-> Use any web browser or WebView as GUI, with your preferred language in the backend and modern web technologies in the frontend, all in a lightweight portable lib.
+> Use any web browser or WebView as GUI, with Zig in the backend and modern web technologies in the frontend, all in a lightweight portable library.
 
-![Screenshot](https://github.com/webui-dev/webui/assets/16948659/39c5b000-83eb-4779-a7ce-9769d3acf204)
+![Screenshot](https://raw.githubusercontent.com/webui-dev/webui-logo/main/screenshot.png)
 
 </div>
 
@@ -32,9 +34,10 @@
 - Using private profile for safety
 - Cross-platform WebView
 
-## API Document
+## API Documentation
 
-Online Document: [https://webui-dev.github.io/zig-webui/](https://webui-dev.github.io/zig-webui/)
+* [https://webui-dev.github.io/zig-webui/](https://webui-dev.github.io/zig-webui/)
+* [https://webui.me/docs/2.5/#/](https://webui.me/docs/2.5/#/)
 
 ## Examples
 
@@ -144,7 +147,7 @@ Think of WebUI like a WebView controller, but instead of embedding the WebView c
 
 ### Runtime Dependencies Comparison
 
-|                                 | WebView           | Qt                         | WebUI               |
+|                                 | Tauri / WebView   | Qt                         | WebUI               |
 | ------------------------------- | ----------------- | -------------------------- | ------------------- |
 | Runtime Dependencies on Windows | _WebView2_        | _QtCore, QtGui, QtWidgets_ | **_A Web Browser_** |
 | Runtime Dependencies on Linux   | _GTK3, WebKitGTK_ | _QtCore, QtGui, QtWidgets_ | **_A Web Browser_** |
