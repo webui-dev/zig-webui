@@ -44,7 +44,7 @@ pub const Event = struct {
 
     /// convert zig Event to c webui_event_t,
     /// you won't use this
-    pub fn convertToWebUIEventT(self: *Event) WebUI.webui_event_t {
+    pub fn convertToWebUIEventT(self: Event) WebUI.webui_event_t {
         return WebUI.webui_event_t{
             .window = self.window_handle,
             .event_type = self.event_type,

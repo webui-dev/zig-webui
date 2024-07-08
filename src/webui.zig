@@ -76,7 +76,7 @@ pub fn getNewWindowId() usize {
 /// `element` The HTML element / JavaScript object
 /// `func` is The callback function,
 /// Returns a unique bind ID.
-pub fn bind(self: *Self, element: [:0]const u8, comptime func: fn (e: Event) void) usize {
+pub fn bind(self: Self, element: [:0]const u8, comptime func: fn (e: Event) void) usize {
     const tmp_struct = struct {
         fn handle(tmp_e: [*c]WebUI.webui_event_t) callconv(.C) void {
             func(Event.convertWebUIEventT2(tmp_e));
@@ -87,7 +87,7 @@ pub fn bind(self: *Self, element: [:0]const u8, comptime func: fn (e: Event) voi
 
 /// Get the recommended web browser ID to use. If you
 /// are already using one, this function will return the same ID.
-pub fn getBestBrowser(self: *Self) Browsers {
+pub fn getBestBrowser(self: Self) Browsers {
     const res = WebUI.webui_get_best_browser(self.window_handle);
     return @enumFromInt(res);
 }
@@ -97,19 +97,19 @@ pub fn getBestBrowser(self: *Self) Browsers {
 /// This will refresh all windows in multi-client mode.
 /// Returns True if showing the window is successed
 /// `content` is the html which will be shown
-pub fn show(self: *Self, content: [:0]const u8) bool {
+pub fn show(self: Self, content: [:0]const u8) bool {
     return WebUI.webui_show(self.window_handle, @ptrCast(content.ptr));
 }
 
 /// Same as `show()`. But using a specific web browser
 /// Returns True if showing the window is successed
-pub fn showBrowser(self: *Self, content: [:0]const u8, browser: Browsers) bool {
+pub fn showBrowser(self: Self, content: [:0]const u8, browser: Browsers) bool {
     return WebUI.webui_show_browser(self.window_handle, @ptrCast(content.ptr), @intFromEnum(browser));
 }
 
 /// Same as `show()`. But start only the web server and return the URL.
 /// No window will be shown.
-pub fn startServer(self: *Self, path: [:0]const u8) []const u8 {
+pub fn startServer(self: Self, path: [:0]const u8) []const u8 {
     const url = WebUI.webui_start_server(self.window_handle, @ptrCast(path.ptr));
     const url_len = str_len(url);
     return url[0..url_len];
@@ -118,12 +118,12 @@ pub fn startServer(self: *Self, path: [:0]const u8) []const u8 {
 /// Show a WebView window using embedded HTML, or a file. If the window is already
 /// opend, it will be refreshed. Note: Win32 need `WebView2Loader.dll`.
 /// Returns True if if showing the WebView window is successed.
-pub fn showWv(self: *Self, content: [:0]const u8) bool {
+pub fn showWv(self: Self, content: [:0]const u8) bool {
     return WebUI.webui_show_wv(self.window_handle, @ptrCast(content.ptr));
 }
 
 /// Set the window in Kiosk mode (Full screen)
-pub fn setKiosk(self: *Self, status: bool) void {
+pub fn setKiosk(self: Self, status: bool) void {
     WebUI.webui_set_kiosk(self.window_handle, status);
 }
 
@@ -140,12 +140,12 @@ pub fn wait() void {
 
 /// Close a specific window only. The window object will still exist.
 /// All clients.
-pub fn close(self: *Self) void {
+pub fn close(self: Self) void {
     WebUI.webui_close(self.window_handle);
 }
 
 /// Close a specific window and free all memory resources.
-pub fn destory(self: *Self) void {
+pub fn destory(self: Self) void {
     WebUI.webui_destroy(self.window_handle);
 }
 
@@ -156,7 +156,7 @@ pub fn exit() void {
 }
 
 /// Set the web-server root folder path for a specific window.
-pub fn setRootFolder(self: *Self, path: [:0]const u8) bool {
+pub fn setRootFolder(self: Self, path: [:0]const u8) bool {
     return WebUI.webui_set_root_folder(self.window_handle, @ptrCast(path.ptr));
 }
 
@@ -167,7 +167,7 @@ pub fn setDefaultRootFolder(path: [:0]const u8) bool {
 }
 
 /// Set a custom handler to serve files.
-pub fn setFileHandler(self: *Self, comptime handler: fn (filename: []const u8) ?[]const u8) void {
+pub fn setFileHandler(self: Self, comptime handler: fn (filename: []const u8) ?[]const u8) void {
     const tmp_struct = struct {
         fn handle(tmp_filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
             const len = str_len(tmp_filename);
@@ -184,7 +184,7 @@ pub fn setFileHandler(self: *Self, comptime handler: fn (filename: []const u8) ?
 }
 
 /// Check if the specified window is still running.
-pub fn isShown(self: *Self) bool {
+pub fn isShown(self: Self) bool {
     return WebUI.webui_is_shown(self.window_handle);
 }
 
@@ -195,7 +195,7 @@ pub fn setTimeout(time: usize) void {
 }
 
 /// Set the default embedded HTML favicon.
-pub fn setIcon(self: *Self, icon: [:0]const u8, icon_type: [:0]const u8) void {
+pub fn setIcon(self: Self, icon: [:0]const u8, icon_type: [:0]const u8) void {
     WebUI.webui_set_icon(self.window_handle, @ptrCast(icon.ptr), @ptrCast(icon_type));
 }
 
@@ -236,40 +236,40 @@ pub fn malloc(size: usize) []u8 {
 }
 
 /// Safely send raw data to the UI. All clients.
-pub fn sendRaw(self: *Self, js_func: [:0]const u8, raw: []u8) void {
+pub fn sendRaw(self: Self, js_func: [:0]const u8, raw: []u8) void {
     WebUI.webui_send_raw(self.window_handle, @ptrCast(js_func.ptr), @ptrCast(raw.ptr), raw.len);
 }
 
 /// Set a window in hidden mode.
 /// Should be called before `show()`
-pub fn setHide(self: *Self, status: bool) void {
+pub fn setHide(self: Self, status: bool) void {
     WebUI.webui_set_hide(self.window_handle, status);
 }
 
 /// Set the window size.
-pub fn setSize(self: *Self, width: u32, height: u32) void {
+pub fn setSize(self: Self, width: u32, height: u32) void {
     WebUI.webui_set_size(self.window_handle, @intCast(width), @intCast(height));
 }
 
 /// Set the window position.
-pub fn setPosition(self: *Self, x: u32, y: u32) void {
+pub fn setPosition(self: Self, x: u32, y: u32) void {
     WebUI.webui_set_position(self.window_handle, @intCast(x), @intCast(y));
 }
 
 /// Set the web browser profile to use.
 /// An empty `name` and `path` means the default user profile.
 /// Need to be called before `show()`.
-pub fn setProfile(self: *Self, name: [:0]const u8, path: [:0]const u8) void {
+pub fn setProfile(self: Self, name: [:0]const u8, path: [:0]const u8) void {
     WebUI.webui_set_profile(self.window_handle, @ptrCast(name.ptr), @ptrCast(path.ptr));
 }
 
 /// Set the web browser proxy_server to use. Need to be called before `show()`
-pub fn setProxy(self: *Self, proxy_server: [:0]const u8) void {
+pub fn setProxy(self: Self, proxy_server: [:0]const u8) void {
     WebUI.webui_set_proxy(self.window_handle, @ptrCast(proxy_server.ptr));
 }
 
 /// Get the full current URL.
-pub fn getUrl(self: *Self) []const u8 {
+pub fn getUrl(self: Self) []const u8 {
     const ptr = WebUI.webui_get_url(self.window_handle);
     const len = str_len(ptr);
     return ptr[0..len];
@@ -281,12 +281,12 @@ pub fn openUrl(url: [:0]const u8) void {
 }
 
 /// Allow a specific window address to be accessible from a public network
-pub fn setPublic(self: *Self, status: bool) void {
+pub fn setPublic(self: Self, status: bool) void {
     WebUI.webui_set_public(self.window_handle, status);
 }
 
 /// Navigate to a specific URL. All clients.
-pub fn navigate(self: *Self, url: [:0]const u8) void {
+pub fn navigate(self: Self, url: [:0]const u8) void {
     WebUI.webui_navigate(self.window_handle, @ptrCast(url.ptr));
 }
 
@@ -303,17 +303,17 @@ pub fn deleteAllProfiles() void {
 }
 
 /// Delete a specific window web-browser local folder profile.
-pub fn deleteProfile(self: *Self) void {
+pub fn deleteProfile(self: Self) void {
     WebUI.webui_delete_profile(self.window_handle);
 }
 
 /// Get the ID of the parent process (The web browser may re-create another new process).
-pub fn getParentProcessId(self: *Self) usize {
+pub fn getParentProcessId(self: Self) usize {
     return WebUI.webui_get_parent_process_id(self.window_handle);
 }
 
 /// Get the ID of the last child process.
-pub fn getChildProcessId(self: *Self) usize {
+pub fn getChildProcessId(self: Self) usize {
     return WebUI.webui_get_child_process_id(self.window_handle);
 }
 
@@ -321,7 +321,7 @@ pub fn getChildProcessId(self: *Self) usize {
 /// This can be useful to determine the HTTP link of `webui.js` in case
 /// you are trying to use WebUI with an external web-server like NGNIX
 /// Returns True if the port is free and usable by WebUI
-pub fn setPort(self: *Self, port: usize) bool {
+pub fn setPort(self: Self, port: usize) bool {
     return WebUI.webui_set_port(self.window_handle, port);
 }
 
@@ -334,7 +334,7 @@ pub fn setConfig(option: Config, status: bool) void {
 /// one a time in a single blocking thread `True`, or process every event in
 /// a new non-blocking thread `False`. This update single window. You can use
 /// `setConfig(ui_event_blocking, ...)` to update all windows.
-pub fn setEventBlocking(self: *Self, status: bool) void {
+pub fn setEventBlocking(self: Self, status: bool) void {
     WebUI.webui_set_event_blocking(self.window_handle, status);
 }
 
@@ -350,19 +350,19 @@ pub fn setTlsCertificate(certificate_pem: [:0]const u8, private_key_pem: [:0]con
 }
 
 /// Run JavaScript without waiting for the response.All clients.
-pub fn run(self: *Self, script_content: [:0]const u8) void {
+pub fn run(self: Self, script_content: [:0]const u8) void {
     WebUI.webui_run(self.window_handle, @ptrCast(script_content.ptr));
 }
 
 /// Run JavaScript and get the response back. Work only in single client mode.
 /// Make sure your local buffer can hold the response.
 /// Return True if there is no execution error
-pub fn script(self: *Self, script_content: [:0]const u8, timeout: usize, buffer: []u8) bool {
+pub fn script(self: Self, script_content: [:0]const u8, timeout: usize, buffer: []u8) bool {
     return WebUI.webui_script(self.window_handle, @ptrCast(script_content.ptr), timeout, @ptrCast(buffer.ptr), buffer.len);
 }
 
 /// Chose between Deno and Nodejs as runtime for .js and .ts files.
-pub fn setRuntime(self: *Self, runtime: Runtimes) void {
+pub fn setRuntime(self: Self, runtime: Runtimes) void {
     WebUI.webui_set_runtime(self.window_handle, @intFromEnum(runtime));
 }
 
@@ -441,7 +441,7 @@ pub fn returnBool(_: Event, _: bool) void {
 
 /// Bind a specific HTML element click event with a function.
 /// Empty element means all events.
-pub fn interfaceBind(self: *Self, element: [:0]const u8, comptime callback: fn (window_handle: usize, event_type: usize, element: []u8, event_number: usize, bind_id: usize) void) void {
+pub fn interfaceBind(self: Self, element: [:0]const u8, comptime callback: fn (window_handle: usize, event_type: usize, element: []u8, event_number: usize, bind_id: usize) void) void {
     const tmp_struct = struct {
         fn handle(tmp_window: usize, tmp_event_type: usize, tmp_element: [*c]u8, tmp_event_number: usize, tmp_bind_id: usize) callconv(.C) void {
             const len = str_len(tmp_element);
@@ -453,7 +453,7 @@ pub fn interfaceBind(self: *Self, element: [:0]const u8, comptime callback: fn (
 
 /// When using `interfaceBind()`,
 /// you may need this function to easily set a response.
-pub fn interfaceSetResponse(self: *Self, event_number: usize, response: [:0]const u8) void {
+pub fn interfaceSetResponse(self: Self, event_number: usize, response: [:0]const u8) void {
     WebUI.webui_interface_set_response(self.window_handle, event_number, @ptrCast(response.ptr));
 }
 
@@ -463,34 +463,34 @@ pub fn interfaceIsAppRunning() bool {
 }
 
 /// Get a unique window ID.
-pub fn interfaceGetWindowId(self: *Self) usize {
+pub fn interfaceGetWindowId(self: Self) usize {
     return WebUI.webui_interface_get_window_id(self.window_handle);
 }
 
 /// Get an argument as string at a specific index
-pub fn interfaceGetStringAt(self: *Self, event_number: usize, index: usize) [*c]const u8 {
+pub fn interfaceGetStringAt(self: Self, event_number: usize, index: usize) [*c]const u8 {
     const ptr = WebUI.webui_interface_get_string_at(self.window_handle, event_number, index);
     return ptr;
 }
 
 /// Get an argument as integer at a specific index
-pub fn interfaceGetIntAt(self: *Self, event_number: usize, index: usize) i64 {
+pub fn interfaceGetIntAt(self: Self, event_number: usize, index: usize) i64 {
     const n = WebUI.webui_interface_get_int_at(self.window_handle, event_number, index);
     return @intCast(n);
 }
 
 /// Get an argument as float at a specific index.
-pub fn interfaceGetFloatAt(self: *Self, event_number: usize, index: usize) f64 {
+pub fn interfaceGetFloatAt(self: Self, event_number: usize, index: usize) f64 {
     return WebUI.webui_interface_get_float_at(self.window_handle, event_number, index);
 }
 
 /// Get an argument as boolean at a specific index
-pub fn interfaceGetBoolAt(self: *Self, event_number: usize, index: usize) bool {
+pub fn interfaceGetBoolAt(self: Self, event_number: usize, index: usize) bool {
     return WebUI.webui_interface_get_bool_at(self.window_handle, event_number, index);
 }
 
 /// Get the size in bytes of an argument at a specific index
-pub fn interfaceGetSizeAt(self: *Self, event_number: usize, index: usize) usize {
+pub fn interfaceGetSizeAt(self: Self, event_number: usize, index: usize) usize {
     return WebUI.webui_interface_get_size_at(self.window_handle, event_number, index);
 }
 
@@ -499,7 +499,7 @@ pub fn interfaceGetSizeAt(self: *Self, event_number: usize, index: usize) usize 
 /// a very convenient function for binding callback.
 /// you just need to pase a function to get param.
 /// no need to care webui param api.
-pub fn binding(self: *Self, element: [:0]const u8, comptime callback: anytype) usize {
+pub fn binding(self: Self, element: [:0]const u8, comptime callback: anytype) usize {
     const T = @TypeOf(callback);
     const TInfo = @typeInfo(T);
 
