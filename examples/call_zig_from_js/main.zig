@@ -30,9 +30,9 @@ fn my_function_string(e: webui.Event) void {
     const str_2 = webui.getStringAt(e, 1);
 
     // Hello
-    std.debug.print("my_function_string 1: {s}\n", .{str_1[0..webui.str_len(str_1)]});
+    std.debug.print("my_function_string 1: {s}\n", .{str_1});
     // World
-    std.debug.print("my_function_string 2: {s}\n", .{str_2[0..webui.str_len(str_2)]});
+    std.debug.print("my_function_string 2: {s}\n", .{str_2});
 }
 
 fn my_function_integer(e: webui.Event) void {

@@ -100,7 +100,7 @@ pub const Config = enum(u8) {
     /// This is helpful for web apps (non-desktop software),
     /// Please see the documentation for more details.
     /// Default: False
-    use_package,
+    use_cookies,
 };
 
 /// Get the string length.
@@ -162,7 +162,7 @@ pub const Event = struct {
             .bind_id = self.bind_id,
             .client_id = self.client_id,
             .connection_id = self.connection_id,
-            .cookies = @ptrCast(self.cookies),
+            .cookies = @ptrCast(self.cookies.ptr),
         };
     }
 
@@ -645,9 +645,10 @@ pub fn getStringAt(e: Event, index: usize) [*c]const u8 {
 }
 
 /// Get the first argument as string
-pub fn getString(e: Event) [*c]const u8 {
+pub fn getString(e: Event) []const u8 {
     const ptr = WebUI.webui_get_string(e.e);
-    return ptr;
+    const len = str_len(ptr);
+    return ptr[0..len];
 }
 
 /// Get an argument as boolean at a specific index
