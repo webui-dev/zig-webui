@@ -61,7 +61,7 @@ fn events(e: webui.Event) void {
             }
 
             const url = webui.getString(e);
-            const len = webui.str_len(url);
+            const len = url.len;
 
             var tmp_e = e;
             var win = tmp_e.getWindow();
@@ -69,7 +69,7 @@ fn events(e: webui.Event) void {
             const new_url = allocator.allocSentinel(u8, len, 0) catch unreachable;
             defer allocator.free(new_url);
 
-            @memcpy(new_url[0..len], url[0..len]);
+            @memcpy(new_url[0..len], url);
 
             win.navigate(new_url);
         },

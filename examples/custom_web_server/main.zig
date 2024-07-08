@@ -57,7 +57,7 @@ fn events(e: webui.Event) void {
             // get the url string
             const url = webui.getString(e);
             // get the len of url
-            const len = webui.str_len(url);
+            const len = url.len;
 
             // we use this to get widnow
             var tmp_e = e;
@@ -69,7 +69,7 @@ fn events(e: webui.Event) void {
 
             std.debug.print("Starting navigation to: {s}\n", .{url});
 
-            @memcpy(new_url[0..len], url[0..len]);
+            @memcpy(new_url[0..len], url);
 
             // Because we used `bind(MyWindow, "", events);`
             // WebUI will block all `href` link clicks and sent here instead.
