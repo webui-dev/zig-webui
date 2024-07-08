@@ -60,7 +60,7 @@ fn events(e: webui.Event) void {
                 if (deinit_status == .leak) @panic("TEST FAIL");
             }
 
-            const url = webui.getString(e);
+            const url = e.getString();
             const len = url.len;
 
             var tmp_e = e;
