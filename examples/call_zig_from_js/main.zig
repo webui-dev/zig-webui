@@ -25,9 +25,9 @@ fn my_function_string(e: webui.Event) void {
     // JavaScript:
     // my_function_string('Hello', 'World`);
 
-    // or webui.getStringAt(e, 0);
-    const str_1 = webui.getString(e);
-    const str_2 = webui.getStringAt(e, 1);
+    // or e.getStringAt(0);
+    const str_1 = e.getString();
+    const str_2 = e.getStringAt(1);
 
     // Hello
     std.debug.print("my_function_string 1: {s}\n", .{str_1});
@@ -39,14 +39,14 @@ fn my_function_integer(e: webui.Event) void {
     // JavaScript:
     // my_function_integer(123, 456, 789, 12345.6789);
 
-    const count = webui.getCount(e);
+    const count = e.getCount();
 
     std.debug.print("my_function_integer: There is {} arguments in this event\n", .{count});
 
-    // Or getIntAt(e, 0);
-    const number_1 = webui.getInt(e);
-    const number_2 = webui.getIntAt(e, 1);
-    const number_3 = webui.getIntAt(e, 2);
+    // Or e.getIntAt(0);
+    const number_1 = e.getInt();
+    const number_2 = e.getIntAt(1);
+    const number_3 = e.getIntAt(2);
 
     // 123
     std.debug.print("my_function_integer 1: {}\n", .{number_1});
@@ -55,7 +55,7 @@ fn my_function_integer(e: webui.Event) void {
     // 789
     std.debug.print("my_function_integer 3: {}\n", .{number_3});
 
-    const float_1 = webui.getFloatAt(e, 3);
+    const float_1 = e.getFloatAt(3);
     // 12345.6789
     std.debug.print("my_function_integer 4: {}\n", .{float_1});
 }
@@ -64,9 +64,9 @@ fn my_function_boolean(e: webui.Event) void {
     // JavaScript:
     // my_function_boolean(true, false);
 
-    // Or getBoolAt(e, 0);
-    const status_1 = webui.getBool(e);
-    const status_2 = webui.getBoolAt(e, 1);
+    // Or e.getBoolAt(0);
+    const status_1 = e.getBool();
+    const status_2 = e.getBoolAt(1);
 
     // Ture
     std.debug.print("my_function_bool 1: {}\n", .{status_1});
@@ -78,9 +78,9 @@ fn my_function_with_response(e: webui.Event) void {
     // JavaScript:
     // my_function_with_response(number, 2).then(...)
 
-    // Or getIntAt(e, 0);
-    const number = webui.getInt(e);
-    const times = webui.getIntAt(e, 1);
+    // Or e.getIntAt(0);
+    const number = e.getInt();
+    const times = e.getIntAt(1);
     const res = number * times;
 
     std.debug.print("my_function_with_response: {} * {} = {}\n", .{ number, times, res });
@@ -93,13 +93,13 @@ fn my_function_raw_binary(e: webui.Event) void {
     // JavaScript:
     // my_function_raw_binary(new Uint8Array([0x41]), new Uint8Array([0x42, 0x43]));
 
-    // Or getStringAt(e, 0);
-    const raw_1 = webui.getString(e);
-    const raw_2 = webui.getStringAt(e, 1);
+    // Or e.getStringAt(0);
+    const raw_1 = e.getString();
+    const raw_2 = e.getStringAt(1);
 
-    // Or getSizeAt(e, 0);
-    const len_1 = webui.getSize(e);
-    const len_2 = webui.getSizeAt(e, 1);
+    // Or e.getSizeAt(0);
+    const len_1 = e.getSize();
+    const len_2 = e.getSizeAt(1);
 
     // Print raw_1
     std.debug.print("my_function_raw_binary 1 ({} bytes): ", .{len_1});

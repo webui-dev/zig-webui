@@ -18,7 +18,7 @@ fn exit_app(_: webui.Event) void {
 
 fn save(e: webui.Event) void {
     // Get input value
-    const privateInput = webui.getString(e);
+    const privateInput = e.getString();
 
     // free previous memory
     if (private_input_arr[e.client_id]) |val|
@@ -30,7 +30,7 @@ fn save(e: webui.Event) void {
 
 fn saveAll(e: webui.Event) void {
     // Get input value
-    const publicInput = webui.getString(e);
+    const publicInput = e.getString();
 
     // free previous memory
     if (public_input) |val|

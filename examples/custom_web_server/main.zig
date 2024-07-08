@@ -55,7 +55,7 @@ fn events(e: webui.Event) void {
             }
 
             // get the url string
-            const url = webui.getString(e);
+            const url = e.getString();
             // get the len of url
             const len = url.len;
 
@@ -86,9 +86,9 @@ fn my_backend_func(e: webui.Event) void {
     // my_backend_func(123, 456, 789);
     // or webui.my_backend_func(...);
 
-    const number_1 = webui.getInt(e);
-    const number_2 = webui.getIntAt(e, 1);
-    const number_3 = webui.getIntAt(e, 2);
+    const number_1 = e.getInt();
+    const number_2 = e.getIntAt(1);
+    const number_3 = e.getIntAt(2);
 
     std.debug.print("my_backend_func 1: {}\n", .{number_1});
     std.debug.print("my_backend_func 2: {}\n", .{number_2});
