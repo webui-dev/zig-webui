@@ -38,6 +38,8 @@ pub const Runtimes = enum(u8) {
     Deno,
     /// 2. Use Nodejs runtime for .js files
     NodeJS,
+    /// 3. Use Bun runtime for .js and .ts files
+    Bun,
 };
 
 /// Events for webui
