@@ -4,8 +4,10 @@
     .minimum_zig_version = "0.11.0",
     .dependencies = .{
         .webui = .{
+            // .path = "../webui",
+            // You'll have to update this to call  WebUI.webui_get_free_port();
             .url = "https://github.com/webui-dev/webui/archive/50e9e4c2c6358504d651310fa97e4e8be8c8f42c.tar.gz",
-            .hash = "1220184e5dff426303909da4c9333450e890c366b2624f071bedf86441f3a16dfbf3",
+            // .hash = "1220184e5dff426303909da4c9333450e890c366b2624f071bedf86441f3a16dfbf3",
         },
     },
     .paths = .{

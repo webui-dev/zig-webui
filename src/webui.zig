@@ -325,6 +325,11 @@ pub fn setPort(self: Self, port: usize) bool {
     return WebUI.webui_set_port(self.window_handle, port);
 }
 
+// Get an available usable free network port.
+pub fn getFreePort() u64 {
+    return WebUI.webui_get_free_port();
+}
+
 /// Control the WebUI behaviour. It's recommended to be called at the beginning.
 pub fn setConfig(option: Config, status: bool) void {
     WebUI.webui_set_config(@intCast(@intFromEnum(option)), status);
