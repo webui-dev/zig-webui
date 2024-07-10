@@ -20,7 +20,7 @@ pub fn main() !void {
     //
     // http://localhost:[WEBUI_PORT]/webui.js
     //
-    // (see [WEBUI_PORT] in: index.html, second.html, free_port_web_server.py)
+    // (see [WEBUI_PORT] in: index.html, free_port_web_server.py)
     //
     // So, get and set a free port for WebUI to use:
 
