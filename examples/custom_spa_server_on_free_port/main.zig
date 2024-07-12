@@ -2,8 +2,6 @@
 const std = @import("std");
 const webui = @import("webui");
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-
 var python_server_proc: std.process.Child = undefined;
 var python_running: bool = false;
 
@@ -109,30 +107,20 @@ fn events(e: webui.Event) void {
             std.debug.print("Click. \n", .{});
         },
         .EVENT_NAVIGATION => {
-            const allocator = gpa.allocator();
-
-            defer {
-                const deinit_status = gpa.deinit();
-
-                if (deinit_status == .leak) @panic("memory leak!");
-            }
+            const allocator =std.heap.c_allocator;
 
             // get the url string
             const url = e.getString();
-            // get the len of url
-            const len = url.len;
 
             // we use this to get widnow
             var tmp_e = e;
             var win = tmp_e.getWindow();
 
             // we generate the new url!
-            const new_url = allocator.allocSentinel(u8, len, 0) catch unreachable;
+            const new_url = allocator.dupeZ(u8, url) catch unreachable;
             defer allocator.free(new_url);
 
             std.debug.print("Starting navigation to: {s}\n", .{url});
-
-            @memcpy(new_url[0..len], url);
 
             // Because we used `bind(MyWindow, "", events);`
             // WebUI will block all `href` link clicks and sent here instead.
