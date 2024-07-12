@@ -166,7 +166,8 @@ pub fn setDefaultRootFolder(path: [:0]const u8) bool {
     return WebUI.webui_set_default_root_folder(@ptrCast(path.ptr));
 }
 
-/// Set a custom handler to serve files.
+/// Set a custom handler to serve files. This custom handler should
+/// return full HTTP header and body.
 pub fn setFileHandler(self: Self, comptime handler: fn (filename: []const u8) ?[]const u8) void {
     const tmp_struct = struct {
         fn handle(tmp_filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
@@ -317,12 +318,23 @@ pub fn getChildProcessId(self: Self) usize {
     return WebUI.webui_get_child_process_id(self.window_handle);
 }
 
+/// Get the network port of a running window.
+/// This can be useful to determine the HTTP link of `webui.js`
+pub fn getPort(self: Self) usize {
+    return WebUI.webui_get_port(self.window_handle);
+}
+
 /// Set a custom web-server network port to be used by WebUI.
 /// This can be useful to determine the HTTP link of `webui.js` in case
 /// you are trying to use WebUI with an external web-server like NGNIX
 /// Returns True if the port is free and usable by WebUI
 pub fn setPort(self: Self, port: usize) bool {
     return WebUI.webui_set_port(self.window_handle, port);
+}
+
+// Get an available usable free network port.
+pub fn getFreePort() usize {
+    return WebUI.webui_get_free_port();
 }
 
 /// Control the WebUI behaviour. It's recommended to be called at the beginning.
@@ -336,6 +348,12 @@ pub fn setConfig(option: Config, status: bool) void {
 /// `setConfig(ui_event_blocking, ...)` to update all windows.
 pub fn setEventBlocking(self: Self, status: bool) void {
     WebUI.webui_set_event_blocking(self.window_handle, status);
+}
+
+/// Get the HTTP mime type of a file.
+pub fn getMimeType(file: [:0]const u8) []const u8 {
+    const res = WebUI.webui_get_mime_type(@ptrCast(file.ptr));
+    return res[0..tools.str_len(res)];
 }
 
 /// Set the SSL/TLS certificate and the private key content,

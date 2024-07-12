@@ -27,7 +27,7 @@ pub const Browsers = enum(u8) {
     /// 12. Any Chromium based browser
     ChromiumBased,
     /// 13. WebView (Non-web-browser)
-    WebView,
+    Webview,
 };
 
 /// runtime for js

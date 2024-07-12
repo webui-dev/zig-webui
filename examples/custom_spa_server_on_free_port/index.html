@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="cache-control" content="no-cache" />
+		<title>WebUI - Custom Web-Server Free Port Example (C)</title>
+		<!-- Connect this window to the back-end app -->
+		<script src="http://localhost:[WEBUI_PORT]/webui.js"></script>
+		<script src="pages.js"></script>
+		<script>
+			// called by main.zig
+			function doNavigate(path) {
+				window.router(path);
+			}
+		</script>
+	</head>
+	<body>
+		<header style="margin-bottom: 20px;">
+			<div style="flex: row;";>
+				<a href="index.html"><h2>Home</h2></a>
+				<button onclick="window.router(window.pages[0].path)"><h3>Second Page</h3></button>
+				<button onclick="window.router(window.pages[1].path)"><h3>Third Page</h3></button>
+				<button onclick="gotoPage(window.pages[2].path);">
+					<!-- calls into main.zig-->
+					<h2>
+					Fourth page (JS->Zig->JS)
+					</h2>
+				</button>
+			</div>
+		</header>
+		<hr/>
+		<div id="page" style="border-style: double; padding:20px;";>
+			<h1>This is the First (Home) Page</h1>
+        </div>
+		<hr/>
+		<footer style="margin-top: 50px;">
+			<h3>Example: Web-Server that finds available free port (C)</h3>
+			<p>
+				Similar to the Custom Web-Server example, this HTML page is handled by a custom Web-Server other than WebUI.<br />
+				This window is connected to the back-end because we used: <pre>http://localhost:[WEBUI_PORT]/webui.js</pre>
+				<strong>An available free port ([WEBUI_PORT]) was obtained by calling <pre>webui.getFreePort();</pre>
+				</strong>
+			</p>
+		</footer>
+    </body>
+</html>
