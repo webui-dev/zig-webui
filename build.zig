@@ -21,31 +21,7 @@ pub fn build(b: *Build) !void {
         12, 13, 14 => try V0_12.build(b),
         else => @compileError("unknown version!"),
     }
-
-    // // I (@sensiblearts) used this during development to save copying time.
-    // // You can remove it if you wish.
-    // copy_free_port_example_to_subfolder() catch |err| {
-    //     std.debug.print("failed to copy free port example files to ./zig-out/bin: {}", .{err});
-    // };
 }
-
-// fn copy_free_port_example_to_subfolder() !void {
-//     var src_dir = try std.fs.cwd().openDir("./examples/custom_spa_server_on_free_port", .{});
-//     var dest_dir = try std.fs.cwd().makeOpenPath("./zig-out/bin/custom_spa_server_on_free_port", .{});
-//     defer dest_dir.close();
-//     try src_dir.copyFile("index.html", dest_dir, "index.html", .{});
-//     try src_dir.copyFile("pages.js", dest_dir, "pages.js", .{});
-//     try src_dir.copyFile("free_port_web_server.py", dest_dir, "free_port_web_server.py", .{});
-//     src_dir.close();
-//     src_dir = try std.fs.cwd().openDir("./zig-out/bin", .{});
-//     defer src_dir.close();
-//     // You have to run 'zig build' TWICE because these don't exist the first time:
-//     try src_dir.copyFile("custom_spa_server_on_free_port.exe", dest_dir, "custom_spa_server_on_free_port.exe", .{});
-//     try src_dir.copyFile("custom_spa_server_on_free_port.pdb", dest_dir, "custom_spa_server_on_free_port.pdb", .{});
-//     // Could probably use b.getInstallStep().dependOn(&b.addInstallFileWithDir(..., .prefix, ...).step);
-//     // but I have not figured that out yet.
-//
-// }
 
 /// build for zig 0.12
 pub const V0_12 = struct {
