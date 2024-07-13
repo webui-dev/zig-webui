@@ -25,12 +25,10 @@ pub fn main() !void {
 fn my_function_count(e: webui.Event) void {
     // This function gets called every time the user clicks on "my_function_count"
 
-    var new_e = e;
-
     // Create a buffer to hold the response
     var response = std.mem.zeroes([64]u8);
 
-    var win = new_e.getWindow();
+    const win = e.getWindow();
 
     // Run JavaScript
     if (!win.script("return GetCount();", 0, &response)) {
