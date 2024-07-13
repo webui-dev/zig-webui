@@ -109,10 +109,10 @@ pub fn showBrowser(self: Self, content: [:0]const u8, browser: Browsers) bool {
 
 /// Same as `show()`. But start only the web server and return the URL.
 /// No window will be shown.
-pub fn startServer(self: Self, path: [:0]const u8) []const u8 {
+pub fn startServer(self: Self, path: [:0]const u8) [:0]const u8 {
     const url = WebUI.webui_start_server(self.window_handle, @ptrCast(path.ptr));
     const url_len = str_len(url);
-    return url[0..url_len];
+    return url[0..url_len :0];
 }
 
 /// Show a WebView window using embedded HTML, or a file. If the window is already
@@ -270,10 +270,10 @@ pub fn setProxy(self: Self, proxy_server: [:0]const u8) void {
 }
 
 /// Get the full current URL.
-pub fn getUrl(self: Self) []const u8 {
+pub fn getUrl(self: Self) [:0]const u8 {
     const ptr = WebUI.webui_get_url(self.window_handle);
     const len = str_len(ptr);
-    return ptr[0..len];
+    return ptr[0..len :0];
 }
 
 /// Open an URL in the native default web browser.
@@ -351,9 +351,9 @@ pub fn setEventBlocking(self: Self, status: bool) void {
 }
 
 /// Get the HTTP mime type of a file.
-pub fn getMimeType(file: [:0]const u8) []const u8 {
+pub fn getMimeType(file: [:0]const u8) [:0]const u8 {
     const res = WebUI.webui_get_mime_type(@ptrCast(file.ptr));
-    return res[0..tools.str_len(res)];
+    return res[0..tools.str_len(res) :0];
 }
 
 /// Set the SSL/TLS certificate and the private key content,
@@ -410,12 +410,12 @@ pub fn getFloat(_: Event) f64 {
 }
 
 /// Get an argument as string at a specific index
-pub fn getStringAt(_: Event, _: usize) [*c]const u8 {
+pub fn getStringAt(_: Event, _: usize) [:0]const u8 {
     @compileError("pleaser use Event.getStringAt, this will be removed when zig-webui release");
 }
 
 /// Get the first argument as string
-pub fn getString(_: Event) []const u8 {
+pub fn getString(_: Event) [:0]const u8 {
     @compileError("pleaser use Event.getString, this will be removed when zig-webui release");
 }
 
@@ -486,9 +486,10 @@ pub fn interfaceGetWindowId(self: Self) usize {
 }
 
 /// Get an argument as string at a specific index
-pub fn interfaceGetStringAt(self: Self, event_number: usize, index: usize) [*c]const u8 {
+pub fn interfaceGetStringAt(self: Self, event_number: usize, index: usize) [:0]const u8 {
     const ptr = WebUI.webui_interface_get_string_at(self.window_handle, event_number, index);
-    return ptr;
+    const len = tools.str_len(ptr);
+    return ptr[0..len :0];
 }
 
 /// Get an argument as integer at a specific index

@@ -107,14 +107,13 @@ fn events(e: webui.Event) void {
             std.debug.print("Click. \n", .{});
         },
         .EVENT_NAVIGATION => {
-            const allocator =std.heap.c_allocator;
+            const allocator = std.heap.c_allocator;
 
             // get the url string
             const url = e.getString();
 
             // we use this to get widnow
-            var tmp_e = e;
-            var win = tmp_e.getWindow();
+            var win = e.getWindow();
 
             // we generate the new url!
             const new_url = allocator.dupeZ(u8, url) catch unreachable;
