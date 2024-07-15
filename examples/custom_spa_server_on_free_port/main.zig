@@ -112,16 +112,15 @@ fn events(e: webui.Event) void {
             // Because we used `bind(MyWindow, "", events);`
             // WebUI will block all `href` link clicks and sent here instead.
             // We can then control the behaviour of links as needed.
+            //
             // In this SPA example, the client has its own router and
             // does the navigation for all pages in page.js (2nd, 3rd, 4th).
+            //
             // However, for the 1st page, we have to handle navigation here:
 
             // get the url string
             const url = e.getString();
-            // we generate the new url!
-            // const allocator = std.heap.c_allocator;
-            // const new_url = allocator.dupeZ(u8, url) catch unreachable;
-            // defer allocator.free(new_url);
+
             if (std.mem.eql(u8, url, home_url)) {
                 // we use this to get widnow
                 var win = e.getWindow();
