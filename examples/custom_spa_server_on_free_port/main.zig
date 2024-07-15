@@ -5,6 +5,8 @@ const webui = @import("webui");
 var python_server_proc: std.process.Child = undefined;
 var python_running: bool = false;
 
+var home_url: [:0]u8 = undefined;
+
 pub fn main() !void {
     // Create new window
     var nwin = webui.newWindow();
@@ -42,8 +44,8 @@ pub fn main() !void {
 
     // Show a new window served by our custom web server (spawned above):
     var buf: [64]u8 = undefined;
-    const url: [:0]u8 = try std.fmt.bufPrintZ(&buf, "http://localhost:{d}/index.html", .{backend_port});
-    _ = nwin.show(url);
+    home_url = try std.fmt.bufPrintZ(&buf, "http://localhost:{d}/index.html", .{backend_port});
+    _ = nwin.show(home_url);
 
     // Wait until all windows get closed
     webui.wait();
@@ -107,24 +109,30 @@ fn events(e: webui.Event) void {
             std.debug.print("Click. \n", .{});
         },
         .EVENT_NAVIGATION => {
-            const allocator = std.heap.c_allocator;
-
-            // get the url string
-            const url = e.getString();
-
-            // we use this to get widnow
-            var win = e.getWindow();
-
-            // we generate the new url!
-            const new_url = allocator.dupeZ(u8, url) catch unreachable;
-            defer allocator.free(new_url);
-
-            std.debug.print("Starting navigation to: {s}\n", .{url});
-
             // Because we used `bind(MyWindow, "", events);`
             // WebUI will block all `href` link clicks and sent here instead.
             // We can then control the behaviour of links as needed.
-            win.navigate(new_url);
+            // In this SPA example, the client has its own router and
+            // does the navigation for all pages in page.js (2nd, 3rd, 4th).
+            // However, for the 1st page, we have to handle navigation here:
+
+            // get the url string
+            const url = e.getString();
+            // we generate the new url!
+            // const allocator = std.heap.c_allocator;
+            // const new_url = allocator.dupeZ(u8, url) catch unreachable;
+            // defer allocator.free(new_url);
+            if (std.mem.eql(u8, url, home_url)) {
+                // we use this to get widnow
+                var win = e.getWindow();
+
+                std.debug.print("WebUI.js is Starting navigation to: {s}\n", .{url});
+
+                win.navigate(url);
+            } else {
+                std.debug.print("Client JS is navigating to: {s}\n", .{url});
+                // nothing to do, client is navigating
+            }
         },
         else => {
             std.debug.print("Other event {}. \n", .{e.event_type});
