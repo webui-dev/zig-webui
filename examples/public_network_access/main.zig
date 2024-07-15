@@ -26,7 +26,7 @@ fn public_window_events(e: webui.Event) void {
 
 fn private_window_events(e: webui.Event) void {
     if (e.event_type == .EVENT_CONNECTED) {
-        const public_win_url = public_window.getUrl();
+        const public_win_url: [:0]const u8 = public_window.getUrl();
         var buf = std.mem.zeroes([1024]u8);
         const js = std.fmt.bufPrintZ(&buf, "document.getElementById('urlSpan').innerHTML = '{s}';", .{public_win_url}) catch unreachable;
         private_window.run(js);

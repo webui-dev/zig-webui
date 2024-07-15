@@ -202,16 +202,17 @@ pub const Event = struct {
     }
 
     /// Get an argument as string at a specific index
-    pub fn getStringAt(e: Event, index: usize) [*c]const u8 {
+    pub fn getStringAt(e: Event, index: usize) [:0]const u8 {
         const ptr = WebUI.webui_get_string_at(e.e, index);
-        return ptr;
+        const len = tools.str_len(ptr);
+        return ptr[0..len :0];
     }
 
     /// Get the first argument as string
-    pub fn getString(e: Event) []const u8 {
+    pub fn getString(e: Event) [:0]const u8 {
         const ptr = WebUI.webui_get_string(e.e);
         const len = tools.str_len(ptr);
-        return ptr[0..len];
+        return ptr[0..len :0];
     }
 
     /// Get an argument as boolean at a specific index
