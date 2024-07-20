@@ -115,6 +115,10 @@ exe.root_module.addImport("webui", zig_webui.module("webui"));
 > It is not recommended to dynamically link libraries under Windows, which may cause some symbol duplication problems.
 > see this issue: https://github.com/ziglang/zig/issues/15107
 
+### Windows without console
+
+For hide console window, you can set `exe.subsystem = .Windows;`!
+
 ## UI & The Web Technologies
 
 [Borislav Stanimirov](https://ibob.bg/) discusses using HTML5 in the web browser as GUI at the [C++ Conference 2019 (_YouTube_)](https://www.youtube.com/watch?v=bbbcZd4cuxg).
