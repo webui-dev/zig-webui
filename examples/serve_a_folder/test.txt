@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+Content-Length: 99
+
+<html>
+   This is a static embedded file content example.
+   <script src="webui.js"></script>
+</html>

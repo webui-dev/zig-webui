@@ -1,0 +1,5 @@
+<html>
+    This is a dynamic file content example. <br>
+    Count: {} <a href="dynamic.html">[Refresh]</a><br>
+    <script src="/webui.js"></script> 
+</html>

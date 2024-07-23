@@ -1,6 +1,8 @@
 //!Serve a Folder Example
 const std = @import("std");
 const webui = @import("webui");
+const test_txt = @embedFile("test.txt");
+const dynamic_txt = @embedFile("dynamic.txt");
 
 var MyWindow: webui = undefined;
 var MySecondWindow: webui = undefined;
@@ -102,16 +104,7 @@ fn my_files_handler(filename: []const u8) ?[]const u8 {
 
     if (std.mem.eql(u8, filename, "/test.txt")) {
         // Const static file example
-        return 
-        \\HTTP/1.1 200 OK
-        \\Content-Type: text/html
-        \\Content-Length: 99
-        \\
-        \\<html>
-        \\   This is a static embedded file content example.
-        \\   <script src="webui.js"></script>
-        \\</html>
-        ;
+        return test_txt;
     } else if (std.mem.eql(u8, filename, "/dynamic.html")) {
         const body = webui.malloc(1024);
         defer webui.free(body);
@@ -119,13 +112,7 @@ fn my_files_handler(filename: []const u8) ?[]const u8 {
 
         count += 1;
 
-        const buf = std.fmt.bufPrint(body,
-            \\<html>
-            \\    This is a dynamic file content example. <br>
-            \\    Count: {} <a href="dynamic.html">[Refresh]</a><br>
-            \\    <script src="/webui.js"></script> 
-            \\</html>
-        , .{count}) catch unreachable;
+        const buf = std.fmt.bufPrint(body, dynamic_txt, .{count}) catch unreachable;
 
         const content = std.fmt.bufPrint(header_and_body,
             \\HTTP/1.1 200 OK
