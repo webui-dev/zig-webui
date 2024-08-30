@@ -139,8 +139,11 @@ pub const Event = struct {
     pub fn returnValue(e: Event, val: anytype) void {
         const T = @TypeOf(val);
         const type_info = @typeInfo(T);
+
+        const is_dev = builtin.zig_version.minor > 13;
+
         switch (type_info) {
-            .Pointer => |pointer| {
+            if (is_dev) .pointer else .Pointer => |pointer| {
                 if (pointer.size == .Slice and
                     pointer.child == u8 and
                     (if (pointer.sentinel) |sentinel| @as(*u8, @ptrCast(sentinel)).* == 0 else false))
@@ -151,7 +154,7 @@ pub const Event = struct {
                     @compileError(err_msg);
                 }
             },
-            .Int => |int| {
+             if (is_dev) .int else .Int => |int| {
                 const bits = int.bits;
                 const is_signed = int.signedness == .signed;
                 if (is_signed and bits <= 64) {
@@ -163,12 +166,8 @@ pub const Event = struct {
                     @compileError(err_msg);
                 }
             },
-            .Bool => {
-                e.returnBool(val);
-            },
-            .Float => {
-                e.returnFloat(val);
-            },
+            if (is_dev) .bool else .Bool => e.returnBool(val),
+            if (is_dev) .float else .Float => e.returnFloat(val),
             else => {
                 const err_msg = comptimePrint("val's type ({}), only support int, bool, string([]const u8)!", .{T});
                 @compileError(err_msg);
