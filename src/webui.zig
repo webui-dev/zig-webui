@@ -168,6 +168,7 @@ pub fn setDefaultRootFolder(path: [:0]const u8) bool {
 
 /// Set a custom handler to serve files. This custom handler should
 /// return full HTTP header and body.
+/// This deactivates any previous handler set with `setFileHandlerWindow`.
 pub fn setFileHandler(self: Self, comptime handler: fn (filename: []const u8) ?[]const u8) void {
     const tmp_struct = struct {
         fn handle(tmp_filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
@@ -182,6 +183,25 @@ pub fn setFileHandler(self: Self, comptime handler: fn (filename: []const u8) ?[
         }
     };
     WebUI.webui_set_file_handler(self.window_handle, tmp_struct.handle);
+}
+
+/// Set a custom handler to serve files. This custom handler should
+/// return full HTTP header and body.
+/// This deactivates any previous handler set with `setFileHandler`.
+pub fn setFileHandlerWindow(self: Self, comptime handler: fn (window_handle: usize, filename: []const u8) ?[]const u8) void {
+    const tmp_struct = struct {
+        fn handle(window: usize, tmp_filename: [*c]const u8, length: [*c]c_int) callconv(.C) ?*const anyopaque {
+            const len = str_len(tmp_filename);
+            const content = handler(window, tmp_filename[0..len]);
+            if (content) |val| {
+                length.* = @intCast(val.len);
+                return @ptrCast(val.ptr);
+            }
+
+            return null;
+        }
+    };
+    WebUI.webui_set_file_handler_window(self.window_handle, tmp_struct.handle);
 }
 
 /// Check if the specified window is still running.
@@ -250,6 +270,11 @@ pub fn setHide(self: Self, status: bool) void {
 /// Set the window size.
 pub fn setSize(self: Self, width: u32, height: u32) void {
     WebUI.webui_set_size(self.window_handle, @intCast(width), @intCast(height));
+}
+
+/// Set the window minimum size.
+pub fn setMinimumSize(self: Self, width: u32, height: u32) void {
+    WebUI.webui_set_minimum_size(self.window_handle, @intCast(width), @intCast(height));
 }
 
 /// Set the window position.
