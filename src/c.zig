@@ -1,3 +1,5 @@
+//! This file is direct exposure of webui C functions with Zig-ified signatures!
+
 const webui = @import("webui.zig");
 
 const Browser = webui.Browser;
