@@ -10,11 +10,11 @@ const public_html = @embedFile("public.html");
 var private_window: webui = undefined;
 var public_window: webui = undefined;
 
-fn app_exit(_: webui.Event) void {
+fn app_exit(_: *webui.Event) void {
     webui.exit();
 }
 
-fn public_window_events(e: webui.Event) void {
+fn public_window_events(e: *webui.Event) void {
     if (e.event_type == .EVENT_CONNECTED) {
         // New connection
         private_window.run("document.getElementById(\"Logs\").value += \"New connection.\\n\";");
@@ -24,7 +24,7 @@ fn public_window_events(e: webui.Event) void {
     }
 }
 
-fn private_window_events(e: webui.Event) void {
+fn private_window_events(e: *webui.Event) void {
     if (e.event_type == .EVENT_CONNECTED) {
         const public_win_url: [:0]const u8 = public_window.getUrl();
         var buf = std.mem.zeroes([1024]u8);

@@ -22,7 +22,7 @@ pub fn main() !void {
     webui.clean();
 }
 
-fn my_function_count(e: webui.Event) void {
+fn my_function_count(e: *webui.Event) void {
     // This function gets called every time the user clicks on "my_function_count"
 
     // Create a buffer to hold the response
@@ -61,7 +61,7 @@ fn my_function_count(e: webui.Event) void {
     win.run(content);
 }
 
-fn my_function_exit(_: webui.Event) void {
+fn my_function_exit(_: *webui.Event) void {
 
     // Close all opened windows
     webui.exit();

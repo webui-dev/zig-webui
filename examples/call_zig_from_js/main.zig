@@ -21,7 +21,7 @@ pub fn main() !void {
     webui.clean();
 }
 
-fn my_function_string(e: webui.Event) void {
+fn my_function_string(e: *webui.Event) void {
     // JavaScript:
     // my_function_string('Hello', 'World`);
 
@@ -35,7 +35,7 @@ fn my_function_string(e: webui.Event) void {
     std.debug.print("my_function_string 2: {s}\n", .{str_2});
 }
 
-fn my_function_integer(e: webui.Event) void {
+fn my_function_integer(e: *webui.Event) void {
     // JavaScript:
     // my_function_integer(123, 456, 789, 12345.6789);
 
@@ -60,7 +60,7 @@ fn my_function_integer(e: webui.Event) void {
     std.debug.print("my_function_integer 4: {}\n", .{float_1});
 }
 
-fn my_function_boolean(e: webui.Event) void {
+fn my_function_boolean(e: *webui.Event) void {
     // JavaScript:
     // my_function_boolean(true, false);
 
@@ -74,7 +74,7 @@ fn my_function_boolean(e: webui.Event) void {
     std.debug.print("my_function_bool 2: {}\n", .{status_2});
 }
 
-fn my_function_with_response(e: webui.Event) void {
+fn my_function_with_response(e: *webui.Event) void {
     // JavaScript:
     // my_function_with_response(number, 2).then(...)
 
@@ -89,7 +89,7 @@ fn my_function_with_response(e: webui.Event) void {
     e.returnValue(res);
 }
 
-fn my_function_raw_binary(e: webui.Event) void {
+fn my_function_raw_binary(e: *webui.Event) void {
     // JavaScript:
     // my_function_raw_binary(new Uint8Array([0x41]), new Uint8Array([0x42, 0x43]));
 
