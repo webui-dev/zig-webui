@@ -29,7 +29,7 @@ pub fn main() !void {
     webui.clean();
 }
 
-fn events(e: webui.Event) void {
+fn events(e: *webui.Event) void {
     // This function gets called every time
     // there is an event
 
@@ -63,7 +63,7 @@ fn events(e: webui.Event) void {
     }
 }
 
-fn my_backend_func(e: webui.Event) void {
+fn my_backend_func(e: *webui.Event) void {
     // JavaScript:
     // my_backend_func(123, 456, 789);
     // or webui.my_backend_func(...);

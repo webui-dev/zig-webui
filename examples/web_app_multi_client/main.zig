@@ -11,12 +11,12 @@ var public_input = std.mem.zeroes(?[]u8);
 var users_count: usize = 0;
 var tab_count: usize = 0;
 
-fn exit_app(_: webui.Event) void {
+fn exit_app(_: *webui.Event) void {
     // Close all opened windows
     webui.exit();
 }
 
-fn save(e: webui.Event) void {
+fn save(e: *webui.Event) void {
     // Get input value
     const privateInput = e.getString();
 
@@ -28,7 +28,7 @@ fn save(e: webui.Event) void {
     private_input_arr[e.client_id] = allocator.dupe(u8, privateInput) catch unreachable;
 }
 
-fn saveAll(e: webui.Event) void {
+fn saveAll(e: *webui.Event) void {
     // Get input value
     const publicInput = e.getString();
 
@@ -52,7 +52,7 @@ fn saveAll(e: webui.Event) void {
     win.run(js);
 }
 
-fn events(e: webui.Event) void {
+fn events(e: *webui.Event) void {
     // This function gets called every time
     // there is an event
 

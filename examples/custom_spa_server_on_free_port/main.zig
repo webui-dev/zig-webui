@@ -81,7 +81,7 @@ fn killPythonWebServer() void {
 
 // This is a Zig function that is invoked by a Javascript call,
 // and in turn, calls Javascript.
-fn goto_page(e: webui.Event) void {
+fn goto_page(e: *webui.Event) void {
     // JavaScript that invoked this function: gotoPage('some-path');
     const path = e.getString();
     std.debug.print("JS invoked Zig: Navigating to page: {s}\n", .{path});
@@ -95,7 +95,7 @@ fn goto_page(e: webui.Event) void {
     e.getWindow().run(content);
 }
 
-fn events(e: webui.Event) void {
+fn events(e: *webui.Event) void {
     // This function gets called every time
     // there is an event
     switch (e.event_type) {

@@ -47,12 +47,12 @@ pub fn main() !void {
     webui.clean();
 }
 
-fn exit_app(_: webui.Event) void {
+fn exit_app(_: *webui.Event) void {
     // Close all opened windows
     webui.exit();
 }
 
-fn events(e: webui.Event) void {
+fn events(e: *webui.Event) void {
     // This function gets called every time
     // there is an event
     switch (e.event_type) {
@@ -80,7 +80,7 @@ fn events(e: webui.Event) void {
     }
 }
 
-fn switch_second_window(e: webui.Event) void {
+fn switch_second_window(e: *webui.Event) void {
     // This function gets called every
     // time the user clicks on "SwitchToSecondPage"
 
@@ -88,7 +88,7 @@ fn switch_second_window(e: webui.Event) void {
     _ = e.getWindow().show("second.html");
 }
 
-fn show_second_window(_: webui.Event) void {
+fn show_second_window(_: *webui.Event) void {
     // This function gets called every
     // time the user clicks on "OpenNewWindow"
 

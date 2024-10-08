@@ -137,9 +137,7 @@ pub const V0_12 = struct {
         });
 
         webui.linkLibC();
-
         webui.addIncludePath(webui_dep.path("include"));
-        webui.installHeader(webui_dep.path(b.pathJoin(&.{ "include", "webui.h" })), "webui.h");
 
         // for windows build
         if (target.result.os.tag == .windows) {

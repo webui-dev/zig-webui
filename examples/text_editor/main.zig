@@ -2,7 +2,7 @@
 const std = @import("std");
 const webui = @import("webui");
 
-fn close(_: webui.Event) void {
+fn close(_: *webui.Event) void {
     std.debug.print("Exit.\n", .{});
 
     // Close all opened windows
