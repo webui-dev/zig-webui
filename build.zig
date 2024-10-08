@@ -102,7 +102,7 @@ pub const V0_12 = struct {
         });
 
         // basical flags for civetweb
-        const basic_flags = [_][]const u8{ "-DNDEBUG", "-DNO_CACHING", "-DNO_CGI", "-DUSE_WEBSOCKET" };
+        const basic_flags = [_][]const u8{ "-DNDEBUG", "-DNO_CACHING", "-DNO_CGI", "-DUSE_WEBSOCKET", "-Wno-error=date-time" };
 
         // when enable tls
         const tls_flags = [_][]const u8{ "-DWEBUI_TLS", "-DNO_SSL_DL", "-DOPENSSL_API_1_1" };
@@ -117,9 +117,6 @@ pub const V0_12 = struct {
         try civetweb_flags.appendSlice(&ubsan_flags);
         try civetweb_flags.appendSlice(&basic_flags);
         try civetweb_flags.appendSlice(if (enable_tls) &tls_flags else &no_tls_flags);
-        if (target.result.os.tag == .windows) {
-            try civetweb_flags.append("-DMUST_IMPLEMENT_CLOCK_GETTIME");
-        }
 
         var webui_flags = std.ArrayList([]const u8).init(b.allocator);
         defer webui_flags.deinit();
