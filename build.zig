@@ -64,7 +64,7 @@ pub const V0_12 = struct {
             .optimize = optimize,
             .dynamic = !isStatic,
             .@"enable-tls" = enableTLS,
-            .verbose = false,
+            .verbose = .err,
         });
 
         const webui_module = b.addModule("webui", .{
