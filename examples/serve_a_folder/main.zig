@@ -124,6 +124,8 @@ fn my_files_handler(filename: []const u8) ?[]const u8 {
 
         // Generate header + body
 
+        // By allocating resources using webui.malloc()
+        // WebUI will automaticaly free the resources.
         return content;
     }
 
