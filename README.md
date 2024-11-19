@@ -47,39 +47,6 @@ Like `zig build run_minimal`, this will build and run the `minimal` example.
 
 ## Installation
 
-### Zig `0.11`
-
-1. Add this to `build.zig.zon`
-
-```zig
-.@"zig-webui" = .{
-        // It is recommended to replace the following branch with commit id
-        .url = "https://github.com/webui-dev/zig-webui/archive/main.tar.gz",
-        .hash = <hash value>,
-    },
-```
-
-This tells zig to fetch zig-webui from a tarball provided by GitHub. Make sure to replace the COMMIT part with an actual commit SHA in long form, like `219faa2a5cd5a268a865a1100e92805df4b84610`. Every time you want to update zig-webui you'll have to update this commit.
-
-2. Config `build.zig`
-
-Add this:
-
-```zig
-const zig_webui = b.dependency("zig-webui", .{
-    .target = target,
-    .optimize = optimize,
-    .enable_tls = false, // whether enable tls support
-    .is_static = true, // whether static link
-});
-
-// add module
-exe.addModule("webui", zig_webui.module("webui"));
-
-// link library
-exe.linkLibrary(zig_webui.artifact("webui"));
-```
-
 ### Zig `0.12` \ `0.13.0` \ `nightly`
 
 > To be honest, I don’t recommend using the nightly version because the API of the build system is not yet stable, which means that there may be problems with not being able to build after nightly is updated.
