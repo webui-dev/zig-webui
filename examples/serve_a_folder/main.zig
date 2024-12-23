@@ -106,9 +106,9 @@ fn my_files_handler(filename: []const u8) ?[]const u8 {
         // Const static file example
         return test_txt;
     } else if (std.mem.eql(u8, filename, "/dynamic.html")) {
-        const body = webui.malloc(1024);
+        const body = webui.malloc(1024) catch unreachable;
         defer webui.free(body);
-        const header_and_body = webui.malloc(1024);
+        const header_and_body = webui.malloc(1024) catch unreachable;
 
         count += 1;
 
