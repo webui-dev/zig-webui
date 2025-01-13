@@ -131,6 +131,14 @@ pub extern fn webui_show_wv(window: usize, content: [*:0]const u8) callconv(.C) 
 /// @example webui_set_kiosk(my_window, true);
 pub extern fn webui_set_kiosk(window: usize, status: bool) callconv(.C) void;
 
+/// @brief Add a user-defined web browser's CLI parameters.
+///
+/// @param window The window number
+/// @param params Command line parameters
+///
+/// @example webui_set_custom_parameters(myWindow, "--remote-debugging-port=9222");
+pub extern fn webui_set_custom_parameters(window: usize, params: [*:0]const u8) callconv(.C) void;
+
 /// @brief Set the window with high-contrast support. Useful when you want to
 /// build a better high-contrast theme with CSS.
 ///
