@@ -106,6 +106,20 @@ pub fn setKiosk(self: webui, status: bool) void {
     c.webui_set_kiosk(self.window_handle, status);
 }
 
+/// Add a user-defined web browser's CLI parameters.
+pub fn setCustomParameters(self: webui, params: [:0]const u8) void {
+    c.webui_set_custom_parameters(self.window_handle, params.ptr);
+}
+/// Set the window with high-contrast support. Useful when you want to
+/// build a better high-contrast theme with CSS.
+pub fn setHighContrast(self: webui, status: bool) void {
+    c.webui_set_high_contrast(self.window_handle, status);
+}
+
+pub fn isHighConstrast() bool {
+    return c.webui_is_high_contrast();
+}
+
 /// Check if a web browser is installed.
 pub fn browserExist(browser: Browser) bool {
     return c.webui_browser_exist(browser);
