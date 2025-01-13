@@ -811,7 +811,7 @@ pub const Config = enum(c_int) {
     /// Allow multiple clients to connect to the same window,
     /// This is helpful for web apps (non-desktop software),
     /// Please see the documentation for more details.
-    /// Default: False
+    /// Default: True
     use_cookies,
 };
 
