@@ -242,6 +242,22 @@ pub extern fn webui_set_file_handler_window(
     ) callconv(.C) ?*const anyopaque,
 ) callconv(.C) void;
 
+/// 
+/// @brief Use this API to set a file handler response if your backend need async 
+/// response for `webui_set_file_handler()`.
+/// 
+/// @param window The window number
+/// @param response The response buffer
+/// @param length The response size
+/// 
+/// @example webui_interface_set_response_file_handler(myWindow, buffer, 1024);
+/// 
+pub extern fn webui_interface_set_response_file_handler(
+    window: usize,
+    response: ?*const anyopaque,
+    length: usize,
+) callconv(.C) void;
+
 /// @brief Check if the specified window is still running.
 ///
 /// @param window The window number

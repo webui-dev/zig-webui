@@ -195,6 +195,16 @@ pub fn setFileHandlerWindow(self: webui, comptime handler: fn (window_handle: us
     c.webui_set_file_handler_window(self.window_handle, tmp_struct.handle);
 }
 
+/// Use this API to set a file handler response if your backend need async 
+/// response for `setFileHandler()`.
+pub fn interfaceSetResponseFileHandler(self: webui, response: []u8) void {
+    c.webui_interface_set_response_file_handler(
+        self.window_handle,
+        @ptrCast(response.ptr),
+        response.len,
+    );
+}
+
 /// Check if the specified window is still running.
 pub fn isShown(self: webui) bool {
     return c.webui_is_shown(self.window_handle);
