@@ -47,6 +47,45 @@ pub extern fn webui_bind(
     func: *const fn (e: *Event) callconv(.C) void,
 ) callconv(.C) usize;
 
+/// @brief Use this API after using `webui_bind()` to add any user data to it that can be
+/// read later using `webui_get_context()`.
+///
+/// @param window The window number
+/// @param element The HTML element / JavaScript object
+/// @param context Any user data
+///
+/// @example
+/// webui_bind(myWindow, "myFunction", myFunction);
+///
+/// webui_set_context(myWindow, "myFunction", myData);
+///
+/// void myFunction(webui_event_t* e) {
+///   void* myData = webui_get_context(e);
+/// }
+pub extern fn webui_set_context(
+    window: usize,
+    element: [*:0]const u8,
+    context: *anyopaque,
+) callconv(.C) void;
+
+/// @brief Get user data that is set using `webui_set_context()`.
+///
+/// @param e The event struct
+///
+/// @return Returns user data pointer.
+///
+/// @example
+/// webui_bind(myWindow, "myFunction", myFunction);
+///
+/// webui_set_context(myWindow, "myFunction", myData);
+///
+/// void myFunction(webui_event_t* e) {
+///   void* myData = webui_get_context(e);
+/// }
+pub extern fn webui_get_context(
+    e: *Event,
+) callconv(.C) *anyopaque;
+
 /// @brief Get the recommended web browser ID to use. If you
 /// are already using one, this function will return the same ID.
 ///
@@ -242,16 +281,16 @@ pub extern fn webui_set_file_handler_window(
     ) callconv(.C) ?*const anyopaque,
 ) callconv(.C) void;
 
-/// 
-/// @brief Use this API to set a file handler response if your backend need async 
+///
+/// @brief Use this API to set a file handler response if your backend need async
 /// response for `webui_set_file_handler()`.
-/// 
+///
 /// @param window The window number
 /// @param response The response buffer
 /// @param length The response size
-/// 
+///
 /// @example webui_interface_set_response_file_handler(myWindow, buffer, 1024);
-/// 
+///
 pub extern fn webui_interface_set_response_file_handler(
     window: usize,
     response: ?*const anyopaque,
@@ -310,6 +349,19 @@ pub extern fn webui_decode(str: [*:0]const u8) callconv(.C) ?[*:0]u8;
 ///
 /// @example webui_free(my_buffer);
 pub extern fn webui_free(ptr: *anyopaque) callconv(.C) void;
+
+/// @brief Copy raw data.
+///
+/// @param dest Destination memory pointer
+/// @param src Source memory pointer
+/// @param count Bytes to copy
+///
+/// @example webui_memcpy(myBuffer, myData, 64);
+pub extern fn webui_memcpy(
+    dest: *anyopaque,
+    src: *anyopaque,
+    count: usize,
+) callconv(.C) void;
 
 /// @brief Safely allocate memory using the WebUI memory management system. It
 /// can be safely freed using `webui_free()` at any time.

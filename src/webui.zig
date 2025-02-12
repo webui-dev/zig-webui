@@ -65,6 +65,12 @@ pub fn bind(
     return c.webui_bind(self.window_handle, element.ptr, tmp_struct.handle);
 }
 
+/// Use this API after using `bind()` to add any user data to it that can be
+/// read later using `getContext()`
+pub fn setContext(self: webui, element: [:0]const u8, context: *anyopaque) void {
+    c.webui_set_context(self.window_handle, element.ptr, context);
+}
+
 /// Get the recommended web browser ID to use. If you
 /// are already using one, this function will return the same ID.
 pub fn getBestBrowser(self: webui) Browser {
@@ -195,7 +201,7 @@ pub fn setFileHandlerWindow(self: webui, comptime handler: fn (window_handle: us
     c.webui_set_file_handler_window(self.window_handle, tmp_struct.handle);
 }
 
-/// Use this API to set a file handler response if your backend need async 
+/// Use this API to set a file handler response if your backend need async
 /// response for `setFileHandler()`.
 pub fn interfaceSetResponseFileHandler(self: webui, response: []u8) void {
     c.webui_interface_set_response_file_handler(
@@ -255,6 +261,12 @@ pub fn free(buf: []const u8) void {
 pub fn malloc(size: usize) ![]u8 {
     const ptr = c.webui_malloc(size) orelse return error.AllocateFailed;
     return @as([*]u8, @ptrCast(ptr))[0..size];
+}
+
+/// Copy raw data
+/// In general, you should not use this function
+pub fn memcpy(dst: []u8, src: []const u8) void {
+    c.webui_memcpy(@ptrCast(dst.ptr), @ptrCast(src.ptr), src.len);
 }
 
 /// Safely send raw data to the UI. All clients.
@@ -1016,5 +1028,10 @@ pub const Event = extern struct {
     /// Get size in bytes of the first argument
     pub fn getSize(e: *Event) usize {
         return c.webui_get_size(e);
+    }
+
+    /// Get user data that is set using `SetContext()`.
+    pub fn getContext(e: *Event) *anyopaque {
+        return c.webui_get_context(e);
     }
 };
