@@ -39,7 +39,7 @@ pub fn build(b: *Build) !void {
         }
     }
 
-    // create a options for command paramter
+    // create a options for command parameter
     const flags_options = b.addOptions();
 
     // add option
