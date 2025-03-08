@@ -39,7 +39,7 @@ pub fn build(b: *Build) !void {
         }
     }
 
-    // create a options for command paramter
+    // create a options for command parameter
     const flags_options = b.addOptions();
 
     // add option
@@ -110,7 +110,13 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarge
 
     const examples_path = lazy_path.getPath(b);
 
-    var iter_dir = try std.fs.openDirAbsolute(examples_path, .{ .iterate = true });
+    var iter_dir = std.fs.openDirAbsolute(examples_path, .{ .iterate = true })
+        catch |err| {
+            switch (err) {
+                error.FileNotFound => return,
+                else => return err,
+            }
+        };
     defer iter_dir.close();
 
     var itera = iter_dir.iterate();
