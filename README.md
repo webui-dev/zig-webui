@@ -68,7 +68,7 @@ Add this:
 ```zig
 // To standardize development, maybe you should use `lazyDependency()` instead of `dependency()`
 // more info to see: https://ziglang.org/download/0.12.0/release-notes.html#toc-Lazy-Dependencies
-const zig_webui = b.dependency("zig-webui", .{
+const zig_webui = b.dependency("zig_webui", .{
     .target = target,
     .optimize = optimize,
     .enable_tls = false, // whether enable tls support
