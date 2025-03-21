@@ -187,6 +187,15 @@ pub extern fn webui_set_custom_parameters(window: usize, params: [*:0]const u8) 
 /// @example webui_set_high_contrast(my_window, true);
 pub extern fn webui_set_high_contrast(window: usize, status: bool) callconv(.C) void;
 
+/// @brief Sets whether the window frame is resizable or fixed.
+/// Works only on WebView window.
+///
+/// @param window The window number
+/// @param status True or False
+///
+/// @example webui_set_resizable(myWindow, true);
+pub extern fn webui_set_resizable(window: usize, status: bool) callconv(.C) void;
+
 /// @brief Get OS high contrast preference.
 ///
 /// @return Returns True if OS is using high contrast theme
@@ -214,6 +223,20 @@ pub extern fn webui_wait() callconv(.C) void;
 /// @example webui_close(my_window);
 pub extern fn webui_close(window: usize) callconv(.C) void;
 
+/// @brief Minimize a WebView window.
+///
+/// @param window The window number
+///
+/// @example webui_minimize(myWindow);
+pub extern fn webui_minimize(window: usize) callconv(.C) void;
+
+/// @brief Maximize a WebView window.
+///
+/// @param window The window number
+///
+/// @example webui_maximize(myWindow);
+pub extern fn webui_maximize(window: usize) callconv(.C) void;
+
 /// @brief Close a specific client.
 ///
 /// @param e The event struct
@@ -240,6 +263,13 @@ pub extern fn webui_exit() callconv(.C) void;
 ///
 /// @example webui_set_root_folder(my_window, "/home/Foo/Bar/");
 pub extern fn webui_set_root_folder(window: usize, path: [*:0]const u8) callconv(.C) bool;
+
+/// @brief Set custom browser folder path.
+///
+/// @param path The browser folder path
+///
+/// @example webui_set_browser_folder("/home/Foo/Bar/");
+pub extern fn webui_set_browser_folder(path: [*:0]const u8) callconv(.C) void;
 
 /// @brief Set the web-server root folder path for all windows. Should be used
 /// before `webui_show()`.
@@ -293,7 +323,7 @@ pub extern fn webui_set_file_handler_window(
 ///
 pub extern fn webui_interface_set_response_file_handler(
     window: usize,
-    response: ?*const anyopaque,
+    response: *const anyopaque,
     length: usize,
 ) callconv(.C) void;
 
@@ -442,6 +472,14 @@ pub extern fn webui_set_minimum_size(
 /// @example webui_set_position(my_window, 100, 100);
 pub extern fn webui_set_position(window: usize, x: u32, y: u32) callconv(.C) void;
 
+/// @brief Centers the window on the screen. Works better with
+/// WebView. Call this function before `webui_show()` for better results.
+///
+/// @param window The window number
+///
+/// @example webui_set_center(myWindow);
+pub extern fn webui_set_center(window: usize) callconv(.C) void;
+
 /// @brief Set the web browser profile to use. An empty `name` and `path` means
 /// the default user profile. Need to be called before `webui_show()`.
 ///
@@ -556,6 +594,16 @@ pub extern fn webui_get_parent_process_id(window: usize) callconv(.C) usize;
 /// @example const id: usize = webui_get_child_process_id(my_window);
 pub extern fn webui_get_child_process_id(window: usize) callconv(.C) usize;
 
+/// @brief Gets Win32 window `HWND`. More reliable with WebView
+/// than web browser window, as browser PIDs may change on launch.
+///
+/// @param window The window number
+///
+/// @return Returns the window `hwnd` as `void*`
+///
+/// @example HWND hwnd = webui_win32_get_hwnd(myWindow);
+pub extern fn webui_win32_get_hwnd(window: usize) callconv(.C) *anyopaque;
+
 /// @brief Get the network port of a running window.
 /// This can be useful to determine the HTTP link of `webui.js`
 ///
@@ -603,6 +651,22 @@ pub extern fn webui_set_config(option: Config, status: bool) callconv(.C) void;
 ///
 /// @example webui_set_event_blocking(my_window, true);
 pub extern fn webui_set_event_blocking(window: usize, status: bool) callconv(.C) void;
+
+/// @brief Make a WebView window frameless.
+///
+/// @param window The window number
+/// @param status The frameless status `true` or `false`
+///
+/// @example webui_set_frameless(myWindow, true);
+pub extern fn webui_set_frameless(window: usize, status: bool) callconv(.C) void;
+
+/// @brief Make a WebView window transparent.
+///
+/// @param window The window number
+/// @param status The transparency status `true` or `false`
+///
+/// @example webui_set_transparent(myWindow, true);
+pub extern fn webui_set_transparent(window: usize, status: bool) callconv(.C) void;
 
 /// @brief Get the HTTP mime type of a file.
 ///
@@ -1050,4 +1114,4 @@ pub extern fn webui_interface_script_client(
     timeout: usize,
     buffer: [*c]u8,
     buffer_length: usize,
-) callconv(.C) void;
+) callconv(.C) bool;

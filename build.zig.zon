@@ -1,12 +1,12 @@
 .{
     .name = .zig_webui,
-    .version = "0.0.1",
-    .minimum_zig_version = "0.12.0",
+    .version = "2.5.0-beta.4",
     .fingerprint = 0x95965ed3cdfb8c33,
+    .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .webui = .{
-            .url = "https://github.com/webui-dev/webui/archive/5d497e3b839a93736be82107b333b4c0390dea2d.tar.gz",
-            .hash = "webui-2.5.0-beta.3-pxqD5WZmNgCLmrqQW0U_NI4iq-z706dyreyXr-e7kFmZ",
+            .hash = "webui-2.5.0-beta.4-pxqD5WQONwB73V_0MKBVXgR7k6t6pb_B3KfAZqfbPf-7",
+            .url = "https://github.com/webui-dev/webui/archive/3c03d4f45cf6e65e678b0ca87f8ec28d952b9d78.tar.gz",
         },
     },
     .paths = .{
