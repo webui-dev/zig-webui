@@ -17,7 +17,7 @@ comptime {
 
 const log = std.log.scoped(.WebUI);
 const OptimizeMode = std.builtin.OptimizeMode;
-const CrossTarget = std.zig.CrossTarget;
+const CrossTarget = std.Target.Query;
 const Compile = Build.Step.Compile;
 const Module = Build.Module;
 
@@ -110,13 +110,15 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarge
 
     const examples_path = lazy_path.getPath(b);
 
-    var iter_dir = std.fs.openDirAbsolute(examples_path, .{ .iterate = true })
-        catch |err| {
-            switch (err) {
-                error.FileNotFound => return,
-                else => return err,
-            }
-        };
+    var iter_dir = std.fs.openDirAbsolute(
+        examples_path,
+        .{ .iterate = true },
+    ) catch |err| {
+        switch (err) {
+            error.FileNotFound => return,
+            else => return err,
+        }
+    };
     defer iter_dir.close();
 
     var itera = iter_dir.iterate();
