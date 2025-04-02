@@ -11,17 +11,17 @@ fn close(_: *webui.Event) void {
 
 pub fn main() !void {
     // Create a new window
-    var mainW = webui.newWindow();
+    var mainW = try webui.newWindow();
 
     // Set the root folder for the UI
-    _ = mainW.setRootFolder("ui");
+    try mainW.setRootFolder("ui");
 
     // Bind HTML elements with the specified ID to C functions
-    _ = mainW.bind("close_app", close);
+    _ = try mainW.bind("close_app", close);
 
     // Show the window, this will select the best browser to show
     // and you can use showBrowser to select which browser will be used
-    _ = mainW.show("index.html");
+    try mainW.show("index.html");
 
     // Wait until all windows get closed
     webui.wait();

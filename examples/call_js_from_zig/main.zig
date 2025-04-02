@@ -5,14 +5,14 @@ const html = @embedFile("index.html");
 
 pub fn main() !void {
     // Create a window
-    var nwin = webui.newWindow();
+    var nwin = try webui.newWindow();
 
     // Bind HTML elements with C functions
-    _ = nwin.bind("my_function_count", my_function_count);
-    _ = nwin.bind("my_function_exit", my_function_exit);
+    _ = try nwin.bind("my_function_count", my_function_count);
+    _ = try nwin.bind("my_function_exit", my_function_exit);
 
     // Show the window
-    _ = nwin.show(html);
+    try nwin.show(html);
     // _ = nwin.showBrowser(html, .Chrome);
 
     // Wait until all windows get closed
@@ -31,13 +31,13 @@ fn my_function_count(e: *webui.Event) void {
     const win = e.getWindow();
 
     // Run JavaScript
-    if (!win.script("return GetCount();", 0, &response)) {
+    win.script("return GetCount();", 0, &response) catch {
         if (!win.isShown()) {
             std.debug.print("window closed\n", .{});
         } else {
             std.debug.print("js error:{s}\n", .{response});
         }
-    }
+    };
 
     const res_buf = response[0..std.mem.len(@as([*:0]u8, @ptrCast(&response)))];
 

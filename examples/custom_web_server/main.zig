@@ -4,23 +4,23 @@ const webui = @import("webui");
 
 pub fn main() !void {
     // Create new windows
-    var nwin = webui.newWindow();
+    var nwin = try webui.newWindow();
 
     // Bind all events
-    _ = nwin.bind("", events);
+    _ = try nwin.bind("", events);
 
     // Bind HTML elements with C functions
-    _ = nwin.bind("my_backend_func", my_backend_func);
+    _ = try nwin.bind("my_backend_func", my_backend_func);
 
     // Set the web-server/WebSocket port that WebUI should
     // use. This means `webui.js` will be available at:
     // http://localhost:MY_PORT_NUMBER/webui.js
-    _ = nwin.setPort(8081);
+    try nwin.setPort(8081);
 
     // Show a new window and show our custom web server
     // Assuming the custom web server is running on port
     // 8080...
-    _ = nwin.show("http://localhost:8080/");
+    try nwin.show("http://localhost:8080/");
 
     // Wait until all windows get closed
     webui.wait();

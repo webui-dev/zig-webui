@@ -6,15 +6,15 @@ const webui = @import("webui");
 const html = @embedFile("index.html");
 
 pub fn main() !void {
-    var nwin = webui.newWindow();
+    var nwin = try webui.newWindow();
 
-    _ = nwin.bind("my_function_string", my_function_string);
-    _ = nwin.bind("my_function_integer", my_function_integer);
-    _ = nwin.bind("my_function_boolean", my_function_boolean);
-    _ = nwin.bind("my_function_with_response", my_function_with_response);
-    _ = nwin.bind("my_function_raw_binary", my_function_raw_binary);
+    _ = try nwin.bind("my_function_string", my_function_string);
+    _ = try nwin.bind("my_function_integer", my_function_integer);
+    _ = try nwin.bind("my_function_boolean", my_function_boolean);
+    _ = try nwin.bind("my_function_with_response", my_function_with_response);
+    _ = try nwin.bind("my_function_raw_binary", my_function_raw_binary);
 
-    _ = nwin.show(html);
+    try nwin.show(html);
 
     webui.wait();
 

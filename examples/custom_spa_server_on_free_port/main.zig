@@ -9,12 +9,12 @@ var home_url: [:0]u8 = undefined;
 
 pub fn main() !void {
     // Create new window
-    var nwin = webui.newWindow();
+    var nwin = try webui.newWindow();
 
     // Bind all events
-    _ = nwin.bind("", events);
+    _ = try nwin.bind("", events);
     // Bind a JS call to a Zig fn
-    _ = nwin.bind("gotoPage", goto_page);
+    _ = try nwin.bind("gotoPage", goto_page);
 
     // The `webui.js` script will be available at:
     //
@@ -27,7 +27,7 @@ pub fn main() !void {
     const webui_port: u64 = webui.getFreePort();
     std.debug.print("Free Port for webui.js: {d} \n", .{webui_port});
     // now use the port:
-    _ = nwin.setPort(webui_port);
+    try nwin.setPort(webui_port);
 
     const backend_port = webui.getFreePort();
     std.debug.print("Free Port for custom web server: {d} \n", .{backend_port});
@@ -45,7 +45,7 @@ pub fn main() !void {
     // Show a new window served by our custom web server (spawned above):
     var buf: [64]u8 = undefined;
     home_url = try std.fmt.bufPrintZ(&buf, "http://localhost:{d}/index.html", .{backend_port});
-    _ = nwin.show(home_url);
+    try nwin.show(home_url);
 
     // Wait until all windows get closed
     webui.wait();

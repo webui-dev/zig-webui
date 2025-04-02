@@ -23,11 +23,11 @@ fn close(e: *webui.Event) void {
 
 pub fn main() !void {
     // create a new window
-    var nwin = webui.newWindow();
+    var nwin = try webui.newWindow();
 
-    _ = nwin.bind("minimize", minimize);
-    _ = nwin.bind("maximize", maximize);
-    _ = nwin.bind("close", close);
+    _ = try nwin.bind("minimize", minimize);
+    _ = try nwin.bind("maximize", maximize);
+    _ = try nwin.bind("close", close);
 
     nwin.setSize(800, 600);
     nwin.setFrameless(true);
@@ -35,7 +35,7 @@ pub fn main() !void {
     nwin.setResizable(true);
     nwin.setCenter();
 
-    _ = nwin.showWv(html);
+    try nwin.showWv(html);
 
     // wait the window exit
     webui.wait();
