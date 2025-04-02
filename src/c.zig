@@ -602,7 +602,7 @@ pub extern fn webui_get_child_process_id(window: usize) callconv(.C) usize;
 /// @return Returns the window `hwnd` as `void*`
 ///
 /// @example HWND hwnd = webui_win32_get_hwnd(myWindow);
-pub extern fn webui_win32_get_hwnd(window: usize) callconv(.C) *anyopaque;
+pub extern fn webui_win32_get_hwnd(window: usize) callconv(.C) ?*anyopaque;
 
 /// @brief Get the network port of a running window.
 /// This can be useful to determine the HTTP link of `webui.js`

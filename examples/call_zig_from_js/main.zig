@@ -98,8 +98,8 @@ fn my_function_raw_binary(e: *webui.Event) void {
     const raw_2 = e.getStringAt(1);
 
     // Or e.getSizeAt(0);
-    const len_1 = e.getSize();
-    const len_2 = e.getSizeAt(1);
+    const len_1 = e.getSize() catch return;
+    const len_2 = e.getSizeAt(1) catch return;
 
     // Print raw_1
     std.debug.print("my_function_raw_binary 1 ({} bytes): ", .{len_1});

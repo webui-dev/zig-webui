@@ -119,7 +119,7 @@ pub fn showBrowser(self: webui, content: [:0]const u8, browser: Browser) !void {
 pub fn startServer(self: webui, path: [:0]const u8) ![:0]const u8 {
     const url = c.webui_start_server(self.window_handle, path.ptr);
     const url_len = std.mem.len(url);
-    if (url_len == 0) return WebUIError.GenericError; // TODO: Does zig consider the mem size to be 0 or 1?
+    if (url_len == 0) return WebUIError.GenericError;
     return url[0..url_len :0];
 }
 
@@ -282,7 +282,7 @@ pub fn setIcon(self: webui, icon: [:0]const u8, icon_type: [:0]const u8) void {
 /// you need free the return memory with free function
 pub fn encode(str: [:0]const u8) ![]u8 {
     const ptr = c.webui_encode(str.ptr);
-    if (ptr == null) return WebUIError.GenericError; // TODO: Should a null return be considered a error?
+    if (ptr == null) return WebUIError.GenericError;
     const len = std.mem.len(ptr);
     return ptr[0..len];
 }
@@ -293,7 +293,7 @@ pub fn encode(str: [:0]const u8) ![]u8 {
 /// you need free the return memory with free function
 pub fn decode(str: [:0]const u8) ?[]u8 {
     const ptr = c.webui_decode(str.ptr);
-    if (ptr == null) return WebUIError.GenericError; // TODO: Should a null return be considered a error?
+    if (ptr == null) return WebUIError.GenericError;
     const len = std.mem.len(ptr);
     return ptr[0..len];
 }
@@ -365,7 +365,7 @@ pub fn setProxy(self: webui, proxy_server: [:0]const u8) void {
 pub fn getUrl(self: webui) ![:0]const u8 {
     const ptr = c.webui_get_url(self.window_handle);
     const len = std.mem.len(ptr);
-    if (len == 0) return WebUIError.GenericError; // TODO: Does zig consider the mem size to be 0 or 1?
+    if (len == 0) return WebUIError.GenericError;
     return ptr[0..len :0];
 }
 
@@ -417,10 +417,13 @@ pub fn getChildProcessId(self: webui) !usize {
 
 /// Gets Win32 window `HWND`. More reliable with WebView
 /// than web browser window, as browser PIDs may change on launch.
-pub fn win32GetHwnd(self: webui) windows.HWND {
+pub fn win32GetHwnd(self: webui) !windows.HWND {
     const tmp_hwnd = c.webui_win32_get_hwnd(self.window_handle);
-    //TODO: Error handling here
-    return @ptrCast(tmp_hwnd);
+    if (tmp_hwnd) {
+        return @ptrCast(tmp_hwnd);
+    } else {
+        return WebUIError.GenericError;
+    }
 }
 /// Get the network port of a running window.
 /// This can be useful to determine the HTTP link of `webui.js`
@@ -470,7 +473,6 @@ pub fn setTransparent(self: webui, status: bool) void {
 /// Get the HTTP mime type of a file.
 pub fn getMimeType(file: [:0]const u8) [:0]const u8 {
     const res = c.webui_get_mime_type(file.ptr);
-    // TODO: Error handling here?
     return res[0..std.mem.len(res) :0];
 }
 
@@ -632,29 +634,26 @@ pub fn interfaceGetWindowId(self: webui) usize {
 /// Get an argument as string at a specific index
 pub fn interfaceGetStringAt(self: webui, event_number: usize, index: usize) [:0]const u8 {
     const ptr = c.webui_interface_get_string_at(self.window_handle, event_number, index);
-    // TODO: Error handling here. This function can return a null pointer.
+    // TODO: Error handling here.
     const len = std.mem.len(ptr);
     return ptr[0..len :0];
 }
 
 /// Get an argument as integer at a specific index
 pub fn interfaceGetIntAt(self: webui, event_number: usize, index: usize) i64 {
-    // TODO: What do we do for errors here? A error will return 0 by default,
-    // however 0 could also be returned without a error.
+    // TODO: Error handling here
     return c.webui_interface_get_int_at(self.window_handle, event_number, index);
 }
 
 /// Get an argument as float at a specific index.
 pub fn interfaceGetFloatAt(self: webui, event_number: usize, index: usize) f64 {
-    // TODO: What do we do for errors here? A error will return 0 by default,
-    // however 0 could also be returned without a error.
+    // TODO: Error handling here
     return c.webui_interface_get_float_at(self.window_handle, event_number, index);
 }
 
 /// Get an argument as boolean at a specific index
 pub fn interfaceGetBoolAt(self: webui, event_number: usize, index: usize) bool {
-    // TODO: What do we do for errors here? A error will return false by default,
-    // however 0 could also be returned without a error.
+    // TODO: Error handling here
     return c.webui_interface_get_bool_at(self.window_handle, event_number, index);
 }
 
@@ -664,8 +663,10 @@ pub fn interfaceGetSizeAt(self: webui, event_number: usize, index: usize) usize 
 }
 
 // Show a window using embedded HTML, or a file. If the window is already
-pub fn interfaceShowClient(self: webui, event_number: usize, content: [:0]const u8) bool {
-    return c.webui_interface_show_client(self.window_handle, event_number, content.ptr);
+pub fn interfaceShowClient(self: webui, event_number: usize, content: [:0]const u8) !void {
+    const success = c.webui_interface_show_client(self.window_handle, event_number, content.ptr);
+    if (!success) return WebUIError.GenericError;
+    return success;
 }
 
 // Close a specific client.
@@ -1113,19 +1114,26 @@ pub const Event = extern struct {
     }
 
     /// Get the size in bytes of an argument at a specific index
-    pub fn getSizeAt(e: *Event, index: usize) usize {
-        return c.webui_get_size_at(e, index);
+    pub fn getSizeAt(e: *Event, index: usize) !usize {
+        const size = c.webui_get_size_at(e, index);
+        if (size == 0) return WebUIError.GenericError;
+        return size;
     }
 
     /// Get size in bytes of the first argument
-    pub fn getSize(e: *Event) usize {
-        // TODO: Will a length of 0 always be a error?
-        return c.webui_get_size(e);
+    pub fn getSize(e: *Event) !usize {
+        const size = c.webui_get_size(e);
+        if (size == 0) return WebUIError.GenericError;
+        return size;
     }
 
     /// Get user data that is set using `SetContext()`.
     pub fn getContext(e: *Event) *anyopaque {
-        // TODO: Handle error, can return null pointer.
-        return c.webui_get_context(e);
+        const context = c.webui_get_context(e);
+        if (context) |context_unwrapped| {
+            return context_unwrapped;
+        } else {
+            return WebUIError.GenericError;
+        }
     }
 };
