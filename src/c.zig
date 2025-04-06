@@ -895,6 +895,16 @@ pub extern fn webui_return_string(e: *Event, s: [*:0]const u8) callconv(.C) void
 /// @example webui_return_bool(e, true);
 pub extern fn webui_return_bool(e: *Event, b: bool) callconv(.C) void;
 
+/// @brief Get the last WebUI error code.
+///
+/// @example int error_num = webui_get_last_error_number();
+pub extern fn webui_get_last_error_number() callconv(.C) c_int;
+
+/// @brief Get the last WebUI error message.
+///
+/// @example const char* error_msg = webui_get_last_error_message();
+pub extern fn webui_get_last_error_message() callconv(.C) [*:0]const u8;
+
 // -- Wrapper's Interface -------------
 
 /// @brief Bind a specific HTML element click event with a function. Empty element means all events.

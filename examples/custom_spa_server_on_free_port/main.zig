@@ -1,4 +1,5 @@
 //! Custom web Server - Free Port - Example
+// Note: if you want to run this example, you nedd a python, zig will wrap a child process to launch python server
 const std = @import("std");
 const webui = @import("webui");
 

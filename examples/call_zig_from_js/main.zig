@@ -8,8 +8,10 @@ const html = @embedFile("index.html");
 pub fn main() !void {
     var nwin = try webui.newWindow();
 
-    _ = try nwin.bind("my_function_string", my_function_string);
-    _ = try nwin.bind("my_function_integer", my_function_integer);
+    _ = try nwin.binding("my_function_string", getString);
+    // _ = try nwin.bind("my_function_string", my_function_string);
+    _ = try nwin.binding("my_function_integer", getInteger);
+    // _ = try nwin.bind("my_function_integer", my_function_integer);
     _ = try nwin.bind("my_function_boolean", my_function_boolean);
     _ = try nwin.bind("my_function_with_response", my_function_with_response);
     _ = try nwin.bind("my_function_raw_binary", my_function_raw_binary);
@@ -19,6 +21,13 @@ pub fn main() !void {
     webui.wait();
 
     webui.clean();
+}
+
+fn getString(str1: [:0]const u8, str2: [:0]const u8) void {
+    // Hello
+    std.debug.print("my_function_string 1: {s}\n", .{str1});
+    // World
+    std.debug.print("my_function_string 2: {s}\n", .{str2});
 }
 
 fn my_function_string(e: *webui.Event) void {
@@ -33,6 +42,12 @@ fn my_function_string(e: *webui.Event) void {
     std.debug.print("my_function_string 1: {s}\n", .{str_1});
     // World
     std.debug.print("my_function_string 2: {s}\n", .{str_2});
+}
+
+fn getInteger(n1: i64, n2: i64, n3: i64, f1: f64) void {
+    std.debug.print("number is {},{},{},{}", .{
+        n1, n2, n3, f1,
+    });
 }
 
 fn my_function_integer(e: *webui.Event) void {
@@ -95,7 +110,7 @@ fn my_function_raw_binary(e: *webui.Event) void {
 
     // Or e.getStringAt(0);
     const raw_1 = e.getString();
-    const raw_2 = e.getStringAt(1);
+    const raw_2 = e.getRawAt(1);
 
     // Or e.getSizeAt(0);
     const len_1 = e.getSize() catch return;

@@ -21,8 +21,45 @@ pub const WebUIError = error{
     // WebUI does not currently provide any information as to what caused errors
     // in most functions, instead we will just return a GenericError
     GenericError,
+    /// this present create window new id failed
+    CreateWindowError,
+    /// this present bind element with callback failed
+    BindError,
+    /// show window failed
+    ShowError,
+    /// start server failed(like show, but no window)
+    ServerError,
+    /// encode failed
+    EncodeError,
+    /// decode failed
+    DecodeError,
+    /// get url failed
+    UrlError,
+    /// get process info failed
+    ProcessError,
+    /// get HWND failed, this is only occur on MS window
+    HWNDError,
+    /// get or set windows litening prot failed
+    PortError,
+    /// run javescript failed
+    ScriptError,
+    /// allocate memory failed
     AllocateFailed,
 };
+
+/// webui error wrapper
+pub const WebUIErrorInfo = struct {
+    num: i32,
+    msg: [:0]const u8,
+};
+
+/// through this fhunc, we can get webui's lastest error number and error message
+pub fn getLastError() WebUIErrorInfo {
+    return .{
+        .num = c.webui_get_last_error_number(),
+        .msg = c.webui_get_last_error_message(),
+    };
+}
 
 /// The window number. Do not modify.
 window_handle: usize,
@@ -30,7 +67,7 @@ window_handle: usize,
 /// Creating a new WebUI window object.
 pub fn newWindow() !webui {
     const window_handle = c.webui_new_window();
-    if (window_handle == 0) return WebUIError.GenericError;
+    if (window_handle == 0) return WebUIError.CreateWindowError;
 
     return .{
         .window_handle = window_handle,
@@ -40,15 +77,10 @@ pub fn newWindow() !webui {
 /// Create a new webui window object using a specified window number.
 pub fn newWindowWithId(id: usize) !webui {
     if (id == 0 or id >= WEBUI_MAX_IDS) {
-        std.log.err("id {} is illegal", .{id});
-        if (comptime builtin.zig_version.minor == 11) {
-            std.os.exit(1);
-        } else if (comptime builtin.zig_version.minor >= 12) {
-            std.posix.exit(1);
-        }
+        return WebUIError.CreateWindowError;
     }
     const window_handle = c.webui_new_window_id(id);
-    if (window_handle == 0) return WebUIError.GenericError;
+    if (window_handle == 0) return WebUIError.CreateWindowError;
 
     return .{
         .window_handle = window_handle,
@@ -59,7 +91,7 @@ pub fn newWindowWithId(id: usize) !webui {
 /// `newWindowWithId`
 pub fn getNewWindowId() !usize {
     const window_id = c.webui_get_new_window_id();
-    if (window_id == 0) return WebUIError.GenericError;
+    if (window_id == 0) return WebUIError.CreateWindowError;
 
     return window_id;
 }
@@ -80,7 +112,7 @@ pub fn bind(
         }
     };
     const index = c.webui_bind(self.window_handle, element.ptr, tmp_struct.handle);
-    if (index == 0) return WebUIError.GenericError;
+    if (index == 0) return WebUIError.BindError;
 
     return index;
 }
@@ -104,14 +136,14 @@ pub fn getBestBrowser(self: webui) Browser {
 /// `content` is the html which will be shown
 pub fn show(self: webui, content: [:0]const u8) !void {
     const success = c.webui_show(self.window_handle, content.ptr);
-    if (!success) return WebUIError.GenericError;
+    if (!success) return WebUIError.ShowError;
 }
 
 /// Same as `show()`. But using a specific web browser
 /// Returns True if showing the window is successed
 pub fn showBrowser(self: webui, content: [:0]const u8, browser: Browser) !void {
     const success = c.webui_show_browser(self.window_handle, content.ptr, browser);
-    if (!success) return WebUIError.GenericError;
+    if (!success) return WebUIError.ShowError;
 }
 
 /// Same as `show()`. But start only the web server and return the URL.
@@ -119,7 +151,7 @@ pub fn showBrowser(self: webui, content: [:0]const u8, browser: Browser) !void {
 pub fn startServer(self: webui, path: [:0]const u8) ![:0]const u8 {
     const url = c.webui_start_server(self.window_handle, path.ptr);
     const url_len = std.mem.len(url);
-    if (url_len == 0) return WebUIError.GenericError;
+    if (url_len == 0) return WebUIError.ServerError;
     return url[0..url_len :0];
 }
 
@@ -128,7 +160,7 @@ pub fn startServer(self: webui, path: [:0]const u8) ![:0]const u8 {
 /// Returns True if if showing the WebView window is successed.
 pub fn showWv(self: webui, content: [:0]const u8) !void {
     const success = c.webui_show_wv(self.window_handle, content.ptr);
-    if (!success) return WebUIError.GenericError;
+    if (!success) return WebUIError.ShowError;
 }
 
 /// Set the window in Kiosk mode (Full screen)
@@ -197,19 +229,20 @@ pub fn exit() void {
 /// Set the web-server root folder path for a specific window.
 pub fn setRootFolder(self: webui, path: [:0]const u8) !void {
     const success = c.webui_set_root_folder(self.window_handle, path.ptr);
+    // TODO: replace this error
     if (!success) return WebUIError.GenericError;
 }
 
 /// Set custom browser folder path.
-pub fn setBrowserFolder(self: webui, path: [:0]const u8) !void {
-    const success = c.webui_set_browser_folder(self.window_handle, path.ptr);
-    if (!success) return WebUIError.GenericError;
+pub fn setBrowserFolder(self: webui, path: [:0]const u8) void {
+    c.webui_set_browser_folder(self.window_handle, path.ptr);
 }
 
 /// Set the web-server root folder path for all windows.
 /// Should be used before `show()`.
 pub fn setDefaultRootFolder(path: [:0]const u8) !void {
     const success = c.webui_set_default_root_folder(path.ptr);
+    // TODO: replace this error
     if (!success) return WebUIError.GenericError;
 }
 
@@ -282,7 +315,7 @@ pub fn setIcon(self: webui, icon: [:0]const u8, icon_type: [:0]const u8) void {
 /// you need free the return memory with free function
 pub fn encode(str: [:0]const u8) ![]u8 {
     const ptr = c.webui_encode(str.ptr);
-    if (ptr == null) return WebUIError.GenericError;
+    if (ptr == null) return WebUIError.EncodeError;
     const len = std.mem.len(ptr);
     return ptr[0..len];
 }
@@ -291,9 +324,9 @@ pub fn encode(str: [:0]const u8) ![]u8 {
 /// Use this to safely decode received Base64 text from the UI.
 /// If it fails it will return NULL.
 /// you need free the return memory with free function
-pub fn decode(str: [:0]const u8) ?[]u8 {
+pub fn decode(str: [:0]const u8) ![]u8 {
     const ptr = c.webui_decode(str.ptr);
-    if (ptr == null) return WebUIError.GenericError;
+    if (ptr == null) return WebUIError.DecodeError;
     const len = std.mem.len(ptr);
     return ptr[0..len];
 }
@@ -365,7 +398,7 @@ pub fn setProxy(self: webui, proxy_server: [:0]const u8) void {
 pub fn getUrl(self: webui) ![:0]const u8 {
     const ptr = c.webui_get_url(self.window_handle);
     const len = std.mem.len(ptr);
-    if (len == 0) return WebUIError.GenericError;
+    if (len == 0) return WebUIError.UrlError;
     return ptr[0..len :0];
 }
 
@@ -404,32 +437,35 @@ pub fn deleteProfile(self: webui) void {
 /// Get the ID of the parent process (The web browser may re-create another new process).
 pub fn getParentProcessId(self: webui) !usize {
     const process_id = c.webui_get_parent_process_id(self.window_handle);
-    if (process_id == 0) return WebUIError.GenericError;
+    if (process_id == 0) return WebUIError.ProcessError;
     return process_id;
 }
 
 /// Get the ID of the last child process.
 pub fn getChildProcessId(self: webui) !usize {
     const process_id = c.webui_get_child_process_id(self.window_handle);
-    if (process_id == 0) return WebUIError.GenericError;
+    if (process_id == 0) return WebUIError.ProcessError;
     return process_id;
 }
 
 /// Gets Win32 window `HWND`. More reliable with WebView
 /// than web browser window, as browser PIDs may change on launch.
 pub fn win32GetHwnd(self: webui) !windows.HWND {
+    if (builtin.os.tag != .windows) {
+        @compileError("Note: method win32GetHwnd only can call on MS windows!");
+    }
     const tmp_hwnd = c.webui_win32_get_hwnd(self.window_handle);
     if (tmp_hwnd) {
         return @ptrCast(tmp_hwnd);
     } else {
-        return WebUIError.GenericError;
+        return WebUIError.HWNDError;
     }
 }
 /// Get the network port of a running window.
 /// This can be useful to determine the HTTP link of `webui.js`
 pub fn getPort(self: webui) !usize {
     const port = c.webui_get_port(self.window_handle);
-    if (port == 0) return WebUIError.GenericError;
+    if (port == 0) return WebUIError.PortError;
     return port;
 }
 
@@ -439,7 +475,7 @@ pub fn getPort(self: webui) !usize {
 /// Returns True if the port is free and usable by WebUI
 pub fn setPort(self: webui, port: usize) !void {
     const success = c.webui_set_port(self.window_handle, port);
-    if (!success) return WebUIError.GenericError;
+    if (!success) return WebUIError.PortError;
 }
 
 // Get an available usable free network port.
@@ -482,9 +518,10 @@ pub fn getMimeType(file: [:0]const u8) [:0]const u8 {
 /// If set empty WebUI will generate a self-signed certificate.
 pub fn setTlsCertificate(certificate_pem: [:0]const u8, private_key_pem: [:0]const u8) !void {
     if (comptime !flags.enableTLS) {
-        @panic("not enable tls");
+        @compileError("not enable tls");
     }
     const success = c.webui_set_tls_certificate(certificate_pem.ptr, private_key_pem.ptr);
+    // TODO: replace this error
     if (!success) return WebUIError.GenericError;
 }
 
@@ -504,7 +541,7 @@ pub fn script(self: webui, script_content: [:0]const u8, timeout: usize, buffer:
         buffer.ptr,
         buffer.len,
     );
-    if (!success) return WebUIError.GenericError;
+    if (!success) return WebUIError.ScriptError;
 }
 
 /// Chose between Deno and Nodejs as runtime for .js and .ts files.
@@ -627,7 +664,7 @@ pub fn interfaceIsAppRunning() bool {
 /// Get a unique window ID.
 pub fn interfaceGetWindowId(self: webui) usize {
     const window_id = c.webui_interface_get_window_id(self.window_handle);
-    if (window_id == 0) return WebUIError.GenericError;
+    if (window_id == 0) return WebUIError.CreateWindowError;
     return window_id;
 }
 
@@ -665,8 +702,7 @@ pub fn interfaceGetSizeAt(self: webui, event_number: usize, index: usize) usize 
 // Show a window using embedded HTML, or a file. If the window is already
 pub fn interfaceShowClient(self: webui, event_number: usize, content: [:0]const u8) !void {
     const success = c.webui_interface_show_client(self.window_handle, event_number, content.ptr);
-    if (!success) return WebUIError.GenericError;
-    return success;
+    if (!success) return WebUIError.ShowError;
 }
 
 // Close a specific client.
@@ -697,7 +733,7 @@ pub fn interfaceRunClient(self: webui, event_number: usize, script_content: [:0]
 // Run JavaScript and get the response back. Single client.
 pub fn interfaceScriptClient(self: webui, event_number: usize, script_content: [:0]const u8, timeout: usize, buffer: []u8) !void {
     const success = c.webui_interface_script_client(self.window_handle, event_number, script_content.ptr, timeout, buffer.ptr, buffer.len);
-    if (!success) return WebUIError.GenericError;
+    if (!success) return WebUIError.ScriptError;
 }
 
 /// a very convenient function for binding callback.
@@ -707,7 +743,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
     const T = @TypeOf(callback);
     const TInfo = @typeInfo(T);
 
-    if (TInfo != .Fn) {
+    if (TInfo != .@"fn") {
         const err_msg = std.fmt.comptimePrint(
             "callback's type ({}), it must be a function!",
             .{T},
@@ -715,7 +751,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
         @compileError(err_msg);
     }
 
-    const fnInfo = TInfo.Fn;
+    const fnInfo = TInfo.@"fn";
     if (fnInfo.return_type != void) {
         const err_msg = std.fmt.comptimePrint(
             "callback's return type ({}), it must be void!",
@@ -750,7 +786,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
                 if (param.type) |tt| {
                     const paramTInfo = @typeInfo(tt);
                     switch (paramTInfo) {
-                        .Struct => {
+                        .@"struct" => {
                             if (tt != Event) {
                                 const err_msg = std.fmt.comptimePrint(
                                     "the struct type is ({}), the struct type you can use only is Event in params!",
@@ -760,30 +796,39 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
                             }
                             param_tup[i] = e;
                         },
-                        .Bool => {
+                        .bool => {
                             const res = e.getBoolAt(i);
                             param_tup[i] = res;
                         },
-                        .Int => {
+                        .int => {
                             const res = e.getIntAt(i);
                             param_tup[i] = @intCast(res);
                         },
-                        .Float => {
+                        .float => {
                             const res = e.getFloatAt(i);
                             param_tup[i] = res;
                         },
-                        .Pointer => |pointer| {
-                            if (pointer.size != .Slice or pointer.child != u8 or pointer.is_const == false) {
+                        .pointer => |pointer| {
+                            if (pointer.size != .slice or pointer.child != u8 or pointer.is_const == false) {
                                 const err_msg = std.fmt.comptimePrint(
                                     "the pointer type is ({}), not support other type for pointer param!",
                                     .{tt},
                                 );
                                 @compileError(err_msg);
                             }
-                            const str_ptr = e.getStringAt(i);
-                            const tmp_str_len = e.getSizeAt(i);
-                            const str: []const u8 = str_ptr[0..tmp_str_len];
-                            param_tup[i] = str;
+                            if (pointer.sentinel()) |sentinel| {
+                                if (sentinel != 0) {
+                                    const err_msg = std.fmt.comptimePrint(
+                                        "type is ({}), only support these types: Event, Bool, Int, Float, [:0]const u8, []u8!",
+                                        .{tt},
+                                    );
+                                    @compileError(err_msg);
+                                }
+                                const str_ptr = e.getStringAt(i);
+                                param_tup[i] = str_ptr;
+                            }else{
+                                @compileError("not support []u8");
+                            }
                         },
                         else => {
                             const err_msg = std.fmt.comptimePrint(
@@ -815,7 +860,7 @@ fn fnParamsToTuple(comptime params: []const std.builtin.Type.Fn.Param) type {
             res[i] = Type.StructField{
                 .type = param.type.?,
                 .alignment = @alignOf(param.type.?),
-                .default_value = null,
+                .default_value_ptr = null,
                 .is_comptime = false,
                 .name = std.fmt.comptimePrint("{}", .{i}),
             };
@@ -823,8 +868,8 @@ fn fnParamsToTuple(comptime params: []const std.builtin.Type.Fn.Param) type {
         break :blk res;
     };
     return @Type(.{
-        .Struct = std.builtin.Type.Struct{
-            .layout = .Auto,
+        .@"struct" = std.builtin.Type.Struct{
+            .layout = .auto,
             .is_tuple = true,
             .decls = &.{},
             .fields = &fields,
@@ -993,14 +1038,15 @@ pub const Event = extern struct {
         script_content: [:0]const u8,
         timeout: usize,
         buffer: []u8,
-    ) bool {
-        return c.webui_script_client(
+    ) !void {
+        const success = c.webui_script_client(
             self,
             script_content.ptr,
             timeout,
             buffer.ptr,
             buffer.len,
         );
+        if (!success) return WebUIError.ScriptError;
     }
 
     /// Return the response to JavaScript as integer.
@@ -1029,21 +1075,20 @@ pub const Event = extern struct {
         const T = @TypeOf(val);
         const type_info = @typeInfo(T);
 
-        const is_dev = builtin.zig_version.minor > 13;
-
         switch (type_info) {
-            if (is_dev) .pointer else .Pointer => |pointer| {
-                if (pointer.size == .Slice and
-                    pointer.child == u8 and
-                    (if (pointer.sentinel) |sentinel| @as(*u8, @ptrCast(sentinel)).* == 0 else false))
-                {
-                    e.returnString(val);
-                } else {
-                    const err_msg = std.fmt.comptimePrint("val's type ({}), only support []const u8 for Pointer!", .{T});
-                    @compileError(err_msg);
+            .pointer => |pointer| {
+                // pointer must be u8 slice
+                if (pointer.child == u8 or pointer.size == .slice) {
+                    // sentinel element must be 0
+                    const sentinel = pointer.sentinel();
+                    if (sentinel != null and sentinel.? == 0) {
+                        return e.returnString(val);
+                    }
                 }
+                const err_msg = std.fmt.comptimePrint("val's type ({}), only support [:0]const u8 for Pointer!", .{T});
+                @compileError(err_msg);
             },
-            if (is_dev) .int else .Int => |int| {
+            .int => |int| {
                 const bits = int.bits;
                 const is_signed = int.signedness == .signed;
                 if (is_signed and bits <= 64) {
@@ -1055,10 +1100,10 @@ pub const Event = extern struct {
                     @compileError(err_msg);
                 }
             },
-            if (is_dev) .bool else .Bool => e.returnBool(val),
-            if (is_dev) .float else .Float => e.returnFloat(val),
+            .bool => e.returnBool(val),
+            .float => e.returnFloat(val),
             else => {
-                const err_msg = std.fmt.comptimePrint("val's type ({}), only support int, bool, string([]const u8)!", .{T});
+                const err_msg = std.fmt.comptimePrint("val's type ({}), only support int, float, bool, string([]const u8)!", .{T});
                 @compileError(err_msg);
             },
         }
@@ -1102,6 +1147,17 @@ pub const Event = extern struct {
         const len = std.mem.len(ptr);
         return ptr[0..len :0];
     }
+    // Get the first argument raw buffer
+    pub fn getRawAt(e: *Event, index: usize) [*]const u8 {
+        const ptr = c.webui_get_string_at(e, index);
+        return @ptrCast(ptr);
+    }
+
+    // Get the first argument raw buffer
+    pub fn getRaw(e: *Event) [*]const u8 {
+        const ptr = c.webui_get_string(e);
+        return @ptrCast(ptr);
+    }
 
     /// Get an argument as boolean at a specific index
     pub fn getBoolAt(e: *Event, index: usize) bool {
@@ -1128,12 +1184,9 @@ pub const Event = extern struct {
     }
 
     /// Get user data that is set using `SetContext()`.
-    pub fn getContext(e: *Event) *anyopaque {
+    pub fn getContext(e: *Event) !*anyopaque {
         const context = c.webui_get_context(e);
-        if (context) |context_unwrapped| {
-            return context_unwrapped;
-        } else {
-            return WebUIError.GenericError;
-        }
+        if (context == null) return WebUIError.GenericError;
+        return context;
     }
 };
