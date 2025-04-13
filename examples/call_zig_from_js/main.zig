@@ -6,7 +6,7 @@ const webui = @import("webui");
 const html = @embedFile("index.html");
 
 pub fn main() !void {
-    var nwin = try webui.newWindow();
+    var nwin = webui.newWindow();
 
     _ = try nwin.binding("my_function_string", getString);
     // _ = try nwin.bind("my_function_string", my_function_string);

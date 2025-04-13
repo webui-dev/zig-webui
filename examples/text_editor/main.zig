@@ -11,7 +11,7 @@ fn close(_: *webui.Event) void {
 
 pub fn main() !void {
     // Create a new window
-    var mainW = try webui.newWindow();
+    var mainW = webui.newWindow();
 
     // Set the root folder for the UI
     try mainW.setRootFolder("ui");

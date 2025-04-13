@@ -179,7 +179,7 @@ pub fn main() !void {
     webui.setConfig(.use_cookies, true);
 
     // Create new window
-    var win = try webui.newWindow();
+    var win = webui.newWindow();
 
     // Bind HTML with a Zig functions
     _ = try win.bind("save", save);

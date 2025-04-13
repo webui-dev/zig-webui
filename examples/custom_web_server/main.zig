@@ -4,7 +4,7 @@ const webui = @import("webui");
 
 pub fn main() !void {
     // Create new windows
-    var nwin = try webui.newWindow();
+    var nwin = webui.newWindow();
 
     // Bind all events
     _ = try nwin.bind("", events);

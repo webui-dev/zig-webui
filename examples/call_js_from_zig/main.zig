@@ -5,7 +5,7 @@ const html = @embedFile("index.html");
 
 pub fn main() !void {
     // Create a window
-    var nwin = try webui.newWindow();
+    var nwin = webui.newWindow();
 
     // Bind HTML elements with C functions
     _ = try nwin.bind("my_function_count", my_function_count);

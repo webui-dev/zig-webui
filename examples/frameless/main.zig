@@ -23,7 +23,7 @@ fn close(e: *webui.Event) void {
 
 pub fn main() !void {
     // create a new window
-    var nwin = try webui.newWindow();
+    var nwin = webui.newWindow();
 
     _ = try nwin.bind("minimize", minimize);
     _ = try nwin.bind("maximize", maximize);

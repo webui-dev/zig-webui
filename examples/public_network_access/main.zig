@@ -35,8 +35,8 @@ fn private_window_events(e: *webui.Event) void {
 
 pub fn main() !void {
     // Create windows
-    private_window = try webui.newWindow();
-    public_window = try webui.newWindow();
+    private_window = webui.newWindow();
+    public_window =  webui.newWindow();
 
     // App
     webui.setTimeout(0); // Wait forever (never timeout)

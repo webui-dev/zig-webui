@@ -3,7 +3,7 @@ const webui = @import("webui");
 
 pub fn main() !void {
     // create a new window
-    var nwin = try webui.newWindow();
+    var nwin = webui.newWindow();
 
     // show the content
     try nwin.show("<html><head><script src=\"/webui.js\"></script></head> Hello World ! </html>");

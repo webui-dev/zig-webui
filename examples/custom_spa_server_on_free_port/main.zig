@@ -10,7 +10,7 @@ var home_url: [:0]u8 = undefined;
 
 pub fn main() !void {
     // Create new window
-    var nwin = try webui.newWindow();
+    var nwin = webui.newWindow();
 
     // Bind all events
     _ = try nwin.bind("", events);

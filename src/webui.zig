@@ -39,9 +39,9 @@ pub const WebUIError = error{
     ProcessError,
     /// get HWND failed, this is only occur on MS window
     HWNDError,
-    /// get or set windows litening prot failed
+    /// get or set windows listening prot failed
     PortError,
-    /// run javescript failed
+    /// run javascript failed
     ScriptError,
     /// allocate memory failed
     AllocateFailed,
@@ -53,7 +53,7 @@ pub const WebUIErrorInfo = struct {
     msg: [:0]const u8,
 };
 
-/// through this fhunc, we can get webui's lastest error number and error message
+/// through this func, we can get webui's lastest error number and error message
 pub fn getLastError() WebUIErrorInfo {
     return .{
         .num = c.webui_get_last_error_number(),
@@ -65,9 +65,8 @@ pub fn getLastError() WebUIErrorInfo {
 window_handle: usize,
 
 /// Creating a new WebUI window object.
-pub fn newWindow() !webui {
+pub fn newWindow() webui {
     const window_handle = c.webui_new_window();
-    if (window_handle == 0) return WebUIError.CreateWindowError;
 
     return .{
         .window_handle = window_handle,
@@ -80,7 +79,6 @@ pub fn newWindowWithId(id: usize) !webui {
         return WebUIError.CreateWindowError;
     }
     const window_handle = c.webui_new_window_id(id);
-    if (window_handle == 0) return WebUIError.CreateWindowError;
 
     return .{
         .window_handle = window_handle,
@@ -89,9 +87,8 @@ pub fn newWindowWithId(id: usize) !webui {
 
 /// Get a free window number that can be used with
 /// `newWindowWithId`
-pub fn getNewWindowId() !usize {
+pub fn getNewWindowId() usize {
     const window_id = c.webui_get_new_window_id();
-    if (window_id == 0) return WebUIError.CreateWindowError;
 
     return window_id;
 }
@@ -664,7 +661,6 @@ pub fn interfaceIsAppRunning() bool {
 /// Get a unique window ID.
 pub fn interfaceGetWindowId(self: webui) usize {
     const window_id = c.webui_interface_get_window_id(self.window_handle);
-    if (window_id == 0) return WebUIError.CreateWindowError;
     return window_id;
 }
 
@@ -826,7 +822,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
                                 }
                                 const str_ptr = e.getStringAt(i);
                                 param_tup[i] = str_ptr;
-                            }else{
+                            } else {
                                 @compileError("not support []u8");
                             }
                         },
