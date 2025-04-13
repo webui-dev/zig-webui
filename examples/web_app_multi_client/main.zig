@@ -182,15 +182,15 @@ pub fn main() !void {
     var win = webui.newWindow();
 
     // Bind HTML with a Zig functions
-    _ = win.bind("save", save);
-    _ = win.bind("saveAll", saveAll);
-    _ = win.bind("exit_app", exit_app);
+    _ = try win.bind("save", save);
+    _ = try win.bind("saveAll", saveAll);
+    _ = try win.bind("exit_app", exit_app);
 
     // Bind all events
-    _ = win.bind("", events);
+    _ = try win.bind("", events);
 
     // Start server only
-    const url = win.startServer("index.html");
+    const url = try win.startServer("index.html");
 
     // Open a new page in the default native web browser
     webui.openUrl(@as([*c]const u8, @ptrCast(url.ptr))[0..url.len :0]);

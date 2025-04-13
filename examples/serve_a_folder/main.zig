@@ -9,17 +9,17 @@ var MySecondWindow: webui = undefined;
 
 pub fn main() !void {
     // Create new windows
-    MyWindow = webui.newWindowWithId(1);
-    MySecondWindow = webui.newWindowWithId(2);
+    MyWindow = try webui.newWindowWithId(1);
+    MySecondWindow = try webui.newWindowWithId(2);
 
     // Bind HTML element IDs with a C functions
-    _ = MyWindow.bind("SwitchToSecondPage", switch_second_window);
-    _ = MyWindow.bind("OpenNewWindow", show_second_window);
-    _ = MyWindow.bind("Exit", exit_app);
-    _ = MySecondWindow.bind("Exit", exit_app);
+    _ = try MyWindow.bind("SwitchToSecondPage", switch_second_window);
+    _ = try MyWindow.bind("OpenNewWindow", show_second_window);
+    _ = try MyWindow.bind("Exit", exit_app);
+    _ = try MySecondWindow.bind("Exit", exit_app);
 
     // Bind events
-    _ = MyWindow.bind("", events);
+    _ = try MyWindow.bind("", events);
 
     // Set the `.ts` and `.js` runtime
     // webui_set_runtime(MyWindow, NodeJS);
@@ -38,7 +38,7 @@ pub fn main() !void {
     // Show a new window
     // webui_set_root_folder(MyWindow, "_MY_PATH_HERE_");
     // webui_show_browser(MyWindow, "index.html", Chrome);
-    _ = MyWindow.show("index.html");
+    try MyWindow.show("index.html");
 
     // Wait until all windows get closed
     webui.wait();
@@ -85,7 +85,7 @@ fn switch_second_window(e: *webui.Event) void {
     // time the user clicks on "SwitchToSecondPage"
 
     // Switch to `/second.html` in the same opened window.
-    _ = e.getWindow().show("second.html");
+    e.getWindow().show("second.html") catch return;
 }
 
 fn show_second_window(_: *webui.Event) void {
@@ -94,7 +94,7 @@ fn show_second_window(_: *webui.Event) void {
 
     // Show a new window, and navigate to `/second.html`
     // if it's already open, then switch in the same window
-    _ = MySecondWindow.show("second.html");
+    MySecondWindow.show("second.html") catch return;
 }
 
 var count: i32 = 0;

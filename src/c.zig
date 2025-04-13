@@ -602,7 +602,7 @@ pub extern fn webui_get_child_process_id(window: usize) callconv(.C) usize;
 /// @return Returns the window `hwnd` as `void*`
 ///
 /// @example HWND hwnd = webui_win32_get_hwnd(myWindow);
-pub extern fn webui_win32_get_hwnd(window: usize) callconv(.C) *anyopaque;
+pub extern fn webui_win32_get_hwnd(window: usize) callconv(.C) ?*anyopaque;
 
 /// @brief Get the network port of a running window.
 /// This can be useful to determine the HTTP link of `webui.js`
@@ -894,6 +894,16 @@ pub extern fn webui_return_string(e: *Event, s: [*:0]const u8) callconv(.C) void
 ///
 /// @example webui_return_bool(e, true);
 pub extern fn webui_return_bool(e: *Event, b: bool) callconv(.C) void;
+
+/// @brief Get the last WebUI error code.
+///
+/// @example int error_num = webui_get_last_error_number();
+pub extern fn webui_get_last_error_number() callconv(.C) c_int;
+
+/// @brief Get the last WebUI error message.
+///
+/// @example const char* error_msg = webui_get_last_error_message();
+pub extern fn webui_get_last_error_message() callconv(.C) [*:0]const u8;
 
 // -- Wrapper's Interface -------------
 
