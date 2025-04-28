@@ -778,52 +778,55 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
         fn handle(e: *Event) void {
             var param_tup: tup_t = undefined;
 
+            var index: usize = 0;
             inline for (fnInfo.params, 0..fnInfo.params.len) |param, i| {
                 if (param.type) |tt| {
                     const paramTInfo = @typeInfo(tt);
                     switch (paramTInfo) {
                         .@"struct" => {
-                            if (tt != Event) {
+                            if (tt == Event) {
+                                param_tup[i] = e.*;
+                                index += 1;
+                            } else {
                                 const err_msg = std.fmt.comptimePrint(
                                     "the struct type is ({}), the struct type you can use only is Event in params!",
                                     .{tt},
                                 );
                                 @compileError(err_msg);
                             }
-                            param_tup[i] = e;
                         },
                         .bool => {
-                            const res = e.getBoolAt(i);
+                            const res = e.getBoolAt(i - index);
                             param_tup[i] = res;
                         },
                         .int => {
-                            const res = e.getIntAt(i);
+                            const res = e.getIntAt(i - index);
                             param_tup[i] = @intCast(res);
                         },
                         .float => {
-                            const res = e.getFloatAt(i);
+                            const res = e.getFloatAt(i - index);
                             param_tup[i] = res;
                         },
                         .pointer => |pointer| {
-                            if (pointer.size != .slice or pointer.child != u8 or pointer.is_const == false) {
+                            if (pointer.size == .slice and pointer.child == u8 and pointer.is_const == true) {
+                                if (pointer.sentinel()) |sentinel| {
+                                    if (sentinel == 0) {
+                                        const str_ptr = e.getStringAt(i - index);
+                                        param_tup[i] = str_ptr;
+                                    }
+                                }
+                            } else if (pointer.size == .one and pointer.child == Event) {
+                                param_tup[i] = e;
+                                index += 1;
+                            } else if (pointer.size == .many and pointer.child == u8 and pointer.is_const == true and pointer.sentinel() == null) {
+                                const raw_ptr = e.getRawAt(i - index);
+                                param_tup[i] = raw_ptr;
+                            } else {
                                 const err_msg = std.fmt.comptimePrint(
-                                    "the pointer type is ({}), not support other type for pointer param!",
+                                    "the pointer type is ({}), now we only support [:0]const u8 or [*]const u8 or *webui.Event !",
                                     .{tt},
                                 );
                                 @compileError(err_msg);
-                            }
-                            if (pointer.sentinel()) |sentinel| {
-                                if (sentinel != 0) {
-                                    const err_msg = std.fmt.comptimePrint(
-                                        "type is ({}), only support these types: Event, Bool, Int, Float, [:0]const u8, []u8!",
-                                        .{tt},
-                                    );
-                                    @compileError(err_msg);
-                                }
-                                const str_ptr = e.getStringAt(i);
-                                param_tup[i] = str_ptr;
-                            } else {
-                                @compileError("not support []u8");
                             }
                         },
                         else => {
