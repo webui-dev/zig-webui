@@ -833,7 +833,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
                         // Convert floating point values
                         .float => {
                             const res = e.getFloatAt(i - index);
-                            param_tup[i] = res;
+                            param_tup[i] = @floatCast(res);
                         },
                         // Handle pointer types with special cases
                         .pointer => |pointer| {
@@ -845,11 +845,11 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
                                         param_tup[i] = str_ptr;
                                     }
                                 }
-                            // Handle Event pointers
+                                // Handle Event pointers
                             } else if (pointer.size == .one and pointer.child == Event) {
                                 param_tup[i] = e;
                                 index += 1;
-                            // Handle raw byte pointers
+                                // Handle raw byte pointers
                             } else if (pointer.size == .many and pointer.child == u8 and pointer.is_const == true and pointer.sentinel() == null) {
                                 const raw_ptr = e.getRawAt(i - index);
                                 param_tup[i] = raw_ptr;
