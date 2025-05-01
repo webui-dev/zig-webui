@@ -34,6 +34,8 @@
 
 ## API Documentation
 
+If you want a clearer architecture, you can check it out [here](https://deepwiki.com/webui-dev/zig-webui)
+
 * [https://webui-dev.github.io/zig-webui/](https://webui-dev.github.io/zig-webui/)
 * [https://webui.me/docs/2.5/#/](https://webui.me/docs/2.5/#/)
 

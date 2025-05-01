@@ -732,13 +732,37 @@ pub fn interfaceScriptClient(self: webui, event_number: usize, script_content: [
     if (!success) return WebUIError.ScriptError;
 }
 
-/// a very convenient function for binding callback.
-/// you just need to pase a function to get param.
-/// no need to care webui param api.
+/// binding function: Creates a binding between an HTML element and a callback function
+/// binding function: Creates a binding between an HTML element and a callback function
+/// - element: A null-terminated string identifying the HTML element(s) to bind to
+/// - callback: A function to be called when the bound event triggers
+///
+/// This function performs compile-time validation on the callback function to ensure it:
+/// 1. Is a proper function (not another type)
+/// 2. Returns void
+/// 3. Is not generic
+/// 4. Does not use variable arguments
+///
+/// The callback function can accept various parameter types:
+/// - Event: Gets the full event object
+/// - *Event: Gets a pointer to the event object
+/// - Other parameters will be automatically converted from event arguments in order:
+///   * bool: Converted from event argument bool value
+///   * int types: Converted from event argument integer value
+///   * float types: Converted from event argument float value
+///   * [:0]const u8: For null-terminated string data from event
+///   * [*]const u8: For raw pointer data from event
+///
+/// Note: Event and *Event parameters do not consume argument indices from the event,
+/// but all other parameter types will consume arguments in the order they appear.
+///
+/// Returns:
+/// - The binding ID that can be used to unbind later
 pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !usize {
     const T = @TypeOf(callback);
     const TInfo = @typeInfo(T);
 
+    // Verify the callback is a function
     if (TInfo != .@"fn") {
         const err_msg = std.fmt.comptimePrint(
             "callback's type ({}), it must be a function!",
@@ -748,6 +772,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
     }
 
     const fnInfo = TInfo.@"fn";
+    // Verify return type is void
     if (fnInfo.return_type != void) {
         const err_msg = std.fmt.comptimePrint(
             "callback's return type ({}), it must be void!",
@@ -756,6 +781,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
         @compileError(err_msg);
     }
 
+    // Verify function is not generic
     if (fnInfo.is_generic) {
         const err_msg = std.fmt.comptimePrint(
             "callback's type ({}), it can not be a generic function!",
@@ -764,6 +790,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
         @compileError(err_msg);
     }
 
+    // Verify function does not use varargs
     if (fnInfo.is_var_args) {
         const err_msg = std.fmt.comptimePrint(
             "callback's type ({}), it can not have variable args!",
@@ -775,57 +802,71 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
     const tmp_struct = struct {
         const tup_t = fnParamsToTuple(fnInfo.params);
 
+        // Event handler that will convert parameters and call the user's callback
         fn handle(e: *Event) void {
             var param_tup: tup_t = undefined;
 
+            var index: usize = 0;
+            // Process each parameter of the callback function
             inline for (fnInfo.params, 0..fnInfo.params.len) |param, i| {
                 if (param.type) |tt| {
                     const paramTInfo = @typeInfo(tt);
                     switch (paramTInfo) {
+                        // Handle struct type parameters (only Event is allowed)
                         .@"struct" => {
-                            if (tt != Event) {
+                            if (tt == Event) {
+                                param_tup[i] = e.*;
+                                index += 1;
+                            } else {
                                 const err_msg = std.fmt.comptimePrint(
                                     "the struct type is ({}), the struct type you can use only is Event in params!",
                                     .{tt},
                                 );
                                 @compileError(err_msg);
                             }
-                            param_tup[i] = e;
                         },
+                        // Convert boolean values
                         .bool => {
-                            const res = e.getBoolAt(i);
+                            const res = e.getBoolAt(i - index);
                             param_tup[i] = res;
                         },
+                        // Convert integer values with appropriate casting
                         .int => {
-                            const res = e.getIntAt(i);
+                            const res = e.getIntAt(i - index);
                             param_tup[i] = @intCast(res);
                         },
+                        // Convert floating point values
                         .float => {
-                            const res = e.getFloatAt(i);
-                            param_tup[i] = res;
+                            const res = e.getFloatAt(i - index);
+                            param_tup[i] = @floatCast(res);
                         },
+                        // Handle pointer types with special cases
                         .pointer => |pointer| {
-                            if (pointer.size != .slice or pointer.child != u8 or pointer.is_const == false) {
+                            // Handle null-terminated string slices
+                            if (pointer.size == .slice and pointer.child == u8 and pointer.is_const == true) {
+                                if (pointer.sentinel()) |sentinel| {
+                                    if (sentinel == 0) {
+                                        const str_ptr = e.getStringAt(i - index);
+                                        param_tup[i] = str_ptr;
+                                    }
+                                }
+                                // Handle Event pointers
+                            } else if (pointer.size == .one and pointer.child == Event) {
+                                param_tup[i] = e;
+                                index += 1;
+                                // Handle raw byte pointers
+                            } else if (pointer.size == .many and pointer.child == u8 and pointer.is_const == true and pointer.sentinel() == null) {
+                                const raw_ptr = e.getRawAt(i - index);
+                                param_tup[i] = raw_ptr;
+                            } else {
                                 const err_msg = std.fmt.comptimePrint(
-                                    "the pointer type is ({}), not support other type for pointer param!",
+                                    "the pointer type is ({}), now we only support [:0]const u8 or [*]const u8 or *webui.Event !",
                                     .{tt},
                                 );
                                 @compileError(err_msg);
                             }
-                            if (pointer.sentinel()) |sentinel| {
-                                if (sentinel != 0) {
-                                    const err_msg = std.fmt.comptimePrint(
-                                        "type is ({}), only support these types: Event, Bool, Int, Float, [:0]const u8, []u8!",
-                                        .{tt},
-                                    );
-                                    @compileError(err_msg);
-                                }
-                                const str_ptr = e.getStringAt(i);
-                                param_tup[i] = str_ptr;
-                            } else {
-                                @compileError("not support []u8");
-                            }
                         },
+                        // Reject unsupported types
                         else => {
                             const err_msg = std.fmt.comptimePrint(
                                 "type is ({}), only support these types: Event, Bool, Int, Float, []u8!",
@@ -839,10 +880,12 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
                 }
             }
 
+            // Call the user's callback with the properly converted parameters
             @call(.auto, callback, param_tup);
         }
     };
 
+    // Create the actual binding with the webui backend
     return self.bind(element, tmp_struct.handle);
 }
 
