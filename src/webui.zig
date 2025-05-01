@@ -733,6 +733,7 @@ pub fn interfaceScriptClient(self: webui, event_number: usize, script_content: [
 }
 
 /// binding function: Creates a binding between an HTML element and a callback function
+/// binding function: Creates a binding between an HTML element and a callback function
 /// - element: A null-terminated string identifying the HTML element(s) to bind to
 /// - callback: A function to be called when the bound event triggers
 ///
@@ -745,11 +746,15 @@ pub fn interfaceScriptClient(self: webui, event_number: usize, script_content: [
 /// The callback function can accept various parameter types:
 /// - Event: Gets the full event object
 /// - *Event: Gets a pointer to the event object
-/// - bool: Converted from event data
-/// - int types: Converted from event data
-/// - float types: Converted from event data
-/// - [:0]const u8: For null-terminated string data
-/// - [*]const u8: For raw pointer data
+/// - Other parameters will be automatically converted from event arguments in order:
+///   * bool: Converted from event argument bool value
+///   * int types: Converted from event argument integer value
+///   * float types: Converted from event argument float value
+///   * [:0]const u8: For null-terminated string data from event
+///   * [*]const u8: For raw pointer data from event
+///
+/// Note: Event and *Event parameters do not consume argument indices from the event,
+/// but all other parameter types will consume arguments in the order they appear.
 ///
 /// Returns:
 /// - The binding ID that can be used to unbind later
