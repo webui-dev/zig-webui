@@ -32,6 +32,7 @@ pub fn build(b: *Build) !void {
     // Parse command-line options or use defaults
     const isStatic = b.option(bool, "is_static", "whether lib is static") orelse default_isStatic;
     const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse default_enableTLS;
+    const enableWebUILog = b.option(bool, "enable_webui_log", "whether lib enable tls") orelse default_enableTLS;
 
     // Standard build options for target and optimization
     const target = b.standardTargetOptions(.{});
@@ -61,6 +62,7 @@ pub fn build(b: *Build) !void {
         .optimize = optimize,
         .dynamic = !isStatic,
         .@"enable-tls" = enableTLS,
+        .@"enable-webui-log" = enableWebUILog,
         .verbose = .err,
     });
 
@@ -183,4 +185,3 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarge
         exe_run_step.dependOn(&exe_run.step);
     }
 }
-
