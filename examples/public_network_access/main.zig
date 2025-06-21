@@ -26,17 +26,23 @@ fn public_window_events(e: *webui.Event) void {
 
 fn private_window_events(e: *webui.Event) void {
     if (e.event_type == .EVENT_CONNECTED) {
+
+        // get the public window URL and port
+        const public_win_port = public_window.getPort() catch unreachable;
         const public_win_url: [:0]const u8 = public_window.getUrl() catch return;
+
         var buf = std.mem.zeroes([1024]u8);
-        const js = std.fmt.bufPrintZ(&buf, "document.getElementById('urlSpan').innerHTML = '{s}';", .{public_win_url}) catch unreachable;
-        private_window.run(js);
+        const js_1 = std.fmt.bufPrintZ(&buf, "document.getElementById('urlSpan1').innerHTML = 'http://localhost:{}';", .{public_win_port}) catch unreachable;
+        private_window.run(js_1);
+        const js_2 = std.fmt.bufPrintZ(&buf, "document.getElementById('urlSpan2').innerHTML = '{s}';", .{public_win_url}) catch unreachable;
+        private_window.run(js_2);
     }
 }
 
 pub fn main() !void {
     // Create windows
     private_window = webui.newWindow();
-    public_window =  webui.newWindow();
+    public_window = webui.newWindow();
 
     // App
     webui.setTimeout(0); // Wait forever (never timeout)
@@ -47,6 +53,8 @@ pub fn main() !void {
 
     // Bind all events
     _ = try public_window.bind("", public_window_events);
+
+    _ = try public_window.setPort(9090); // Set port for public access
 
     // Set public window HTML
     try public_window.showBrowser(public_html, .NoBrowser);
