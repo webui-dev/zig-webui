@@ -773,10 +773,11 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
 
     const fnInfo = TInfo.@"fn";
     // Verify return type is void
-    if (fnInfo.return_type != void) {
+    const Ret = fnInfo.return_type orelse @compilerError("return_type can't be null");
+    if (Ret != void) {
         const err_msg = std.fmt.comptimePrint(
             "callback's return type ({}), it must be void!",
-            .{fnInfo.return_type},
+            .{Ret},
         );
         @compileError(err_msg);
     }
