@@ -16,19 +16,19 @@ pub fn main() !void {
     _ = try nwin.binding("my_function_string", getString);
     // Equivalent using traditional bind function which requires manual Event handling
     // _ = try nwin.bind("my_function_string", my_function_string);
-    
+
     // Bind integer handler function, binding automatically converts JS parameters to corresponding Zig types
     _ = try nwin.binding("my_function_integer", getInteger);
     // _ = try nwin.bind("my_function_integer", my_function_integer);
-    
+
     // Bind boolean handler function, also with automatic type conversion
     _ = try nwin.binding("my_function_boolean", getBool);
     // _ = try nwin.bind("my_function_boolean", my_function_boolean);
-    
+
     // Bind function with response, binding supports using event object directly for responses
     _ = try nwin.binding("my_function_with_response", getResponse);
     // _ = try nwin.bind("my_function_with_response", my_function_with_response);
-    
+
     // Bind function for handling binary data, binding supports raw binary data processing
     _ = try nwin.binding("my_function_raw_binary", raw_binary);
     // _ = try nwin.bind("my_function_raw_binary", my_function_raw_binary);
@@ -115,7 +115,7 @@ fn my_function_boolean(e: *webui.Event) void {
     std.debug.print("my_function_bool 2: {}\n", .{status_2});
 }
 
-fn getResponse(e: *webui.Event,n1: i64, n2: i64) void {
+fn getResponse(e: *webui.Event, n1: i64, n2: i64) void {
     const res = n1 * n2;
     std.debug.print("my_function_with_response: {} * {} = {}\n", .{ n1, n2, res });
     // Send back the response to JavaScript
