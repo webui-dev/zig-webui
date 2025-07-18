@@ -84,7 +84,7 @@ pub extern fn webui_set_context(
 /// }
 pub extern fn webui_get_context(
     e: *Event,
-) callconv(.C) *anyopaque;
+) callconv(.C) ?*anyopaque;
 
 /// @brief Get the recommended web browser ID to use. If you
 /// are already using one, this function will return the same ID.
