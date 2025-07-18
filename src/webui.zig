@@ -1226,7 +1226,7 @@ pub const Event = extern struct {
     /// Get user data that is set using `SetContext()`.
     pub fn getContext(e: *Event) !*anyopaque {
         const context = c.webui_get_context(e);
-        if (context == null) return WebUIError.GenericError;
-        return context;
+        if (context) |result| return result;
+        return WebUIError.GenericError;
     }
 };
