@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="/webui.js"></script>
+    <title>Event Handling & Context Management</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 30px;
+        }
+        .section {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        button {
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            background: linear-gradient(45deg, #4ECDC4, #FF6B6B);
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        input, textarea, select {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        .user-info {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-family: monospace;
+        }
+        .message-area {
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            padding: 15px;
+            height: 200px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+        .message {
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.1);
+            border-left: 3px solid #4ECDC4;
+        }
+        .broadcast {
+            border-left-color: #FF6B6B;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+        .notification.show {
+            transform: translateX(0);
+        }
+        .status-bar {
+            background: rgba(0,0,0,0.4);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .click-tracker {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .track-button {
+            padding: 15px;
+            font-size: 14px;
+            border-radius: 10px;
+        }
+        
+        /* 自定义滚动条样式 - Webkit浏览器 (Chrome, Safari, Edge) */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #FF6B6B, #4ECDC4);
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #4ECDC4, #FF6B6B);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        ::-webkit-scrollbar-corner {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Firefox 64+ 支持的滚动条样式 */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 107, 107, 0.8) rgba(255, 255, 255, 0.1);
+        }
+        
+        /* 为特定容器提供更精细的滚动条控制 */
+        .message-area {
+            /* 加强消息区域的滚动条样式 */
+            scrollbar-width: thin;
+            scrollbar-color: rgba(78, 205, 196, 0.8) rgba(0, 0, 0, 0.2);
+        }
+        
+        .message-area::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .message-area::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+        }
+        
+        .message-area::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #4ECDC4, #45B7C7);
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+        
+        .message-area::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #45B7C7, #4ECDC4);
+        }
+        
+        /* 为body提供平滑滚动 */
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        body {
+            /* 确保body滚动条也有样式 */
+            overflow-x: hidden; /* 隐藏水平滚动条 */
+        }
+        
+        /* 可选：隐藏滚动条但保持滚动功能的类 */
+        .hide-scrollbar {
+            -ms-overflow-style: none;  /* IE 和 Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;  /* Chrome, Safari, Opera */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Event Handling & Context Management</h1>
+        
+        <div class="grid">
+            <!-- User Session Management -->
+            <div class="section">
+                <h3>👤 User Session</h3>
+                <div id="login-section">
+                    <div class="controls">
+                        <input type="text" id="username" value="John_Doe" placeholder="Username" style="width: 120px;">
+                        <input type="number" id="userid" value="1001" placeholder="User ID" style="width: 80px;">
+                        <button onclick="login()">🔑 Login</button>
+                    </div>
+                </div>
+                
+                <div id="session-section" style="display: none;">
+                    <div class="controls">
+                        <button onclick="logout()">🚪 Logout</button>
+                        <button onclick="refreshUserInfo()">🔄 Refresh Info</button>
+                    </div>
+                    <div class="user-info" id="user-info">No session data</div>
+                </div>
+            </div>
+
+            <!-- Click Tracking -->
+            <div class="section">
+                <h3>🖱️ Click Tracking</h3>
+                <div class="click-tracker">
+                    <button class="track-button" onclick="trackButtonClick('Button_A', this)">Button A</button>
+                    <button class="track-button" onclick="trackButtonClick('Button_B', this)">Button B</button>
+                    <button class="track-button" onclick="trackButtonClick('Button_C', this)">Button C</button>
+                    <button class="track-button" onclick="trackButtonClick('Special', this)">Special</button>
+                </div>
+                <div class="user-info" id="click-result">Login to track clicks</div>
+            </div>
+        </div>
+
+        <!-- Messaging System -->
+        <div class="section">
+            <h3>💬 Multi-Client Messaging</h3>
+            <div class="grid">
+                <div>
+                    <h4>Send Direct Message</h4>
+                    <div class="controls">
+                        <input type="text" id="message-text" placeholder="Enter message" style="width: 200px;">
+                        <select id="target-client" style="width: 120px;">
+                            <option value="">Select user...</option>
+                        </select>
+                        <button onclick="refreshOnlineUsers()">🔄</button>
+                        <button onclick="sendDirectMessage()">📤 Send</button>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4>Broadcast Message</h4>
+                    <div class="controls">
+                        <input type="text" id="broadcast-text" placeholder="Broadcast message" style="width: 200px;">
+                        <button onclick="broadcastMessage()">📢 Broadcast</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="message-area" id="message-area">
+                <div class="message">Welcome to the messaging system!</div>
+            </div>
+        </div>
+
+        <!-- Event Monitoring -->
+        <div class="section">
+            <h3>📊 Event Monitoring</h3>
+            <div class="grid">
+                <div>
+                    <h4>Client Information</h4>
+                    <button onclick="connectClient()">🔗 Simulate Connect</button>
+                    <button onclick="disconnectClient()">❌ Simulate Disconnect</button>
+                    <div class="status-bar" id="client-status">
+                        Client Status: Ready
+                    </div>
+                </div>
+                
+                <div>
+                    <h4>Event Statistics</h4>
+                    <div class="status-bar" id="event-stats">
+                        Events processed: <span id="event-count">0</span><br>
+                        Last event: <span id="last-event">None</span><br>
+                        Session time: <span id="session-time">00:00:00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Features -->
+        <div class="section">
+            <h3>⚡ Advanced Event Features</h3>
+            <div class="controls">
+                <button onclick="triggerCustomEvent()">🎯 Custom Event</button>
+                <button onclick="testErrorHandling()">⚠️ Test Error</button>
+                <button onclick="simulateHighLoad()">🔥 Simulate Load</button>
+                <button onclick="clearAllEvents()">🧹 Clear Events</button>
+            </div>
+            <div class="user-info" id="advanced-result">Advanced features ready</div>
+        </div>
+    </div>
+
+    <!-- Notification area -->
+    <div id="notification" class="notification"></div>
+
+    <script>
+        let isLoggedIn = false;
+        let eventCount = 0;
+        let sessionStartTime = null;
+        let sessionTimer = null;
+        let webuiReady = false;
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            updateUI();
+            startEventMonitoring();
+            // Check WebUI readiness periodically
+            checkWebUIReadiness();
+        });
+
+        function checkWebUIReadiness() {
+            // Check if WebUI functions are available
+            const checkInterval = setInterval(() => {
+                if (typeof user_login !== 'undefined' && 
+                    typeof user_logout !== 'undefined' && 
+                    typeof track_click !== 'undefined') {
+                    webuiReady = true;
+                    clearInterval(checkInterval);
+                    console.log('WebUI functions are ready');
+                    showNotification('WebUI loaded successfully!');
+                }
+            }, 100); // Check every 100ms
+            
+            // Timeout after 10 seconds
+            setTimeout(() => {
+                if (!webuiReady) {
+                    clearInterval(checkInterval);
+                    console.warn('WebUI functions not ready after 10 seconds');
+                    showNotification('WebUI loading timeout - some functions may not work');
+                }
+            }, 10000);
+        }
+
+        function login() {
+            const username = document.getElementById('username').value;
+            const userid = parseInt(document.getElementById('userid').value);
+            
+            if (!username || !userid) {
+                showNotification('Please enter username and user ID');
+                return;
+            }
+            
+            // Check if WebUI is ready
+            if (!webuiReady) {
+                showNotification('WebUI not ready yet, please wait a moment and try again');
+                return;
+            }
+            
+            try {
+                user_login(username, userid).then(result => {
+                    showNotification(result);
+                    isLoggedIn = true;
+                    sessionStartTime = Date.now();
+                    updateUI();
+                    startSessionTimer();
+                    refreshUserInfo();
+                    // Refresh online users list after login
+                    setTimeout(() => refreshOnlineUsers(), 500);
+                }).catch(error => {
+                    showNotification('Login failed: ' + error);
+                });
+            } catch (error) {
+                showNotification('Login function not available: ' + error.message);
+            }
+        }
+
+        function logout() {
+            // Check if WebUI is ready
+            if (!webuiReady) {
+                showNotification('WebUI not ready yet, please wait a moment and try again');
+                return;
+            }
+            
+            try {
+                user_logout().then(result => {
+                    showNotification(result);
+                    isLoggedIn = false;
+                    sessionStartTime = null;
+                    updateUI();
+                    stopSessionTimer();
+                }).catch(error => {
+                    showNotification('Logout failed: ' + error);
+                });
+            } catch (error) {
+                showNotification('Logout function not available: ' + error.message);
+            }
+        }
+
+        function refreshUserInfo() {
+            if (!isLoggedIn) return;
+            
+            // Check if WebUI function is available
+            if (typeof get_user_info === 'undefined') {
+                document.getElementById('user-info').textContent = 'WebUI not ready yet';
+                return;
+            }
+            
+            try {
+                get_user_info().then(result => {
+                    try {
+                        const info = JSON.parse(result);
+                        document.getElementById('user-info').innerHTML = `
+                            User ID: ${info.userId}<br>
+                            Username: ${info.username}<br>
+                            Session Time: ${info.sessionTime}s<br>
+                            Total Clicks: ${info.clickCount}<br>
+                            Client ID: ${info.clientId}
+                        `;
+                    } catch (e) {
+                        document.getElementById('user-info').textContent = result;
+                    }
+                }).catch(error => {
+                    document.getElementById('user-info').textContent = 'Error getting user info: ' + error;
+                });
+            } catch (error) {
+                document.getElementById('user-info').textContent = 'User info function not available: ' + error.message;
+            }
+        }
+
+        function trackButtonClick(buttonName, buttonElement) {
+            // Check if WebUI function is available
+            if (typeof track_click === 'undefined') {
+                document.getElementById('click-result').textContent = 'WebUI not ready yet';
+                return;
+            }
+            
+            try {
+                track_click(buttonName).then(result => {
+                    document.getElementById('click-result').textContent = result;
+                    incrementEventCount('Click: ' + buttonName);
+                    
+                    // Visual feedback
+                    if (buttonElement) {
+                        buttonElement.style.background = 'linear-gradient(45deg, #4ECDC4, #FF6B6B)';
+                        setTimeout(() => {
+                            buttonElement.style.background = '';
+                        }, 300);
+                    }
+                }).catch(error => {
+                    document.getElementById('click-result').textContent = 'Error: ' + error;
+                });
+            } catch (error) {
+                document.getElementById('click-result').textContent = 'Track click function not available: ' + error.message;
+            }
+        }
+
+        function sendDirectMessage() {
+            const message = document.getElementById('message-text').value;
+            const targetClientSelect = document.getElementById('target-client');
+            const targetClient = parseInt(targetClientSelect.value);
+            
+            if (!message || !targetClient) {
+                showNotification('Please enter a message and select a target user');
+                return;
+            }
+            
+            // Check if WebUI function is available
+            if (typeof send_message === 'undefined') {
+                showNotification('WebUI not ready yet');
+                return;
+            }
+            
+            try {
+                send_message(message, targetClient).then(result => {
+                    showNotification(result);
+                    addMessageToArea('You', message, false);
+                    document.getElementById('message-text').value = '';
+                    incrementEventCount('Direct Message');
+                }).catch(error => {
+                    showNotification('Send message failed: ' + error);
+                });
+            } catch (error) {
+                showNotification('Send message function not available: ' + error.message);
+            }
+        }
+
+        function refreshOnlineUsers() {
+            // Check if WebUI is ready
+            if (!webuiReady) {
+                showNotification('WebUI not ready yet');
+                return;
+            }
+            
+            try {
+                get_online_users().then(result => {
+                    try {
+                        const users = JSON.parse(result);
+                        const select = document.getElementById('target-client');
+                        
+                        // Clear existing options (except the first one)
+                        while (select.children.length > 1) {
+                            select.removeChild(select.lastChild);
+                        }
+                        
+                        // Add online users to dropdown
+                        users.forEach(user => {
+                            const option = document.createElement('option');
+                            option.value = user.clientId;
+                            option.textContent = `${user.username} (ID: ${user.clientId})`;
+                            select.appendChild(option);
+                        });
+                        
+                        showNotification(`Found ${users.length} online users`);
+                    } catch (e) {
+                        showNotification('Error parsing user list: ' + e.message);
+                    }
+                }).catch(error => {
+                    showNotification('Error getting online users: ' + error);
+                });
+            } catch (error) {
+                showNotification('Get online users function not available: ' + error.message);
+            }
+        }
+
+        function broadcastMessage() {
+            const message = document.getElementById('broadcast-text').value;
+            
+            if (!message) {
+                showNotification('Please enter a message');
+                return;
+            }
+            
+            // Check if WebUI function is available
+            if (typeof broadcast_message === 'undefined') {
+                showNotification('WebUI not ready yet');
+                return;
+            }
+            
+            try {
+                broadcast_message(message).then(result => {
+                    showNotification(result);
+                    addMessageToArea('You (Broadcast)', message, true);
+                    document.getElementById('broadcast-text').value = '';
+                    incrementEventCount('Broadcast');
+                }).catch(error => {
+                    showNotification('Broadcast failed: ' + error);
+                });
+            } catch (error) {
+                showNotification('Broadcast function not available: ' + error.message);
+            }
+        }
+
+        function connectClient() {
+            // Check if WebUI function is available
+            if (typeof client_connect === 'undefined') {
+                document.getElementById('client-status').textContent = 'WebUI not ready yet';
+                return;
+            }
+            
+            try {
+                client_connect().then(result => {
+                    document.getElementById('client-status').textContent = 'Client Status: ' + result;
+                    incrementEventCount('Client Connect');
+                }).catch(error => {
+                    document.getElementById('client-status').textContent = 'Connect failed: ' + error;
+                });
+            } catch (error) {
+                document.getElementById('client-status').textContent = 'Connect function not available: ' + error.message;
+            }
+        }
+
+        function disconnectClient() {
+            // Check if WebUI function is available
+            if (typeof client_disconnect === 'undefined') {
+                document.getElementById('client-status').textContent = 'WebUI not ready yet';
+                return;
+            }
+            
+            try {
+                client_disconnect().then(result => {
+                    document.getElementById('client-status').textContent = 'Client Status: Disconnected';
+                    incrementEventCount('Client Disconnect');
+                }).catch(error => {
+                    document.getElementById('client-status').textContent = 'Disconnect failed: ' + error;
+                });
+            } catch (error) {
+                document.getElementById('client-status').textContent = 'Disconnect function not available: ' + error.message;
+            }
+        }
+
+        function triggerCustomEvent() {
+            // Trigger a custom event
+            if (typeof interface_handler === 'undefined') {
+                document.getElementById('advanced-result').textContent = 'WebUI not ready yet';
+                return;
+            }
+            
+            try {
+                interface_handler('custom_data', 42, true).then(result => {
+                    document.getElementById('advanced-result').textContent = 'Custom event: ' + result;
+                    incrementEventCount('Custom Event');
+                }).catch(error => {
+                    document.getElementById('advanced-result').textContent = 'Custom event failed: ' + error;
+                });
+            } catch (error) {
+                document.getElementById('advanced-result').textContent = 'Interface handler not available: ' + error.message;
+            }
+        }
+
+        function testErrorHandling() {
+            // Test error handling
+            if (typeof track_click === 'undefined') {
+                document.getElementById('advanced-result').textContent = 'WebUI not ready yet';
+                return;
+            }
+            
+            try {
+                track_click('').then(result => {
+                    document.getElementById('advanced-result').textContent = 'Error test: ' + result;
+                }).catch(error => {
+                    document.getElementById('advanced-result').textContent = 'Error handled: ' + error;
+                });
+            } catch (error) {
+                document.getElementById('advanced-result').textContent = 'Error test function not available: ' + error.message;
+            }
+            incrementEventCount('Error Test');
+        }
+
+        function simulateHighLoad() {
+            // Simulate high event load
+            for (let i = 0; i < 10; i++) {
+                setTimeout(() => {
+                    trackButtonClick('Load_Test_' + i, null); // No visual feedback for simulated clicks
+                }, i * 100);
+            }
+            incrementEventCount('High Load Test');
+        }
+
+        function clearAllEvents() {
+            eventCount = 0;
+            document.getElementById('event-count').textContent = eventCount;
+            document.getElementById('last-event').textContent = 'Cleared';
+            document.getElementById('message-area').innerHTML = '<div class="message">Events cleared</div>';
+            document.getElementById('advanced-result').textContent = 'All events cleared';
+        }
+
+        function updateUI() {
+            const loginSection = document.getElementById('login-section');
+            const sessionSection = document.getElementById('session-section');
+            
+            if (isLoggedIn) {
+                loginSection.style.display = 'none';
+                sessionSection.style.display = 'block';
+            } else {
+                loginSection.style.display = 'block';
+                sessionSection.style.display = 'none';
+            }
+        }
+
+        function startSessionTimer() {
+            sessionTimer = setInterval(() => {
+                if (sessionStartTime) {
+                    const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+                    const hours = Math.floor(elapsed / 3600);
+                    const minutes = Math.floor((elapsed % 3600) / 60);
+                    const seconds = elapsed % 60;
+                    
+                    document.getElementById('session-time').textContent = 
+                        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }, 1000);
+        }
+
+        function stopSessionTimer() {
+            if (sessionTimer) {
+                clearInterval(sessionTimer);
+                sessionTimer = null;
+            }
+            document.getElementById('session-time').textContent = '00:00:00';
+        }
+
+        function startEventMonitoring() {
+            // Refresh user info every 5 seconds if logged in
+            setInterval(() => {
+                if (isLoggedIn) {
+                    refreshUserInfo();
+                }
+            }, 5000);
+        }
+
+        function incrementEventCount(eventType) {
+            eventCount++;
+            document.getElementById('event-count').textContent = eventCount;
+            document.getElementById('last-event').textContent = eventType;
+        }
+
+        function addMessageToArea(sender, message, isBroadcast) {
+            const messageArea = document.getElementById('message-area');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message' + (isBroadcast ? ' broadcast' : '');
+            messageDiv.innerHTML = `<strong>${sender}:</strong> ${message} <em>(${new Date().toLocaleTimeString()})</em>`;
+            messageArea.appendChild(messageDiv);
+            messageArea.scrollTop = messageArea.scrollHeight;
+        }
+
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+
+        // Functions called from Zig
+        function receiveMessage(sender, message) {
+            addMessageToArea(sender, message, false);
+            showNotification('New message from ' + sender);
+        }
+
+        function receiveBroadcast(sender, message) {
+            addMessageToArea(sender + ' (Broadcast)', message, true);
+            showNotification('Broadcast from ' + sender);
+        }
+
+        console.log('Event Handling & Context Management example loaded');
+    </script>
+</body>
+</html>

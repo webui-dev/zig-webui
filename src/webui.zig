@@ -631,7 +631,7 @@ pub fn interfaceBind(
         event_number: usize,
         bind_id: usize,
     ) void,
-) void {
+) !usize {
     const tmp_struct = struct {
         fn handle(
             tmp_window: usize,
@@ -644,7 +644,9 @@ pub fn interfaceBind(
             callback(tmp_window, tmp_event_type, tmp_element[0..len], tmp_event_number, tmp_bind_id);
         }
     };
-    c.webui_interface_bind(self.window_handle, element.ptr, tmp_struct.handle);
+    const index = c.webui_interface_bind(self.window_handle, element.ptr, tmp_struct.handle);
+    if (index == 0) return WebUIError.BindError;
+    return index;
 }
 
 /// When using `interfaceBind()`,
