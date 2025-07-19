@@ -312,9 +312,12 @@ pub fn setIcon(self: webui, icon: [:0]const u8, icon_type: [:0]const u8) void {
 /// you need free the return memory with free function
 pub fn encode(str: [:0]const u8) ![]u8 {
     const ptr = c.webui_encode(str.ptr);
-    if (ptr == null) return WebUIError.EncodeError;
-    const len = std.mem.len(ptr);
-    return ptr[0..len];
+    if (ptr) |valid_ptr| {
+        const len = std.mem.len(valid_ptr);
+        return valid_ptr[0..len];
+    } else {
+        return WebUIError.EncodeError;
+    }
 }
 
 /// Base64 decoding.
@@ -323,9 +326,12 @@ pub fn encode(str: [:0]const u8) ![]u8 {
 /// you need free the return memory with free function
 pub fn decode(str: [:0]const u8) ![]u8 {
     const ptr = c.webui_decode(str.ptr);
-    if (ptr == null) return WebUIError.DecodeError;
-    const len = std.mem.len(ptr);
-    return ptr[0..len];
+    if (ptr) |valid_ptr| {
+        const len = std.mem.len(valid_ptr);
+        return valid_ptr[0..len];
+    } else {
+        return WebUIError.DecodeError;
+    }
 }
 
 /// Safely free a buffer allocated by WebUI using
