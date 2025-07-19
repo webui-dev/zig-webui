@@ -231,8 +231,8 @@ pub fn setRootFolder(self: webui, path: [:0]const u8) !void {
 }
 
 /// Set custom browser folder path.
-pub fn setBrowserFolder(self: webui, path: [:0]const u8) void {
-    c.webui_set_browser_folder(self.window_handle, path.ptr);
+pub fn setBrowserFolder(path: [:0]const u8) void {
+    c.webui_set_browser_folder(path.ptr);
 }
 
 /// Set the web-server root folder path for all windows.
@@ -312,9 +312,12 @@ pub fn setIcon(self: webui, icon: [:0]const u8, icon_type: [:0]const u8) void {
 /// you need free the return memory with free function
 pub fn encode(str: [:0]const u8) ![]u8 {
     const ptr = c.webui_encode(str.ptr);
-    if (ptr == null) return WebUIError.EncodeError;
-    const len = std.mem.len(ptr);
-    return ptr[0..len];
+    if (ptr) |valid_ptr| {
+        const len = std.mem.len(valid_ptr);
+        return valid_ptr[0..len];
+    } else {
+        return WebUIError.EncodeError;
+    }
 }
 
 /// Base64 decoding.
@@ -323,9 +326,12 @@ pub fn encode(str: [:0]const u8) ![]u8 {
 /// you need free the return memory with free function
 pub fn decode(str: [:0]const u8) ![]u8 {
     const ptr = c.webui_decode(str.ptr);
-    if (ptr == null) return WebUIError.DecodeError;
-    const len = std.mem.len(ptr);
-    return ptr[0..len];
+    if (ptr) |valid_ptr| {
+        const len = std.mem.len(valid_ptr);
+        return valid_ptr[0..len];
+    } else {
+        return WebUIError.DecodeError;
+    }
 }
 
 /// Safely free a buffer allocated by WebUI using
@@ -349,7 +355,7 @@ pub fn memcpy(dst: []u8, src: []const u8) void {
 
 /// Safely send raw data to the UI. All clients.
 pub fn sendRaw(self: webui, js_func: [:0]const u8, raw: []u8) void {
-    c.webui_send_raw(self.window_handle, js_func.ptr, @ptrCast(raw.ptr), raw.len);
+    c.webui_send_raw(self.window_handle, js_func.ptr, raw.ptr, raw.len);
 }
 
 /// Set a window in hidden mode.
@@ -631,7 +637,7 @@ pub fn interfaceBind(
         event_number: usize,
         bind_id: usize,
     ) void,
-) void {
+) !usize {
     const tmp_struct = struct {
         fn handle(
             tmp_window: usize,
@@ -644,7 +650,9 @@ pub fn interfaceBind(
             callback(tmp_window, tmp_event_type, tmp_element[0..len], tmp_event_number, tmp_bind_id);
         }
     };
-    c.webui_interface_bind(self.window_handle, element.ptr, tmp_struct.handle);
+    const index = c.webui_interface_bind(self.window_handle, element.ptr, tmp_struct.handle);
+    if (index == 0) return WebUIError.BindError;
+    return index;
 }
 
 /// When using `interfaceBind()`,
@@ -1056,7 +1064,7 @@ pub const Event = extern struct {
         c.webui_send_raw_client(
             self,
             function.ptr,
-            @ptrCast(buffer.ptr),
+            buffer.ptr,
             buffer.len,
         );
     }

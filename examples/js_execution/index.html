@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="/webui.js"></script>
+    <title>JavaScript Execution Example</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 30px;
+        }
+        .section {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        button {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            background: linear-gradient(45deg, #45a049, #4CAF50);
+            transform: translateY(-2px);
+        }
+        input, select, textarea {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        .result-display {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .data-display {
+            background: rgba(0,255,0,0.1);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            border: 1px solid rgba(0,255,0,0.3);
+        }
+        #dynamic-content {
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 18px;
+            transition: background 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 JavaScript Execution & Communication</h1>
+        
+        <div class="section">
+            <h3>Simple JavaScript Execution</h3>
+            <button onclick="runSimple()">▶️ Run Simple JS</button>
+            <div class="result-display" id="simple-result">Ready to execute JavaScript...</div>
+        </div>
+
+        <div class="section">
+            <h3>JavaScript with Response</h3>
+            <div class="controls">
+                <select id="operation">
+                    <option value="add">Addition</option>
+                    <option value="multiply">Multiplication</option>
+                    <option value="power">Power</option>
+                </select>
+                <input type="number" id="num1" value="5" style="width: 80px;">
+                <input type="number" id="num2" value="3" style="width: 80px;">
+                <button onclick="runWithResponse()">🧮 Calculate</button>
+            </div>
+            <div class="result-display" id="calc-result">Select operation and click Calculate...</div>
+        </div>
+
+        <div class="section">
+            <h3>Complex JavaScript Processing</h3>
+            <div class="controls">
+                <input type="text" id="text-input" value="Hello WebUI World" style="width: 200px;" placeholder="Enter text to process">
+                <button onclick="runComplex()">🔄 Process Text</button>
+            </div>
+            <div class="result-display" id="complex-result">Enter text and click Process...</div>
+        </div>
+
+        <div class="section">
+            <h3>Send Data to JavaScript</h3>
+            <div class="controls">
+                <input type="text" id="message-input" value="Hello from Zig!" style="width: 150px;" placeholder="Message">
+                <input type="number" id="value-input" value="42" style="width: 80px;" placeholder="Value">
+                <button onclick="sendData()">📤 Send Data</button>
+            </div>
+            <div class="data-display" id="received-data">No data received yet...</div>
+        </div>
+
+        <div class="section">
+            <h3>Raw Binary Data</h3>
+            <div class="controls">
+                <input type="number" id="data-size" value="100" min="1" max="1024" style="width: 80px;">
+                <span>bytes</span>
+                <button onclick="sendRaw()">📊 Send Raw Data</button>
+            </div>
+            <div class="result-display" id="raw-result">Raw data display area...</div>
+        </div>
+
+        <div class="section">
+            <h3>Navigation</h3>
+            <div class="controls">
+                <input type="url" id="url-input" value="https://example.com" style="width: 250px;" placeholder="Enter URL">
+                <button onclick="navigate()">🌐 Navigate</button>
+                <button onclick="getPageInfo()">ℹ️ Get Page Info</button>
+            </div>
+            <div class="result-display" id="nav-result">Enter URL and navigate...</div>
+        </div>
+
+        <div class="section">
+            <h3>DOM Manipulation</h3>
+            <div class="controls">
+                <input type="text" id="new-content" value="Updated from Zig!" style="width: 200px;" placeholder="New content">
+                <button onclick="updateContent()">✏️ Update Dynamic Content</button>
+            </div>
+            <div id="dynamic-content">This content can be updated from Zig</div>
+        </div>
+
+        <div class="section">
+            <h3>JSON Data Exchange</h3>
+            <div class="controls">
+                <textarea id="json-input" rows="3" style="width: 100%;" placeholder="Enter JSON data">{"name": "WebUI", "version": "2.5.0", "language": "Zig"}</textarea>
+                <button onclick="sendJson()">📋 Send JSON</button>
+            </div>
+            <div class="result-display" id="json-result">JSON processing result will appear here...</div>
+        </div>
+    </div>
+
+    <script>
+        // Functions called from Zig
+        function receiveDataFromZig(data) {
+            const display = document.getElementById('received-data');
+            const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+            display.innerHTML = `
+                <strong>Received from Zig:</strong><br>
+                Message: ${parsed.message}<br>
+                Value: ${parsed.value}<br>
+                Timestamp: ${new Date(parsed.timestamp * 1000).toLocaleString()}
+            `;
+            console.log('Received data from Zig:', parsed);
+        }
+
+        function receiveRawData(rawData) {
+            const display = document.getElementById('raw-result');
+            const view = new Uint8Array(rawData);
+            const preview = Array.from(view.slice(0, 20))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join(' ');
+            
+            display.innerHTML = `
+                Received ${view.length} bytes of raw data
+                Preview (first 20 bytes): ${preview}${view.length > 20 ? '...' : ''}
+            `;
+            console.log('Received raw data:', view);
+        }
+
+        // UI event handlers
+        function runSimple() {
+            run_simple_js().then(result => {
+                document.getElementById('simple-result').textContent = result;
+            });
+        }
+
+        function runWithResponse() {
+            const operation = document.getElementById('operation').value;
+            const num1 = parseInt(document.getElementById('num1').value);
+            const num2 = parseInt(document.getElementById('num2').value);
+            
+            run_js_with_response(operation, num1, num2).then(result => {
+                document.getElementById('calc-result').textContent = 
+                    `${operation}(${num1}, ${num2}) = ${result}`;
+            });
+        }
+
+        function runComplex() {
+            const text = document.getElementById('text-input').value;
+            
+            run_complex_js(text).then(result => {
+                try {
+                    const parsed = JSON.parse(result);
+                    document.getElementById('complex-result').innerHTML = `
+                        <strong>Text Analysis:</strong><br>
+                        Original: ${parsed.original}<br>
+                        Length: ${parsed.length}<br>
+                        Uppercase: ${parsed.uppercase}<br>
+                        Word count: ${parsed.words}<br>
+                        Reversed: ${parsed.reversed}<br>
+                        Processed at: ${parsed.timestamp}
+                    `;
+                } catch (e) {
+                    document.getElementById('complex-result').textContent = result;
+                }
+            });
+        }
+
+        function sendData() {
+            const message = document.getElementById('message-input').value;
+            const value = parseInt(document.getElementById('value-input').value);
+            
+            send_data_to_js(message, value).then(result => {
+                console.log('Send data result:', result);
+            });
+        }
+
+        function sendRaw() {
+            const size = parseInt(document.getElementById('data-size').value);
+            
+            send_raw_data(size).then(result => {
+                console.log('Send raw data result:', result);
+            });
+        }
+
+        function navigate() {
+            const url = document.getElementById('url-input').value;
+            
+            navigate_to_url(url).then(result => {
+                document.getElementById('nav-result').textContent = result;
+            });
+        }
+
+        function getPageInfo() {
+            get_page_content().then(result => {
+                try {
+                    const parsed = JSON.parse(result);
+                    document.getElementById('nav-result').innerHTML = `
+                        <strong>Page Information:</strong><br>
+                        Title: ${parsed.title}<br>
+                        URL: ${parsed.url}<br>
+                        Elements: ${parsed.elements}<br>
+                        User Agent: ${parsed.userAgent.substring(0, 50)}...
+                    `;
+                } catch (e) {
+                    document.getElementById('nav-result').textContent = result;
+                }
+            });
+        }
+
+        function updateContent() {
+            const newText = document.getElementById('new-content').value;
+            
+            manipulate_dom('dynamic-content', newText).then(result => {
+                console.log('DOM manipulation result:', result);
+            });
+        }
+
+        function sendJson() {
+            const jsonText = document.getElementById('json-input').value;
+            
+            try {
+                // Validate JSON
+                JSON.parse(jsonText);
+                
+                handle_json_data(jsonText).then(result => {
+                    document.getElementById('json-result').textContent = result;
+                });
+            } catch (e) {
+                document.getElementById('json-result').textContent = 'Invalid JSON: ' + e.message;
+            }
+        }
+
+        // Initialize page
+        console.log('JavaScript Execution Example loaded');
+        getPageInfo(); // Auto-load page info on start
+    </script>
+</body>
+</html>

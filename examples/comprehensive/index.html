@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="/webui.js"></script>
+    <title>WebUI Comprehensive Showcase</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            overflow-x: hidden;
+        }
+        
+        .header {
+            background: rgba(0,0,0,0.3);
+            padding: 20px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
+        }
+        
+        .status-bar {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .status-item {
+            background: rgba(255,255,255,0.1);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            background: rgba(255,255,255,0.15);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .card h3 {
+            margin-bottom: 20px;
+            color: #FFD700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: linear-gradient(45deg, #4ECDC4, #FF6B6B);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .primary { background: linear-gradient(45deg, #3498DB, #2980B9) !important; }
+        .success { background: linear-gradient(45deg, #27AE60, #2ECC71) !important; }
+        .warning { background: linear-gradient(45deg, #F39C12, #E67E22) !important; }
+        .danger { background: linear-gradient(45deg, #E74C3C, #C0392B) !important; }
+        
+        input, select, textarea {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 25px;
+            margin: 5px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            font-size: 14px;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+        
+        .result-display {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .log-area {
+            background: rgba(0,0,0,0.5);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        .log-entry {
+            margin: 5px 0;
+            padding: 8px;
+            border-radius: 5px;
+            border-left: 3px solid #4ECDC4;
+            background: rgba(255,255,255,0.05);
+            font-size: 12px;
+        }
+        
+        .log-entry.info { border-left-color: #3498DB; }
+        .log-entry.success { border-left-color: #27AE60; }
+        .log-entry.warning { border-left-color: #F39C12; }
+        .log-entry.error { border-left-color: #E74C3C; }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+            max-width: 300px;
+        }
+        
+        .notification.show {
+            transform: translateX(0);
+        }
+        
+        .progress-bar {
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            height: 8px;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            background: linear-gradient(90deg, #27AE60, #2ECC71);
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        
+        .footer {
+            background: rgba(0,0,0,0.3);
+            padding: 20px;
+            text-align: center;
+            margin-top: 40px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .status-bar {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            button, input, select {
+                width: 100%;
+                margin: 5px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 WebUI Comprehensive Showcase</h1>
+        <p>Demonstrating the full capabilities of the Zig WebUI library</p>
+        <div class="status-bar">
+            <div class="status-item">🌐 <span id="status-server">Loading...</span></div>
+            <div class="status-item">👥 <span id="status-users">0</span> Users</div>
+            <div class="status-item">💬 <span id="status-messages">0</span> Messages</div>
+            <div class="status-item">📁 <span id="status-files">0</span> Files</div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Main Dashboard -->
+        <div class="dashboard">
+            <!-- User Management -->
+            <div class="card">
+                <h3>👤 User Management</h3>
+                <div class="controls">
+                    <input type="text" id="username" placeholder="Username" value="User_001">
+                    <button onclick="simulateLogin()" class="success">🔐 Login</button>
+                    <button onclick="simulateLogout()" class="warning">🚪 Logout</button>
+                </div>
+                <div class="result-display" id="user-result">User management ready</div>
+            </div>
+            
+            <!-- Messaging System -->
+            <div class="card">
+                <h3>💬 Messaging</h3>
+                <div class="controls">
+                    <input type="text" id="message-text" placeholder="Enter message" style="width: 200px;">
+                    <button onclick="sendMessage()" class="primary">📤 Send</button>
+                    <button onclick="sendBroadcast()" class="warning">📢 Broadcast</button>
+                    <input type="file" id="file-input" style="margin: 5px;">
+                    <button onclick="uploadRealFile()" class="success">📁 Upload File</button>
+                </div>
+                <div class="result-display" id="message-result">Messaging system ready</div>
+            </div>
+            
+            <!-- Data Processing -->
+            <div class="card">
+                <h3>⚙️ Data Processing</h3>
+                <div class="controls">
+                    <input type="text" id="process-data" placeholder="Enter data to process" value="Hello WebUI">
+                    <select id="process-operation">
+                        <option value="reverse">Reverse</option>
+                        <option value="uppercase">Uppercase</option>
+                        <option value="hash">Hash</option>
+                    </select>
+                    <button onclick="processData()" class="primary">🔄 Process</button>
+                </div>
+                <div class="result-display" id="process-result">Data processing ready</div>
+            </div>
+            
+            <!-- Command Execution -->
+            <div class="card">
+                <h3>⚡ Command Execution</h3>
+                <div class="controls">
+                    <select id="command-select">
+                        <option value="echo">Echo</option>
+                        <option value="time">Time</option>
+                        <option value="random">Random</option>
+                        <option value="memory">Memory</option>
+                    </select>
+                    <input type="text" id="command-args" placeholder="Arguments" value="Hello World">
+                    <button onclick="executeCommand()" class="success">▶️ Execute</button>
+                </div>
+                <div class="result-display" id="command-result">Command execution ready</div>
+            </div>
+            
+            <!-- Performance Testing -->
+            <div class="card">
+                <h3>📊 Performance Testing</h3>
+                <div class="controls">
+                    <input type="number" id="perf-iterations" value="100000" min="1000" max="1000000" style="width: 120px;">
+                    <select id="perf-operation">
+                        <option value="math">Math Operations</option>
+                        <option value="string">String Operations</option>
+                    </select>
+                    <button onclick="runPerformanceTest()" class="warning">🏃 Run Test</button>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="perf-progress"></div>
+                </div>
+                <div class="result-display" id="perf-result">Performance testing ready</div>
+            </div>
+            
+            <!-- Settings Management -->
+            <div class="card">
+                <h3>⚙️ Settings</h3>
+                <div class="controls">
+                    <select id="settings-action">
+                        <option value="set">Set</option>
+                        <option value="get">Get</option>
+                        <option value="delete">Delete</option>
+                    </select>
+                    <input type="text" id="settings-key" placeholder="Setting key" value="theme">
+                    <input type="text" id="settings-value" placeholder="Setting value" value="dark">
+                    <button onclick="manageSettings()" class="primary">⚙️ Apply</button>
+                </div>
+                <div class="result-display" id="settings-result">Settings management ready</div>
+            </div>
+        </div>
+        
+        <!-- System Information -->
+        <div class="card">
+            <h3>🖥️ System Information</h3>
+            <div class="controls">
+                <button onclick="getSystemInfo()" class="primary">🔍 Get System Info</button>
+                <button onclick="refreshStatus()" class="success">🔄 Refresh Status</button>
+                <button onclick="clearLogs()" class="danger">🧹 Clear Logs</button>
+            </div>
+            <div class="result-display" id="system-result">Click "Get System Info" to load system details</div>
+        </div>
+        
+        <!-- Activity Log -->
+        <div class="card">
+            <h3>📝 Activity Log</h3>
+            <div class="log-area" id="activity-log">
+                <!-- Initial log entries will be dynamically added by JavaScript -->
+            </div>
+        </div>
+        
+        <!-- Global Controls -->
+        <div class="card">
+            <h3>🌐 Global Controls</h3>
+            <div class="controls">
+                <button onclick="simulateActivity()" class="primary">🎭 Simulate Activity</button>
+                <button onclick="stressTest()" class="warning">🔥 Stress Test</button>
+                <button onclick="exportData()" class="success">💾 Export Data</button>
+                <button onclick="showAdvancedFeatures()" class="primary">⚡ Advanced Features</button>
+            </div>
+            <div class="result-display" id="global-result">Global controls ready</div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <p>WebUI Zig Library Comprehensive Showcase | Powered by Zig & WebUI</p>
+        <p>🌟 Demonstrating window management, file handling, JavaScript execution, network configuration, and more!</p>
+    </div>
+    
+    <!-- Notification area -->
+    <div id="notification" class="notification"></div>
+
+    <script>
+        let operationCount = 0;
+        let responseTimes = [];
+        let activityTimer = null;
+        
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', function() {
+           console.log('DOM loaded, starting initialization...');
+            initializeApp();
+            startMonitoring();
+            logActivity('WebUI Comprehensive Showcase started', 'success');
+        });
+        
+        // Utility function to safely parse JSON with fallback
+        function safeParseJSON(jsonString, fallback = {}) {
+            try {
+                return JSON.parse(jsonString);
+            } catch (e) {
+                console.warn('Failed to parse JSON:', jsonString, e);
+                return fallback;
+            }
+        }
+        
+        // Utility function to validate and sanitize input
+        function sanitizeInput(input, maxLength = 100) {
+            if (typeof input !== 'string') return '';
+            return input.substring(0, maxLength).replace(/[<>'"]/g, '');
+        }
+        
+        function initializeApp() {
+            console.log('Initializing app...');
+            refreshStatus();
+            logActivity('Initializing comprehensive feature showcase...', 'info');
+            console.log('App initialization complete');
+        }
+        
+        function startMonitoring() {
+            // Update status every 1 second for real-time experience
+            setInterval(refreshStatus, 1000);
+            
+            // Simulate real-time activity
+            setInterval(simulateBackgroundActivity, 10000);
+           
+           console.log('Monitoring started - intervals set up');
+        }
+       
+        
+        function refreshStatus() {
+            const startTime = Date.now();
+            
+            get_app_status().then(result => {
+                const responseTime = Date.now() - startTime;
+                responseTimes.push(responseTime);
+                if (responseTimes.length > 10) responseTimes.shift();
+                
+                try {
+                    const status = safeParseJSON(result, {
+                        status: 'unknown',
+                        port: 0,
+                        users: 0,
+                        messages: 0,
+                        files: 0
+                    });
+                    
+                    document.getElementById('status-server').textContent = status.status + ' (Port: ' + status.port + ')';
+                    document.getElementById('status-users').textContent = status.users;
+                    document.getElementById('status-messages').textContent = status.messages;
+                    document.getElementById('status-files').textContent = status.files;
+                    
+                } catch (e) {
+                    console.error('Error parsing status:', e, 'Raw result:', result);
+                    document.getElementById('status-server').textContent = 'Parse Error';
+                }
+            }).catch(error => {
+                document.getElementById('status-server').textContent = 'Error';
+                console.error('Status update failed:', error);
+            });
+        }
+        
+        function simulateLogin() {
+            const username = sanitizeInput(document.getElementById('username').value || 'User_001', 50);
+            incrementOperation();
+            
+            user_action('login', username).then(result => {
+                document.getElementById('user-result').textContent = result;
+                
+                // Check if user was already online
+                if (result.includes('already online')) {
+                    logActivity(`Login attempt: ${username} already online`, 'warning');
+                    showNotification('User is already online', 'warning');
+                } else {
+                    logActivity(`User ${username} logged in`, 'success');
+                    showNotification('User logged in successfully', 'success');
+                }
+                refreshStatus(); // Update status after action
+            }).catch(error => {
+                console.error('Login failed:', error);
+                document.getElementById('user-result').textContent = 'Login failed: ' + error;
+                logActivity('Login failed', 'error');
+                showNotification('Login failed', 'error');
+            });
+        }
+        
+        function simulateLogout() {
+            const username = sanitizeInput(document.getElementById('username').value || 'User_001', 50);
+            incrementOperation();
+            
+            user_action('logout', username).then(result => {
+                document.getElementById('user-result').textContent = result;
+                
+                // Check if user was not online
+                if (result.includes('was not online')) {
+                    logActivity(`Logout attempt: ${username} was not online`, 'warning');
+                    showNotification('User was not online', 'warning');
+                } else {
+                    logActivity(`User ${username} logged out`, 'info');
+                    showNotification('User logged out', 'info');
+                }
+                refreshStatus(); // Update status after action
+            }).catch(error => {
+                console.error('Logout failed:', error);
+                document.getElementById('user-result').textContent = 'Logout failed: ' + error;
+                logActivity('Logout failed', 'error');
+                showNotification('Logout failed', 'error');
+            });
+        }
+        
+        function sendMessage() {
+            const messageInput = document.getElementById('message-text').value.trim();
+            
+            // Check if message is empty
+            if (!messageInput) {
+                showNotification('Message cannot be empty', 'warning');
+                document.getElementById('message-result').textContent = 'Error: Message cannot be empty';
+                return;
+            }
+            
+            const message = sanitizeInput(messageInput, 200);
+            incrementOperation();
+            
+            user_action('message', message).then(result => {
+                document.getElementById('message-result').textContent = result;
+                document.getElementById('message-text').value = '';
+                logActivity(`Message sent: ${message}`, 'info');
+                refreshStatus(); // Update status after action
+            });
+        }
+        
+        function sendBroadcast() {
+            const messageInput = document.getElementById('message-text').value.trim();
+            
+            // Check if broadcast message is empty
+            if (!messageInput) {
+                showNotification('Broadcast message cannot be empty', 'warning');
+                document.getElementById('message-result').textContent = 'Error: Broadcast message cannot be empty';
+                return;
+            }
+            
+            const message = sanitizeInput(messageInput, 200);
+            incrementOperation();
+            
+            send_notification(message, 'info').then(result => {
+                document.getElementById('message-result').textContent = result;
+                document.getElementById('message-text').value = '';
+                logActivity(`Broadcast sent: ${message}`, 'warning');
+                refreshStatus();
+            });
+        }
+        
+        function simulateUpload() {
+            // Generate a more realistic filename
+            const timestamp = Date.now();
+            const fileTypes = ['.txt', '.log', '.json', '.csv', '.md'];
+            const randomType = fileTypes[Math.floor(Math.random() * fileTypes.length)];
+            const filename = `upload_${timestamp}${randomType}`;
+            
+            incrementOperation();
+            
+            user_action('upload', filename).then(result => {
+                document.getElementById('message-result').textContent = result;
+                logActivity(`File simulated upload: ${filename}`, 'success');
+                showNotification('File uploaded successfully', 'success');
+                refreshStatus(); // Update status after action
+            }).catch(error => {
+                console.error('Upload failed:', error);
+                document.getElementById('message-result').textContent = 'Upload failed: ' + error;
+                logActivity('File upload failed', 'error');
+                showNotification('File upload failed', 'error');
+            });
+        }
+        
+        function uploadRealFile() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showNotification('Please select a file first', 'warning');
+                document.getElementById('message-result').textContent = 'Please select a file first';
+                return;
+            }
+            
+            // Validate file size (max 1MB for demo)
+            if (file.size > 1024 * 1024) {
+                showNotification('File size must be less than 1MB', 'error');
+                document.getElementById('message-result').textContent = 'File size must be less than 1MB';
+                return;
+            }
+            
+            // Read file content
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                incrementOperation();
+                
+                // Call backend upload function
+                upload_file(file.name, content).then(result => {
+                    document.getElementById('message-result').textContent = result;
+                    logActivity(`File upload successful: ${file.name} (${file.size} bytes)`, 'success');
+                    showNotification('File uploaded successfully', 'success');
+                    
+                    // Clear file input
+                    fileInput.value = '';
+                    
+                    refreshStatus(); // Update status after action
+                }).catch(error => {
+                    console.error('File upload failed:', error);
+                    document.getElementById('message-result').textContent = 'File upload failed: ' + error;
+                    logActivity(`File upload failed: ${file.name}`, 'error');
+                    showNotification('File upload failed', 'error');
+                });
+            };
+            
+            reader.onerror = function() {
+                showNotification('Failed to read file', 'error');
+                document.getElementById('message-result').textContent = 'Failed to read file';
+                logActivity('File read failed', 'error');
+            };
+            
+            // Read as text (for demo purposes)
+            reader.readAsText(file);
+        }
+        
+        function processData() {
+            const data = document.getElementById('process-data').value;
+            const operation = document.getElementById('process-operation').value;
+            incrementOperation();
+            
+            process_data(operation, data).then(result => {
+                document.getElementById('process-result').textContent = result;
+                logActivity(`Data processed: ${operation} on "${data}"`, 'info');
+            });
+        }
+        
+        function executeCommand() {
+            const command = document.getElementById('command-select').value;
+            const args = document.getElementById('command-args').value;
+            incrementOperation();
+            
+            execute_command(command, args).then(result => {
+                document.getElementById('command-result').textContent = result;
+                logActivity(`Command executed: ${command} ${args}`, 'info');
+            });
+        }
+        
+        function runPerformanceTest() {
+            const iterations = Math.max(1000, Math.min(1000000, parseInt(document.getElementById('perf-iterations').value) || 100000));
+            const operation = document.getElementById('perf-operation').value;
+            
+            // Validate inputs
+            if (!['math', 'string'].includes(operation)) {
+                showNotification('Invalid operation selected', 'error');
+                return;
+            }
+            
+            // Animate progress bar
+            const progressBar = document.getElementById('perf-progress');
+            progressBar.style.width = '0%';
+            
+            // Update iterations display
+            document.getElementById('perf-iterations').value = iterations;
+            logActivity(`Starting performance test: ${iterations} ${operation} operations`, 'info');
+            
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 10;
+                progressBar.style.width = progress + '%';
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                }
+            }, 200);
+            
+            incrementOperation();
+            
+            test_performance(iterations, operation).then(result => {
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                document.getElementById('perf-result').textContent = result;
+                logActivity(`Performance test completed: ${iterations} ${operation}`, 'success');
+                showNotification('Performance test completed', 'success');
+            }).catch(error => {
+                clearInterval(progressInterval);
+                progressBar.style.width = '0%';
+                console.error('Performance test failed:', error);
+                document.getElementById('perf-result').textContent = 'Test failed: ' + error;
+                logActivity('Performance test failed', 'error');
+            });
+        }
+        
+        function manageSettings() {
+            const action = document.getElementById('settings-action').value;
+            const key = document.getElementById('settings-key').value;
+            const value = document.getElementById('settings-value').value;
+            incrementOperation();
+            
+            manage_settings(action, key, value).then(result => {
+                document.getElementById('settings-result').textContent = result;
+                logActivity(`Settings: ${action} ${key} = ${value}`, 'info');
+                
+                // After setting a value, automatically clear the value field for next operation
+                if (action === 'set') {
+                    showNotification(`Setting '${key}' saved successfully`, 'success');
+                } else if (action === 'get') {
+                    showNotification(`Setting '${key}' retrieved`, 'info');
+                } else if (action === 'delete') {
+                    showNotification(`Setting '${key}' deleted`, 'warning');
+                }
+            }).catch(error => {
+                console.error('Settings operation failed:', error);
+                document.getElementById('settings-result').textContent = 'Settings operation failed: ' + error;
+                logActivity('Settings operation failed', 'error');
+                showNotification('Settings operation failed', 'error');
+            });
+        }
+        
+        function getSystemInfo() {
+            incrementOperation();
+            
+            get_system_info().then(result => {
+                try {
+                    const info = safeParseJSON(result, {
+                        os: 'unknown',
+                        arch: 'unknown',
+                        zigVersion: 'unknown',
+                        webuiVersion: 'unknown',
+                        timestamp: Date.now() / 1000
+                    });
+                    
+                    const formatted = `OS: ${info.os}
+Architecture: ${info.arch}
+Zig Version: ${info.zigVersion}
+WebUI Version: ${info.webuiVersion}
+Timestamp: ${new Date(info.timestamp * 1000).toLocaleString()}`;
+                    
+                    document.getElementById('system-result').textContent = formatted;
+                    logActivity('System information retrieved', 'info');
+                } catch (e) {
+                    console.error('Error processing system info:', e);
+                    document.getElementById('system-result').textContent = 'Error: ' + (result || 'No response');
+                }
+            }).catch(error => {
+                console.error('System info request failed:', error);
+                document.getElementById('system-result').textContent = 'Request failed: ' + error;
+            });
+        }
+        
+        function simulateActivity() {
+            logActivity('Simulating user activity...', 'warning');
+            
+            // Simulate multiple operations
+            setTimeout(() => simulateLogin(), 500);
+            setTimeout(() => sendMessage(), 1000);
+            setTimeout(() => processData(), 1500);
+            setTimeout(() => executeCommand(), 2000);
+            setTimeout(() => {
+                logActivity('Activity simulation completed', 'success');
+                showNotification('Activity simulation completed', 'success');
+            }, 2500);
+        }
+        
+        function stressTest() {
+            logActivity('Starting stress test...', 'warning');
+            showNotification('Stress test initiated', 'warning');
+            
+            let testCount = 0;
+            const stressInterval = setInterval(() => {
+                processData();
+                executeCommand();
+                testCount++;
+                
+                if (testCount >= 10) {
+                    clearInterval(stressInterval);
+                    logActivity('Stress test completed: 10 operations', 'success');
+                    showNotification('Stress test completed', 'success');
+                }
+            }, 100);
+        }
+        
+        function exportData() {
+            const data = {
+                timestamp: new Date().toISOString(),
+                operations: operationCount,
+                avgResponseTime: responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length || 0,
+                logs: Array.from(document.querySelectorAll('.log-entry')).map(entry => entry.textContent)
+            };
+            
+            const jsonData = JSON.stringify(data, null, 2);
+            document.getElementById('global-result').textContent = 'Exported data:\n' + jsonData;
+            logActivity('Data exported', 'info');
+        }
+        
+        function showAdvancedFeatures() {
+            const features = [
+                '🎯 Real-time event handling',
+                '🔄 Automatic status updates',
+                '📊 Performance monitoring',
+                '🌐 Multi-client support',
+                '🔒 Secure communication',
+                '📁 File management',
+                '⚡ Command execution',
+                '🎨 Dynamic UI updates'
+            ];
+            
+            document.getElementById('global-result').textContent = 
+                'Advanced Features:\n' + features.join('\n');
+            logActivity('Advanced features displayed', 'info');
+        }
+        
+        function clearLogs() {
+            document.getElementById('activity-log').innerHTML = '';
+            logActivity('Activity logs cleared', 'warning');
+        }
+        
+        function simulateBackgroundActivity() {
+            if (Math.random() > 0.7) {
+                logActivity('Background process executed', 'info');
+            }
+        }
+        
+        function logActivity(message, level = 'info') {
+            const logArea = document.getElementById('activity-log');
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry ' + level;
+            
+            // Sanitize message to prevent XSS
+            const sanitizedMessage = sanitizeInput(message, 500);
+            
+            // Display precise timestamp and relative time
+            const now = new Date();
+            const timestamp = now.toLocaleTimeString();
+            
+            logEntry.innerHTML = `<strong>${level.toUpperCase()}:</strong> ${sanitizedMessage}
+                <span style="float: right; opacity: 0.7;">${timestamp}</span>`;
+            
+            logArea.appendChild(logEntry);
+            logArea.scrollTop = logArea.scrollHeight;
+            
+            // Keep only last 50 entries
+            while (logArea.children.length > 50) {
+                logArea.removeChild(logArea.firstChild);
+            }
+            
+            // Also log to console for debugging
+            console.log(`[${level.toUpperCase()}] ${timestamp} ${sanitizedMessage}`);
+        }
+        
+        function showNotification(message, level = 'info') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = 'notification show ' + level;
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+        
+        function incrementOperation() {
+            operationCount++;
+        }
+        
+        // Global functions callable from Zig
+        window.showNotification = showNotification;
+        window.logActivity = logActivity;
+        
+        // Global error handlers
+        window.addEventListener('error', function(e) {
+            logActivity(`JavaScript Error: ${e.message} at ${e.filename}:${e.lineno}`, 'error');
+            showNotification('An error occurred', 'error');
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            logActivity(`Unhandled Promise Rejection: ${e.reason}`, 'error');
+            showNotification('Promise rejection occurred', 'error');
+        });
+        
+        console.log('WebUI Comprehensive Showcase loaded');
+        logActivity('WebUI comprehensive feature showcase initialization complete', 'success');
+    </script>
+</body>
+</html>
