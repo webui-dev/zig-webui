@@ -349,7 +349,7 @@ pub fn memcpy(dst: []u8, src: []const u8) void {
 
 /// Safely send raw data to the UI. All clients.
 pub fn sendRaw(self: webui, js_func: [:0]const u8, raw: []u8) void {
-    c.webui_send_raw(self.window_handle, js_func.ptr, @ptrCast(raw.ptr), raw.len);
+     c.webui_send_raw(self.window_handle, js_func.ptr, raw.ptr, raw.len);
 }
 
 /// Set a window in hidden mode.
@@ -1058,7 +1058,7 @@ pub const Event = extern struct {
         c.webui_send_raw_client(
             self,
             function.ptr,
-            @ptrCast(buffer.ptr),
+             buffer.ptr,
             buffer.len,
         );
     }
