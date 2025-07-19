@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="/webui.js"></script>
+    <title>Window Management Example</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        h1 {
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin-bottom: 30px;
+        }
+        .section {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 8px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            background: linear-gradient(45deg, #ee5a52, #ff6b6b);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        .size-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        input[type="number"] {
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            width: 80px;
+            text-align: center;
+        }
+        #info-display {
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        kbd {
+            background: rgba(255,255,255,0.2);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖼️ Window Management Example</h1>
+        
+        <div class="section">
+            <h3>Basic Window Controls</h3>
+            <button onclick="center_window().then(r => showResult(r))">🎯 Center</button>
+            <button onclick="close_window()">❌ Close</button>
+        </div>
+
+        <div class="section">
+            <h3>Window Modes</h3>
+            <button onclick="toggle_kiosk().then(r => showResult(r))">🔄 Toggle Kiosk Mode</button>
+        </div>
+
+        <div class="section">
+            <h3>Browser Features</h3>
+            <button onclick="show_browser_info().then(r => showResult(r))">🌐 Update Browser Info</button>
+        </div>
+
+        <div class="section">
+            <h3>Window Size Control</h3>
+            <div class="size-controls">
+                <label>Width:</label>
+                <input type="number" id="width" value="800" min="300" max="1920">
+                <label>Height:</label>
+                <input type="number" id="height" value="600" min="200" max="1080">
+                <button onclick="setSize()">📏 Set Size</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Multiple Windows</h3>
+            <button onclick="open_second_window().then(r => showResult(r))">🪟 Open Second Window</button>
+        </div>
+
+        <div class="section">
+            <h3>Window Information</h3>
+            <button onclick="getInfo()">ℹ️ Get Window Info</button>
+            <div id="info-display">Click "Get Window Info" to see details</div>
+        </div>
+
+        <div class="section">
+            <h3>Result Display</h3>
+            <div id="result-display" style="background: rgba(0,255,0,0.1); padding: 10px; border-radius: 5px;">
+                Ready...
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>💡 Browser Mode Tips</h3>
+            <div style="text-align: left; font-size: 0.9em;">
+                <p><strong>Keyboard Shortcuts:</strong></p>
+                <ul>
+                    <li><kbd>F11</kbd> - Toggle fullscreen</li>
+                    <li><kbd>Ctrl + Shift + I</kbd> - Developer tools</li>
+                    <li><kbd>Ctrl + R</kbd> - Refresh page</li>
+                    <li><kbd>Alt + F4</kbd> - Close window (Windows)</li>
+                    <li><kbd>Cmd + W</kbd> - Close window (macOS)</li>
+                    <li><kbd>Esc</kbd> - Exit fullscreen/kiosk mode</li>
+                </ul>
+                <p><strong>Features:</strong></p>
+                <ul>
+                    <li><strong>Kiosk Mode:</strong> WebUI native kiosk mode</li>
+                    <li><strong>Fullscreen:</strong> Standard fullscreen toggle</li>
+                    <li><strong>Window Info:</strong> Real-time browser and window details</li>
+                </ul>
+                <p><strong>Note:</strong> All features use WebUI native APIs.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function setSize() {
+            const width = parseInt(document.getElementById('width').value);
+            const height = parseInt(document.getElementById('height').value);
+            
+            if (width < 300 || height < 200) {
+                showResult('Size too small! Minimum: 300x200');
+                return;
+            }
+            
+            set_window_size(width, height).then(response => {
+                showResult(response);
+            });
+        }
+
+        function getInfo() {
+            get_window_info().then(info => {
+                document.getElementById('info-display').innerHTML = info;
+            });
+        }
+
+        function showResult(message) {
+            const display = document.getElementById('result-display');
+            display.innerHTML = message;
+            display.style.background = 'rgba(0,255,0,0.2)';
+            
+            setTimeout(() => {
+                display.style.background = 'rgba(0,255,0,0.1)';
+            }, 2000);
+        }
+
+        // Auto-refresh window info every 5 seconds
+        setInterval(() => {
+            get_window_info().then(info => {
+                const display = document.getElementById('info-display');
+                if (display.innerHTML !== 'Click "Get Window Info" to see details') {
+                    display.innerHTML = info;
+                }
+            });
+        }, 5000);
+    </script>
+</body>
+</html>
