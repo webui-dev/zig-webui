@@ -925,7 +925,7 @@ pub extern fn webui_interface_bind(
         element: [*:0]u8,
         event_number: usize,
         bind_id: usize,
-    ) void,
+    ) callconv(.C) void,
 ) callconv(.C) usize;
 
 /// @brief When using `webui_interface_bind()`, you may need this function to easily set a response.
