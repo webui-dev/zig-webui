@@ -231,8 +231,8 @@ pub fn setRootFolder(self: webui, path: [:0]const u8) !void {
 }
 
 /// Set custom browser folder path.
-pub fn setBrowserFolder(self: webui, path: [:0]const u8) void {
-    c.webui_set_browser_folder(self.window_handle, path.ptr);
+pub fn setBrowserFolder(path: [:0]const u8) void {
+    c.webui_set_browser_folder(path.ptr);
 }
 
 /// Set the web-server root folder path for all windows.
