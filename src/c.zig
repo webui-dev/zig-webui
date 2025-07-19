@@ -413,7 +413,7 @@ pub extern fn webui_malloc(size: usize) callconv(.C) ?*anyopaque;
 pub extern fn webui_send_raw(
     window: usize,
     function: [*:0]const u8,
-    raw: [*]const anyopaque,
+     raw: *const anyopaque,
     size: usize,
 ) callconv(.C) void;
 
@@ -429,7 +429,7 @@ pub extern fn webui_send_raw(
 pub extern fn webui_send_raw_client(
     e: *Event,
     function: [*:0]const u8,
-    raw: [*]const anyopaque,
+     raw: *const anyopaque,
     size: usize,
 ) callconv(.C) void;
 
