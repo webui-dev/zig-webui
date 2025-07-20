@@ -96,11 +96,18 @@ pub fn build(b: *Build) !void {
 // Function to generate API documentation
 fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
     // Create a temporary object for documentation generation
-    const webui_lib = b.addObject(.{
+    const webui_lib = b.addObject(if (builtin.zig_version.minor == 14) .{
         .name = "webui_lib",
         .root_source_file = b.path(b.pathJoin(&.{ "src", "webui.zig" })),
         .target = target,
         .optimize = optimize,
+    } else .{
+        .name = "webui_lib",
+        .root_module = b.addModule("webui_lib", .{
+            .root_source_file = b.path(b.pathJoin(&.{ "src", "webui.zig" })),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     webui_lib.root_module.addImport("flags", flags_module);
@@ -153,11 +160,18 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarge
         const path = b.pathJoin(&.{ "examples", example_name, "main.zig" });
 
         // Create an executable for each example
-        const exe = b.addExecutable(.{
+        const exe = b.addExecutable(if (builtin.zig_version.minor == 14) .{
             .name = example_name,
             .root_source_file = b.path(path),
             .target = target,
             .optimize = optimize,
+        } else .{
+            .name = example_name,
+            .root_module = b.addModule(example_name, .{
+                .root_source_file = b.path(path),
+                .target = target,
+                .optimize = optimize,
+            }),
         });
 
         // Add the webui module and link against the library
