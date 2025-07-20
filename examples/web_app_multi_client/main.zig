@@ -1,5 +1,6 @@
 const std = @import("std");
 const webui = @import("webui");
+const builtin = @import("builtin");
 
 // general purpose allocator
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -40,7 +41,11 @@ fn saveAll(e: *webui.Event) void {
     public_input = allocator.dupe(u8, publicInput) catch unreachable;
 
     // general new js
-    const js = std.fmt.allocPrintSentinel(
+    const js = if (builtin.zig_version.minor == 14) std.fmt.allocPrintZ(
+        allocator,
+        "document.getElementById(\"publicInput\").value = \"{s}\";",
+        .{publicInput},
+    ) catch unreachable else std.fmt.allocPrintSentinel(
         allocator,
         "document.getElementById(\"publicInput\").value = \"{s}\";",
         .{publicInput},
