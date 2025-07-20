@@ -40,10 +40,11 @@ fn saveAll(e: *webui.Event) void {
     public_input = allocator.dupe(u8, publicInput) catch unreachable;
 
     // general new js
-    const js = std.fmt.allocPrintZ(
+    const js = std.fmt.allocPrintSentinel(
         allocator,
         "document.getElementById(\"publicInput\").value = \"{s}\";",
         .{publicInput},
+        0,
     ) catch unreachable;
     // free js
     defer allocator.free(js);
