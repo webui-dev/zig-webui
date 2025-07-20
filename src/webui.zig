@@ -104,7 +104,7 @@ pub fn bind(
     comptime func: fn (e: *Event) void,
 ) !usize {
     const tmp_struct = struct {
-        fn handle(tmp_e: *Event) callconv(.C) void {
+        fn handle(tmp_e: *Event) callconv(.c) void {
             func(tmp_e);
         }
     };
@@ -248,7 +248,7 @@ pub fn setDefaultRootFolder(path: [:0]const u8) !void {
 /// This deactivates any previous handler set with `setFileHandlerWindow`.
 pub fn setFileHandler(self: webui, comptime handler: fn (filename: []const u8) ?[]const u8) void {
     const tmp_struct = struct {
-        fn handle(tmp_filename: [*:0]const u8, length: *c_int) callconv(.C) ?*const anyopaque {
+        fn handle(tmp_filename: [*:0]const u8, length: *c_int) callconv(.c) ?*const anyopaque {
             const len = std.mem.len(tmp_filename);
             const content = handler(tmp_filename[0..len]);
             if (content) |val| {
@@ -267,7 +267,7 @@ pub fn setFileHandler(self: webui, comptime handler: fn (filename: []const u8) ?
 /// This deactivates any previous handler set with `setFileHandler`.
 pub fn setFileHandlerWindow(self: webui, comptime handler: fn (window_handle: usize, filename: []const u8) ?[]const u8) void {
     const tmp_struct = struct {
-        fn handle(window: usize, tmp_filename: [*:0]const u8, length: *c_int) callconv(.C) ?*const anyopaque {
+        fn handle(window: usize, tmp_filename: [*:0]const u8, length: *c_int) callconv(.c) ?*const anyopaque {
             const len = std.mem.len(tmp_filename);
             const content = handler(window, tmp_filename[0..len]);
             if (content) |val| {
@@ -645,7 +645,7 @@ pub fn interfaceBind(
             tmp_element: [*:0]u8,
             tmp_event_number: usize,
             tmp_bind_id: usize,
-        ) callconv(.C) void {
+        ) callconv(.c) void {
             const len = std.mem.len(tmp_element);
             callback(tmp_window, tmp_event_type, tmp_element[0..len], tmp_event_number, tmp_bind_id);
         }
