@@ -57,7 +57,7 @@ pub const WebUIErrorInfo = struct {
 pub fn getLastError() WebUIErrorInfo {
     return .{
         .num = c.webui_get_last_error_number(),
-        .msg = c.webui_get_last_error_message(),
+        .msg = std.mem.span(c.webui_get_last_error_message()),
     };
 }
 
@@ -350,7 +350,7 @@ pub fn malloc(size: usize) ![]u8 {
 /// Copy raw data
 /// In general, you should not use this function
 pub fn memcpy(dst: []u8, src: []const u8) void {
-    c.webui_memcpy(@ptrCast(dst.ptr), @ptrCast(src.ptr), src.len);
+    c.webui_memcpy(@ptrCast(dst.ptr), @ptrCast(@constCast(src.ptr)), src.len);
 }
 
 /// Safely send raw data to the UI. All clients.

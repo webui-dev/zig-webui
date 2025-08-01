@@ -43,7 +43,7 @@ pub fn build(b: *Build) !void {
         log.info("enable TLS support", .{});
         if (!target.query.isNative()) {
             log.info("when enable tls, not support cross compile", .{});
-            std.posix.exit(1);
+            std.process.exit(1);
         }
     }
 
