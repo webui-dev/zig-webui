@@ -16,7 +16,7 @@ pub fn main() !void {
     // Set the root folder for the UI
     try mainW.setRootFolder("ui");
 
-    // Bind HTML elements with the specified ID to C functions
+    // Bind HTML elements with the specified ID to Zig functions
     _ = try mainW.bind("close_app", close);
 
     // Show the window, this will select the best browser to show

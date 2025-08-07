@@ -7,7 +7,7 @@ pub fn main() !void {
     // Create a window
     var nwin = webui.newWindow();
 
-    // Bind HTML elements with C functions
+    // Bind HTML elements with Zig functions
     _ = try nwin.bind("my_function_count", my_function_count);
     _ = try nwin.bind("my_function_exit", my_function_exit);
 
