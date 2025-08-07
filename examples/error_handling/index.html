@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Error Handling Example</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #ee9ca7 0%, #ffdde1 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #d32f2f;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        
+        .error-test {
+            margin: 20px 0;
+            padding: 20px;
+            background: #fff3e0;
+            border-radius: 10px;
+            border-left: 5px solid #ff9800;
+        }
+        
+        h2 {
+            color: #f57c00;
+            margin-top: 0;
+        }
+        
+        button {
+            background: #ff5722;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        
+        button:hover {
+            background: #d84315;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            border: 1px solid #ddd;
+            min-height: 50px;
+        }
+        
+        .error-result {
+            background: #ffebee;
+            border-color: #ef5350;
+            color: #c62828;
+        }
+        
+        .success-result {
+            background: #e8f5e9;
+            border-color: #66bb6a;
+            color: #2e7d32;
+        }
+        
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .warning {
+            background: #fff3e0;
+            color: #e65100;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚠️ Error Handling Demonstration</h1>
+        
+        <div class="info">
+            <strong>ℹ️ About This Example:</strong><br>
+            This example demonstrates proper error handling in WebUI applications.
+            Each test below intentionally triggers different types of errors to show
+            how to handle them gracefully.
+        </div>
+        
+        <div class="error-test">
+            <h2>Show Window Error</h2>
+            <p>Attempts to show a non-existent file to trigger an error.</p>
+            <button onclick="testShowError()">Test Show Error</button>
+            <div id="showResult" class="result">Click to test...</div>
+        </div>
+        
+        <div class="error-test">
+            <h2>Port Configuration Error</h2>
+            <p>Attempts to set a restricted port (port 1) to trigger an error.</p>
+            <button onclick="testPortError()">Test Port Error</button>
+            <div id="portResult" class="result">Click to test...</div>
+        </div>
+        
+        <div class="error-test">
+            <h2>Script Execution Error</h2>
+            <p>Attempts to execute invalid JavaScript code.</p>
+            <button onclick="testScriptError()">Test Script Error</button>
+            <div id="scriptResult" class="result">Click to test...</div>
+        </div>
+        
+        <div class="error-test">
+            <h2>Encoding/Decoding Error</h2>
+            <p>Tests encoding and attempts to decode invalid base64 data.</p>
+            <button onclick="testEncodeError()">Test Encode/Decode Error</button>
+            <div id="encodeResult" class="result">Click to test...</div>
+        </div>
+        
+        <div class="error-test">
+            <h2>Window ID Error</h2>
+            <p>Attempts to create a window with an invalid ID (0).</p>
+            <button onclick="testWindowIdError()">Test Window ID Error</button>
+            <div id="windowIdResult" class="result">Click to test...</div>
+        </div>
+        
+        <div class="error-test">
+            <h2>Get Last Error Information</h2>
+            <p>Retrieves the last error information from WebUI.</p>
+            <button onclick="getLastError()">Get Last Error</button>
+            <div id="lastErrorResult" class="result">Click to get last error...</div>
+        </div>
+        
+        <div class="error-test">
+            <h2>Timeout Configuration</h2>
+            <p>Shows current timeout configuration.</p>
+            <button onclick="testTimeout()">Check Timeout</button>
+            <div id="timeoutResult" class="result">Click to check...</div>
+        </div>
+        
+        <div class="warning">
+            ⚠️ Note: Some errors are expected and demonstrate proper error handling.
+        </div>
+    </div>
+    
+    <script>
+        async function testShowError() {
+            try {
+                const result = await test_show_error();
+                showResult('showResult', result, true);
+            } catch (error) {
+                showResult('showResult', `JavaScript Error: ${error}`, true);
+            }
+        }
+        
+        async function testPortError() {
+            try {
+                const result = await test_port_error();
+                showResult('portResult', result, true);
+            } catch (error) {
+                showResult('portResult', `JavaScript Error: ${error}`, true);
+            }
+        }
+        
+        async function testScriptError() {
+            try {
+                const result = await test_script_error();
+                showResult('scriptResult', result, true);
+            } catch (error) {
+                showResult('scriptResult', `JavaScript Error: ${error}`, true);
+            }
+        }
+        
+        async function testEncodeError() {
+            try {
+                const result = await test_encode_error();
+                showResult('encodeResult', result, result.includes('Error'));
+            } catch (error) {
+                showResult('encodeResult', `JavaScript Error: ${error}`, true);
+            }
+        }
+        
+        async function testWindowIdError() {
+            try {
+                const result = await test_window_id_error();
+                showResult('windowIdResult', result, true);
+            } catch (error) {
+                showResult('windowIdResult', `JavaScript Error: ${error}`, true);
+            }
+        }
+        
+        async function getLastError() {
+            try {
+                const result = await get_last_error();
+                showResult('lastErrorResult', result, false);
+            } catch (error) {
+                showResult('lastErrorResult', `JavaScript Error: ${error}`, true);
+            }
+        }
+        
+        async function testTimeout() {
+            try {
+                const result = await test_timeout();
+                showResult('timeoutResult', result, false);
+            } catch (error) {
+                showResult('timeoutResult', `JavaScript Error: ${error}`, true);
+            }
+        }
+        
+        function showResult(elementId, message, isError) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'result ' + (isError ? 'error-result' : 'success-result');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Browser Profiles Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .profile-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #764ba2;
+        }
+        input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        #info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f4f8;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Browser Profiles Management</h1>
+        
+        <div class="profile-section">
+            <h2>Current Profile</h2>
+            <p>This window is using the default browser profile.</p>
+            <p>Custom parameters: --disable-gpu --disable-dev-shm-usage</p>
+        </div>
+        
+        <div class="profile-section">
+            <h2>Profile Actions</h2>
+            <input type="text" id="profileName" placeholder="Enter profile name">
+            <button onclick="switchToProfile()">Switch Profile</button>
+            <button onclick="deleteProfile()">Delete Current Profile</button>
+            <button onclick="getBrowserInfo()">Show Browser Info</button>
+        </div>
+        
+        <div id="info"></div>
+    </div>
+    
+    <script>
+        async function switchToProfile() {
+            const profileName = document.getElementById('profileName').value;
+            if (profileName) {
+                const result = await switch_profile(profileName);
+                document.getElementById('info').textContent = result;
+            } else {
+                document.getElementById('info').textContent = 'Please enter a profile name';
+            }
+        }
+        
+        async function deleteProfile() {
+            const result = await delete_profile();
+            document.getElementById('info').textContent = result;
+        }
+        
+        async function getBrowserInfo() {
+            const info = await show_info();
+            document.getElementById('info').textContent = info;
+        }
+    </script>
+</body>
+</html>
