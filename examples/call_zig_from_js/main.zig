@@ -65,7 +65,7 @@ fn my_function_string(e: *webui.Event) void {
 }
 
 fn getInteger(n1: i64, n2: i64, n3: i64, f1: f64) void {
-    std.debug.print("number is {},{},{},{}", .{
+    std.debug.print("number is {},{},{},{}\n", .{
         n1, n2, n3, f1,
     });
 }
@@ -96,7 +96,7 @@ fn my_function_integer(e: *webui.Event) void {
 }
 
 fn getBool(b1: bool, b2: bool) void {
-    std.debug.print("boolean is {},{}", .{
+    std.debug.print("boolean is {},{}\n", .{
         b1, b2,
     });
 }
