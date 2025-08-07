@@ -65,7 +65,7 @@ fn my_function_string(e: *webui.Event) void {
 }
 
 fn getInteger(n1: i64, n2: i64, n3: i64, f1: f64) void {
-    std.debug.print("number is {},{},{},{}\n", .{
+    std.debug.print("number is {},{},{},{d}\n", .{
         n1, n2, n3, f1,
     });
 }
@@ -92,7 +92,7 @@ fn my_function_integer(e: *webui.Event) void {
 
     const float_1 = e.getFloatAt(3);
     // 12345.6789
-    std.debug.print("my_function_integer 4: {}\n", .{float_1});
+    std.debug.print("my_function_integer 4: {d}\n", .{float_1});
 }
 
 fn getBool(b1: bool, b2: bool) void {
