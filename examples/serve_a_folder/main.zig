@@ -12,7 +12,7 @@ pub fn main() !void {
     MyWindow = try webui.newWindowWithId(1);
     MySecondWindow = try webui.newWindowWithId(2);
 
-    // Bind HTML element IDs with a C functions
+    // Bind HTML element IDs with a Zig functions
     _ = try MyWindow.bind("SwitchToSecondPage", switch_second_window);
     _ = try MyWindow.bind("OpenNewWindow", show_second_window);
     _ = try MyWindow.bind("Exit", exit_app);

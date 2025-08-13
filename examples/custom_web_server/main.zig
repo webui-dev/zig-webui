@@ -9,7 +9,7 @@ pub fn main() !void {
     // Bind all events
     _ = try nwin.bind("", events);
 
-    // Bind HTML elements with C functions
+    // Bind HTML elements with Zig functions
     _ = try nwin.bind("my_backend_func", my_backend_func);
 
     // Set the web-server/WebSocket port that WebUI should
