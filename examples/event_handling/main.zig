@@ -2,6 +2,7 @@
 //! This example demonstrates advanced event handling, context management, and multi-client support
 const std = @import("std");
 const webui = @import("webui");
+const builtin = @import("builtin");
 
 const html = @embedFile("index.html");
 
@@ -25,7 +26,14 @@ fn ensureContextsInitialized() void {
         global_user_contexts = std.AutoHashMap(usize, *UserContext).init(allocator);
     }
     if (online_users == null) {
-        online_users = std.ArrayList(OnlineUser).init(allocator);
+        // Version compatibility: Zig 0.14/0.15 use managed ArrayList, 0.16+ use unmanaged
+        if (comptime builtin.zig_version.minor >= 16) {
+            // Zig 0.16+ - ArrayList is unmanaged by default
+            online_users = std.ArrayList(OnlineUser){};
+        } else {
+            // Zig 0.14/0.15 - ArrayList is managed
+            online_users = std.ArrayList(OnlineUser).init(allocator);
+        }
     }
 }
 
@@ -214,9 +222,18 @@ fn userLogin(e: *webui.Event) void {
     // Add user to online list
     ensureContextsInitialized();
     if (online_users) |*users| {
-        users.append(OnlineUser{ .client_id = e.client_id, .username = context.username }) catch {
-            std.debug.print("Failed to add user to online list\n", .{});
-        };
+        // Version compatibility for append method
+        if (comptime builtin.zig_version.minor >= 16) {
+            // Zig 0.16+ - unmanaged ArrayList needs allocator parameter
+            users.append(allocator, OnlineUser{ .client_id = e.client_id, .username = context.username }) catch {
+                std.debug.print("Failed to add user to online list\n", .{});
+            };
+        } else {
+            // Zig 0.14/0.15 - managed ArrayList doesn't need allocator parameter
+            users.append(OnlineUser{ .client_id = e.client_id, .username = context.username }) catch {
+                std.debug.print("Failed to add user to online list\n", .{});
+            };
+        }
     }
     
     // Broadcast user list update to all clients
