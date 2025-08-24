@@ -4,7 +4,6 @@ const builtin = @import("builtin");
 
 pub fn main() !void {
     const window = webui.newWindow();
-    defer window.destroy();
 
     // Set window properties before showing
     window.setSize(1024, 768);
@@ -24,8 +23,10 @@ pub fn main() !void {
     // Set connection timeout (0 means wait forever)
     webui.setTimeout(30); // 30 seconds timeout
 
-    // Set window icon (base64 encoded favicon)
-    const icon_svg = "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjgiIGZpbGw9IiM0Mjg1RjQiLz48L3N2Zz4=";
+    // Set window icon (raw SVG string)
+    const icon_svg = 
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\">" ++
+        "<circle cx=\"8\" cy=\"8\" r=\"8\" fill=\"#4285F4\"/></svg>";
     window.setIcon(icon_svg, "image/svg+xml");
 
     // Bind window control events
@@ -57,8 +58,15 @@ fn centerWindow(e: *webui.Event) void {
 fn toggleHide(e: *webui.Event) void {
     const window = e.getWindow();
     const hide = e.getBool();
-    window.setHide(hide);
-    e.returnString(if (hide) "Window hidden" else "Window shown");
+    if (hide) {
+        // 使用 WebUI API 最小化窗口，避免触发 wait() 返回
+        window.minimize();
+        e.returnString("Window minimized");
+    } else {
+        // 使用 WebUI API 最大化/还原窗口
+        window.maximize();
+        e.returnString("Window maximized");
+    }
 }
 
 fn resizeWindow(e: *webui.Event) void {
@@ -144,6 +152,6 @@ fn getProcessInfo(e: *webui.Event) void {
 
 fn destroyWindow(e: *webui.Event) void {
     const window = e.getWindow();
-    e.returnString("Window will be destroyed");
-    window.destroy();
+    window.close();
+    e.returnString("Window closed");
 }
