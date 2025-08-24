@@ -458,8 +458,8 @@ pub fn win32GetHwnd(self: webui) !windows.HWND {
         @compileError("Note: method win32GetHwnd only can call on MS windows!");
     }
     const tmp_hwnd = c.webui_win32_get_hwnd(self.window_handle);
-    if (tmp_hwnd) {
-        return @ptrCast(tmp_hwnd);
+    if (tmp_hwnd) |hwnd| {
+        return @ptrCast(hwnd);
     } else {
         return WebUIError.HWNDError;
     }
