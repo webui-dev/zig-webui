@@ -27,7 +27,7 @@ fn ensureContextsInitialized() void {
     }
     if (online_users == null) {
         // Version compatibility: Zig 0.14/0.15 use managed ArrayList, 0.16+ use unmanaged
-        if (comptime builtin.zig_version.minor >= 16) {
+        if (comptime builtin.zig_version.minor >= 15) {
             // Zig 0.16+ - ArrayList is unmanaged by default
             online_users = std.ArrayList(OnlineUser){};
         } else {
@@ -223,7 +223,7 @@ fn userLogin(e: *webui.Event) void {
     ensureContextsInitialized();
     if (online_users) |*users| {
         // Version compatibility for append method
-        if (comptime builtin.zig_version.minor >= 16) {
+        if (comptime builtin.zig_version.minor >= 15) {
             // Zig 0.16+ - unmanaged ArrayList needs allocator parameter
             users.append(allocator, OnlineUser{ .client_id = e.client_id, .username = context.username }) catch {
                 std.debug.print("Failed to add user to online list\n", .{});
