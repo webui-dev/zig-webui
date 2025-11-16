@@ -50,7 +50,7 @@ const UserContext = struct {
     username: []const u8,
     session_start: i64,
     click_count: u32,
-    
+
     fn create(user_id: u32, username: []const u8) !*UserContext {
         const context = try allocator.create(UserContext);
         context.* = UserContext{
@@ -61,7 +61,7 @@ const UserContext = struct {
         };
         return context;
     }
-    
+
     fn destroy(self: *UserContext) void {
         allocator.free(self.username);
         allocator.destroy(self);
@@ -70,21 +70,21 @@ const UserContext = struct {
 
 pub fn main() !void {
     // Configure for multi-client support
-    webui.setConfig(.multi_client, true);  // Enable multi-client mode
-    webui.setConfig(.use_cookies, true);   // Use cookies for client identification
-    
+    webui.setConfig(.multi_client, true); // Enable multi-client mode
+    webui.setConfig(.use_cookies, true); // Use cookies for client identification
+
     // Set public access to allow connections from other devices
     // This allows other devices on the same network to connect
-    
+
     // Create window
     var nwin = webui.newWindow();
-    
+
     // Allow public network access (other devices can connect)
     nwin.setPublic(true);
-    
+
     // Set event blocking mode
     nwin.setEventBlocking(false); // Non-blocking events
-    
+
     // Bind event handlers with context
     _ = try nwin.bind("user_login", userLogin);
     _ = try nwin.bind("user_logout", userLogout);
@@ -95,19 +95,19 @@ pub fn main() !void {
     _ = try nwin.bind("broadcast_message", broadcastMessage);
     _ = try nwin.bind("client_connect", clientConnect);
     _ = try nwin.bind("client_disconnect", clientDisconnect);
-    
+
     // Bind interface handlers for advanced event management
     _ = try nwin.interfaceBind("interface_handler", interfaceEventHandler);
-    
+
     // Bind universal event handler (empty element name = all events)
     _ = try nwin.bind("", universalEventHandler);
-    
+
     // Show window with multi-client support
     // Try to show embedded HTML first
     nwin.show(html) catch |err| {
         // If that fails, try alternative approach
         std.debug.print("Warning: Failed to show embedded HTML ({}), trying alternative method...\n", .{err});
-        
+
         // Write HTML to temporary file and use startServer
         const temp_file = "temp_index.html";
         const file = std.fs.cwd().createFile(temp_file, .{}) catch |file_err| {
@@ -116,35 +116,35 @@ pub fn main() !void {
         };
         defer file.close();
         defer std.fs.cwd().deleteFile(temp_file) catch {};
-        
+
         file.writeAll(html) catch |write_err| {
             std.debug.print("Error: Could not write HTML content: {}\n", .{write_err});
             return;
         };
-        
+
         // Start server with file
         const url = nwin.startServer(temp_file) catch |server_err| {
             std.debug.print("Error: Could not start server: {}\n", .{server_err});
             return;
         };
-        
+
         std.debug.print("📍 Server URL: {s}\n", .{url});
-        
+
         // Open in default browser
         webui.openUrl(@as([*c]const u8, @ptrCast(url.ptr))[0..url.len :0]);
     };
-    
+
     // Get and display server information
     const port = nwin.getPort() catch |err| blk: {
         std.debug.print("Warning: Could not get server port ({})\n", .{err});
         break :blk @as(usize, 0);
     };
-    
+
     const url = nwin.getUrl() catch |err| blk: {
         std.debug.print("Warning: Could not get server URL ({})\n", .{err});
         break :blk @as([:0]const u8, "unknown");
     };
-    
+
     // Print multi-client instructions
     std.debug.print("\n🌐 Multi-Client Event Handling Server Started!\n", .{});
     std.debug.print("📍 Server URL: {s}\n", .{url});
@@ -180,12 +180,12 @@ pub fn main() !void {
     std.debug.print("   • Send direct messages between users\n", .{});
     std.debug.print("   • Test broadcast messages\n", .{});
     std.debug.print("   • Click tracking per user\n\n", .{});
-    
+
     std.debug.print("Event handling server started. Multi-client support enabled.\n", .{});
-    
+
     // Wait for all windows to close
     webui.wait();
-    
+
     // Clean up any remaining contexts
     cleanupAllContexts();
     webui.clean();
@@ -200,26 +200,26 @@ fn getLocalIPAddress() ![]const u8 {
 fn userLogin(e: *webui.Event) void {
     const username = e.getString();
     const user_id = @as(u32, @intCast(e.getIntAt(1)));
-    
-    std.debug.print("User login attempt: {} - {s}\n", .{user_id, username});
-    
+
+    std.debug.print("User login attempt: {} - {s}\n", .{ user_id, username });
+
     // Create user context
     const context = UserContext.create(user_id, username) catch {
         e.returnString("Login failed: Unable to create user context");
         return;
     };
-    
+
     // Set context for this element
     const win = e.getWindow();
     // Set context for the calling element and make it available globally
     // We'll use a window-wide context storage
     win.setContext("user_login", @ptrCast(context));
-    
+
     // Store context globally using client ID as key
     getContextsMap().put(e.client_id, context) catch {
         std.debug.print("Failed to store global context for client {}\n", .{e.client_id});
     };
-    
+
     // Add user to online list
     ensureContextsInitialized();
     if (online_users) |*users| {
@@ -236,15 +236,14 @@ fn userLogin(e: *webui.Event) void {
             };
         }
     }
-    
+
     // Broadcast user list update to all clients
     broadcastUserListUpdate();
-    
+
     // Return success response
     var response: [257]u8 = undefined; // +1 for null terminator
-    const msg = std.fmt.bufPrint(response[0..256], 
-        "Welcome {s}! User ID: {}, Session started.", .{username, user_id}) catch "";
-    
+    const msg = std.fmt.bufPrint(response[0..256], "Welcome {s}! User ID: {}, Session started.", .{ username, user_id }) catch "";
+
     // Ensure null termination
     response[msg.len] = 0;
     const null_terminated: [:0]const u8 = response[0..msg.len :0];
@@ -258,24 +257,22 @@ fn userLogout(e: *webui.Event) void {
         e.returnString("No active session found");
         return;
     };
-    
+
     // Calculate session duration
     const session_duration = compat.timestamp() - context.session_start;
-    
+
     var response: [257]u8 = undefined; // +1 for null terminator
-    const msg = std.fmt.bufPrint(response[0..256], 
-        "Goodbye {s}! Session duration: {}s, Total clicks: {}", 
-        .{context.username, session_duration, context.click_count}) catch "";
-    
+    const msg = std.fmt.bufPrint(response[0..256], "Goodbye {s}! Session duration: {}s, Total clicks: {}", .{ context.username, session_duration, context.click_count }) catch "";
+
     // Ensure null termination
     response[msg.len] = 0;
     const null_terminated: [:0]const u8 = response[0..msg.len :0];
     e.returnString(null_terminated);
-    std.debug.print("User {s} logged out. Session: {}s\n", .{context.username, session_duration});
-    
+    std.debug.print("User {s} logged out. Session: {}s\n", .{ context.username, session_duration });
+
     // Remove from global context storage
     _ = getContextsMap().remove(e.client_id);
-    
+
     // Remove from online users list
     if (online_users) |*users| {
         var i: usize = 0;
@@ -287,35 +284,33 @@ fn userLogout(e: *webui.Event) void {
             i += 1;
         }
     }
-    
+
     // Broadcast user list update to all clients
     broadcastUserListUpdate();
-    
+
     // Clean up context
     context.destroy();
 }
 
 fn trackClick(e: *webui.Event) void {
     const button_name = e.getString();
-    
+
     // Get user context from global storage
     const context = getContextsMap().get(e.client_id) orelse {
         e.returnString("No active session - please login first");
         return;
     };
-    
+
     context.click_count += 1;
-    
+
     var response: [257]u8 = undefined; // +1 for null terminator
-    const msg = std.fmt.bufPrint(response[0..256], 
-        "Button '{s}' clicked by {s}. Total clicks: {}", 
-        .{button_name, context.username, context.click_count}) catch "";
-    
+    const msg = std.fmt.bufPrint(response[0..256], "Button '{s}' clicked by {s}. Total clicks: {}", .{ button_name, context.username, context.click_count }) catch "";
+
     // Ensure null termination
     response[msg.len] = 0;
     const null_terminated: [:0]const u8 = response[0..msg.len :0];
     e.returnString(null_terminated);
-    std.debug.print("Click tracked: {s} by {s} ({})\n", .{button_name, context.username, context.click_count});
+    std.debug.print("Click tracked: {s} by {s} ({})\n", .{ button_name, context.username, context.click_count });
 }
 
 fn getUserInfo(e: *webui.Event) void {
@@ -324,14 +319,12 @@ fn getUserInfo(e: *webui.Event) void {
         e.returnString("{\"error\":\"No active session\"}");
         return;
     };
-    
+
     const session_time = compat.timestamp() - context.session_start;
-    
+
     var response: [513]u8 = undefined; // +1 for null terminator
-    const json = std.fmt.bufPrint(response[0..512], 
-        "{{\"userId\":{},\"username\":\"{s}\",\"sessionTime\":{},\"clickCount\":{},\"clientId\":{}}}", 
-        .{context.user_id, context.username, session_time, context.click_count, e.client_id}) catch "";
-    
+    const json = std.fmt.bufPrint(response[0..512], "{{\"userId\":{},\"username\":\"{s}\",\"sessionTime\":{},\"clickCount\":{},\"clientId\":{}}}", .{ context.user_id, context.username, session_time, context.click_count, e.client_id }) catch "";
+
     // Ensure null termination
     response[json.len] = 0;
     const null_terminated: [:0]const u8 = response[0..json.len :0];
@@ -341,28 +334,27 @@ fn getUserInfo(e: *webui.Event) void {
 fn sendMessage(e: *webui.Event) void {
     const message = e.getString();
     const target_client = e.getIntAt(1);
-    
+
     // Get sender context from global storage
     const context = getContextsMap().get(e.client_id) orelse {
         e.returnString("Authentication required");
         return;
     };
-    
+
     // In a real application, you would send to specific client
     // For this example, we'll just log the message
-    std.debug.print("Message from {s} to client {}: {s}\n", .{context.username, target_client, message});
-    
+    std.debug.print("Message from {s} to client {}: {s}\n", .{ context.username, target_client, message });
+
     // Send message to specific client (simulated)
     const win = e.getWindow();
     var js_code: [513]u8 = undefined; // +1 for null terminator
-    const script = std.fmt.bufPrint(js_code[0..512], 
-        "receiveMessage('{s}', '{s}');", .{context.username, message}) catch return;
-    
+    const script = std.fmt.bufPrint(js_code[0..512], "receiveMessage('{s}', '{s}');", .{ context.username, message }) catch return;
+
     // Ensure null termination
     js_code[script.len] = 0;
     const null_terminated: [:0]const u8 = js_code[0..script.len :0];
     win.run(null_terminated);
-    
+
     e.returnString("Message sent");
 }
 
@@ -370,27 +362,27 @@ fn broadcastUserListUpdate() void {
     // Create JSON list of online users
     var users_json: [1024]u8 = undefined;
     var json_content: []const u8 = undefined;
-    
+
     if (online_users) |users| {
         var stream = compat.fixedBufferStream(&users_json);
         var writer = stream.writer();
-        
+
         writer.writeAll("[") catch return;
         for (users.items, 0..) |user, i| {
             if (i > 0) writer.writeAll(",") catch return;
-            writer.print("{{\"clientId\":{},\"username\":\"{s}\"}}", .{user.client_id, user.username}) catch return;
+            writer.print("{{\"clientId\":{},\"username\":\"{s}\"}}", .{ user.client_id, user.username }) catch return;
         }
         writer.writeAll("]") catch return;
-        
+
         json_content = stream.getWritten();
     } else {
         json_content = "[]";
     }
-    
+
     // Broadcast to all windows (this is a simplified approach)
     // In a real implementation, you'd iterate through all active windows
     std.debug.print("Broadcasting user list update: {s}\n", .{json_content});
-    
+
     // Note: This is a simplified version. In a full implementation,
     // you would need to track all active windows and send to each one.
 }
@@ -399,29 +391,29 @@ fn getOnlineUsers(e: *webui.Event) void {
     // Return list of online users as JSON
     var users_json: [1024]u8 = undefined;
     var json_content: []const u8 = undefined;
-    
+
     if (online_users) |users| {
         var stream = compat.fixedBufferStream(&users_json);
         var writer = stream.writer();
-        
+
         writer.writeAll("[") catch {
             e.returnString("[]");
             return;
         };
         for (users.items, 0..) |user, i| {
             if (i > 0) writer.writeAll(",") catch continue;
-            writer.print("{{\"clientId\":{},\"username\":\"{s}\"}}", .{user.client_id, user.username}) catch continue;
+            writer.print("{{\"clientId\":{},\"username\":\"{s}\"}}", .{ user.client_id, user.username }) catch continue;
         }
         writer.writeAll("]") catch {
             e.returnString("[]");
             return;
         };
-        
+
         json_content = stream.getWritten();
     } else {
         json_content = "[]";
     }
-    
+
     var response: [1025]u8 = undefined;
     std.mem.copyForwards(u8, response[0..json_content.len], json_content);
     response[json_content.len] = 0;
@@ -431,39 +423,37 @@ fn getOnlineUsers(e: *webui.Event) void {
 
 fn broadcastMessage(e: *webui.Event) void {
     const message = e.getString();
-    
+
     // Get sender context from global storage
     const context = getContextsMap().get(e.client_id) orelse {
         e.returnString("Authentication required");
         return;
     };
-    
-    std.debug.print("Broadcast from {s}: {s}\n", .{context.username, message});
-    
+
+    std.debug.print("Broadcast from {s}: {s}\n", .{ context.username, message });
+
     // Broadcast to all clients
     const win = e.getWindow();
     var js_code: [513]u8 = undefined; // +1 for null terminator
-    const script = std.fmt.bufPrint(js_code[0..512], 
-        "receiveBroadcast('{s}', '{s}');", .{context.username, message}) catch return;
-    
+    const script = std.fmt.bufPrint(js_code[0..512], "receiveBroadcast('{s}', '{s}');", .{ context.username, message }) catch return;
+
     // Ensure null termination
     js_code[script.len] = 0;
     const null_terminated: [:0]const u8 = js_code[0..script.len :0];
     win.run(null_terminated);
-    
+
     e.returnString("Message broadcasted to all clients");
 }
 
 fn clientConnect(e: *webui.Event) void {
-    std.debug.print("Client connected: ID={}, Connection={}\n", .{e.client_id, e.connection_id});
-    
+    std.debug.print("Client connected: ID={}, Connection={}\n", .{ e.client_id, e.connection_id });
+
     // Send welcome message to the specific client
     e.runClient("showNotification('Connected to server');");
-    
+
     var response: [129]u8 = undefined; // +1 for null terminator
-    const msg = std.fmt.bufPrint(response[0..128], 
-        "Client {} connected", .{e.client_id}) catch "";
-    
+    const msg = std.fmt.bufPrint(response[0..128], "Client {} connected", .{e.client_id}) catch "";
+
     // Ensure null termination
     response[msg.len] = 0;
     const null_terminated: [:0]const u8 = response[0..msg.len :0];
@@ -471,17 +461,16 @@ fn clientConnect(e: *webui.Event) void {
 }
 
 fn clientDisconnect(e: *webui.Event) void {
-    std.debug.print("Client disconnected: ID={}, Connection={}\n", .{e.client_id, e.connection_id});
-    
+    std.debug.print("Client disconnected: ID={}, Connection={}\n", .{ e.client_id, e.connection_id });
+
     // Clean up any client-specific resources
     e.closeClient();
 }
 
 fn universalEventHandler(e: *webui.Event) void {
     // This handler catches all events
-    std.debug.print("Universal handler - Event: {s}, Client: {}, Type: {}\n", 
-        .{e.element, e.client_id, e.event_type});
-    
+    std.debug.print("Universal handler - Event: {s}, Client: {}, Type: {}\n", .{ e.element, e.client_id, e.event_type });
+
     // You could implement global logging, analytics, or security checks here
 }
 
@@ -492,19 +481,18 @@ fn interfaceEventHandler(
     event_number: usize,
     bind_id: usize,
 ) void {
-    std.debug.print("Interface handler - Window: {}, Type: {}, Element: {s}, Event: {}, Bind: {}\n", 
-        .{window_handle, event_type, element, event_number, bind_id});
-    
+    std.debug.print("Interface handler - Window: {}, Type: {}, Element: {s}, Event: {}, Bind: {}\n", .{ window_handle, event_type, element, event_number, bind_id });
+
     // Advanced event processing using interface API
     const win = webui{ .window_handle = window_handle };
-    
+
     // Get event data using interface methods
     const arg_count = win.interfaceGetSizeAt(event_number, 0);
     if (arg_count > 0) {
         const first_arg = win.interfaceGetStringAt(event_number, 0);
         std.debug.print("First argument: {s}\n", .{first_arg});
     }
-    
+
     // Set response using interface
     win.interfaceSetResponse(event_number, "Interface handler processed event");
 }
@@ -520,6 +508,6 @@ fn cleanupAllContexts() void {
         }
         contexts.clearAndFree();
     }
-    
+
     std.debug.print("Cleaning up all user contexts...\n", .{});
 }

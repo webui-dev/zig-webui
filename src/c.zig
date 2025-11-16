@@ -1125,3 +1125,47 @@ pub extern fn webui_interface_script_client(
     buffer: [*c]u8,
     buffer_length: usize,
 ) callconv(.c) bool;
+
+/// @brief Set a callback to catch the close event of the WebView window.
+/// Must return `false` to prevent the close event, `true` otherwise.
+///
+/// @param window The window number
+/// @param close_handler The callback function
+///
+/// @example
+/// fn myCloseEvent(window: usize) callconv(.c) bool {
+///    // Prevent WebView window close event
+///    return false;
+/// }
+/// webui_set_close_handler_wv(myWindow, myCloseEvent);
+pub extern fn webui_set_close_handler_wv(
+    window: usize,
+    close_handler: *const fn (window: usize) callconv(.c) bool,
+) callconv(.c) void;
+
+/// @brief Get window `HWND`. More reliable with WebView
+/// than web browser window, as browser PIDs may change on launch.
+///
+/// @param window The window number
+///
+/// @return Returns the window `hwnd` in Win32, `GtkWindow` in Linux.
+///
+/// @example
+/// HWND hwnd = webui_get_hwnd(myWindow); // Win32 (Work with WebView and web browser)
+/// GtkWindow* window = webui_get_hwnd(myWindow); // Linux (Work with WebView only)
+pub extern fn webui_get_hwnd(window: usize) callconv(.c) ?*anyopaque;
+
+/// @brief Set a custom logger function.
+///
+/// @param func The logger callback function
+/// @param user_data User data pointer passed to the logger
+///
+/// @example
+/// fn myLogger(level: usize, log: [*:0]const u8, user_data: ?*anyopaque) callconv(.c) void {
+///   std.debug.print("myLogger ({}): {}\n", .{level, log});
+/// }
+/// webui_set_logger(myLogger, null);
+pub extern fn webui_set_logger(
+    func: *const fn (level: usize, log: [*:0]const u8, user_data: ?*anyopaque) callconv(.c) void,
+    user_data: ?*anyopaque,
+) callconv(.c) void;

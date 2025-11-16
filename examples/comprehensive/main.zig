@@ -283,7 +283,7 @@ fn getSystemInfo(e: *webui.Event) void {
     const builtin = @import("builtin");
 
     var buffer: [1024]u8 = undefined;
-    const info = std.fmt.bufPrintZ(buffer[0..], 
+    const info = std.fmt.bufPrintZ(buffer[0..],
         \\{{"os":"{s}","arch":"{s}","zigVersion":"{s}","webuiVersion":"2.5.0","timestamp":{}}}
     , .{ @tagName(builtin.os.tag), @tagName(builtin.cpu.arch), @import("builtin").zig_version_string, compat.timestamp() }) catch "{}";
 

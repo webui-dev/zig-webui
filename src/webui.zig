@@ -196,6 +196,19 @@ pub fn wait() void {
     c.webui_wait();
 }
 
+/// Set a custom logger function.
+/// The logger callback receives the log level, message, and optional user data.
+pub fn setLogger(comptime logger: fn (level: LoggerLevel, log: []const u8, user_data: ?*anyopaque) void, user_data: ?*anyopaque) void {
+    const tmp_struct = struct {
+        fn handle(lvl: usize, msg: [*:0]const u8, data: ?*anyopaque) callconv(.c) void {
+            const log_level: LoggerLevel = @enumFromInt(lvl);
+            const message = std.mem.span(msg);
+            logger(log_level, message, data);
+        }
+    };
+    c.webui_set_logger(tmp_struct.handle, user_data);
+}
+
 /// Close a specific window only. The window object will still exist.
 /// All clients.
 pub fn close(self: webui) void {
@@ -463,6 +476,29 @@ pub fn win32GetHwnd(self: webui) !windows.HWND {
     } else {
         return WebUIError.HWNDError;
     }
+}
+
+/// Get window `HWND` (Win32) or `GtkWindow` (Linux). More reliable with WebView
+/// than web browser window, as browser PIDs may change on launch.
+/// Returns the window handle as `void*`.
+pub fn getHwnd(self: webui) !*anyopaque {
+    const hwnd = c.webui_get_hwnd(self.window_handle);
+    if (hwnd) |handle| {
+        return handle;
+    } else {
+        return WebUIError.HWNDError;
+    }
+}
+
+/// Set a callback to catch the close event of the WebView window.
+/// The callback must return `false` to prevent the close event, `true` otherwise.
+pub fn setCloseHandlerWv(self: webui, comptime handler: fn (window_handle: usize) bool) void {
+    const tmp_struct = struct {
+        fn handle(window: usize) callconv(.c) bool {
+            return handler(window);
+        }
+    };
+    c.webui_set_close_handler_wv(self.window_handle, tmp_struct.handle);
 }
 /// Get the network port of a running window.
 /// This can be useful to determine the HTTP link of `webui.js`
@@ -978,6 +1014,15 @@ pub const Runtime = enum(usize) {
     NodeJS,
     /// 3. Use Bun runtime for .js and .ts files
     Bun,
+};
+
+pub const LoggerLevel = enum(usize) {
+    /// 0. All logs with all details
+    Debug = 0,
+    /// 1. Only general logs
+    Info,
+    /// 2. Only fatal error logs
+    Error,
 };
 
 pub const EventKind = enum(usize) {

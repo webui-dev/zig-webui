@@ -44,14 +44,15 @@ pub fn fixedBufferStream(buffer: []u8) FixedBufferStream {
 }
 
 /// Type alias for FixedBufferStream that works in both versions
-pub const FixedBufferStream = if (is_zig_0_16_or_later) blk: {
+pub const FixedBufferStream = if (is_zig_0_16_or_later)
+blk: {
     // Zig 0.16: Define our own FixedBufferStream with custom Writer
     break :blk struct {
         buffer: []u8,
         pos: usize = 0,
 
         const Self = @This();
-        
+
         // Custom Writer implementation for Zig 0.16
         pub const Writer = struct {
             context: *Self,

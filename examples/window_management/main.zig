@@ -10,7 +10,7 @@ pub fn main() !void {
     webui.setConfig(.show_wait_connection, true);
     webui.setConfig(.use_cookies, true);
     webui.setConfig(.multi_client, false); // 单客户端模式更安全
-    
+
     // Create multiple windows
     var main_window = webui.newWindow();
     var second_window = webui.newWindow();
@@ -39,7 +39,6 @@ pub fn main() !void {
     // Bind second window controls
     _ = try second_window.binding("close_second", closeSecondWindow);
 
-
     // Show main window
     // 使用普通浏览器模式
     try main_window.show(html);
@@ -66,7 +65,7 @@ fn toggleKiosk(e: *webui.Event) void {
     const win = e.getWindow();
     is_kiosk = !is_kiosk;
     win.setKiosk(is_kiosk);
-    
+
     const response = if (is_kiosk) "Kiosk mode enabled" else "Kiosk mode disabled";
     e.returnString(response);
     std.debug.print("Kiosk mode toggled: {}\n", .{is_kiosk});
@@ -74,15 +73,14 @@ fn toggleKiosk(e: *webui.Event) void {
 
 fn getWindowInfo(e: *webui.Event) void {
     const win = e.getWindow();
-    
+
     const port = win.getPort() catch 0;
     const url = win.getUrl() catch "";
     const is_shown = win.isShown();
-    
+
     var buffer: [512]u8 = undefined;
-    const info = std.fmt.bufPrint(buffer[0..], 
-        "Port: {}, URL: {s}, Shown: {}", .{port, url, is_shown}) catch "";
-    
+    const info = std.fmt.bufPrint(buffer[0..], "Port: {}, URL: {s}, Shown: {}", .{ port, url, is_shown }) catch "";
+
     // 确保有足够空间容纳null终止符
     if (info.len < buffer.len) {
         buffer[info.len] = 0;
@@ -103,7 +101,7 @@ fn openSecondWindow(e: *webui.Event) void {
             std.debug.print("Detected second window was closed externally, resetting\n", .{});
             second_win = null;
         }
-        
+
         second_win = webui.newWindow();
         if (second_win) |*win| {
             // 重新绑定第二个窗口的关闭函数
@@ -112,12 +110,12 @@ fn openSecondWindow(e: *webui.Event) void {
                 e.returnString("Failed to bind second window functions");
                 return;
             };
-            
+
             // 绑定空的断开连接事件处理器，用于清理状态
             _ = win.binding("", handleSecondWindowDisconnect) catch {
                 std.debug.print("Failed to bind disconnect handler\n", .{});
             };
-            
+
             win.setSize(400, 300);
             win.show("<html><head><script src=\"/webui.js\"></script></head><body><h1>Second Window</h1><button onclick=\"close_second()\">Close</button></body></html>") catch {
                 std.debug.print("Failed to show second window\n", .{});
@@ -150,11 +148,10 @@ fn handleSecondWindowDisconnect(e: *webui.Event) void {
 fn setWindowSize(e: *webui.Event, width: i64, height: i64) void {
     const win = e.getWindow();
     win.setSize(@intCast(width), @intCast(height));
-    
+
     var buffer: [128]u8 = undefined;
-    const response = std.fmt.bufPrint(buffer[0..], 
-        "Size set to {}x{}", .{width, height}) catch "";
-    
+    const response = std.fmt.bufPrint(buffer[0..], "Size set to {}x{}", .{ width, height }) catch "";
+
     // 确保有足够空间容纳null终止符
     if (response.len < buffer.len) {
         buffer[response.len] = 0;
@@ -164,7 +161,7 @@ fn setWindowSize(e: *webui.Event, width: i64, height: i64) void {
         const error_msg = "Buffer too small";
         e.returnString(error_msg);
     }
-    std.debug.print("Window size set to {}x{}\n", .{width, height});
+    std.debug.print("Window size set to {}x{}\n", .{ width, height });
 }
 
 fn centerWindow(e: *webui.Event) void {

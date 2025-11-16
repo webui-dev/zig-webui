@@ -25,7 +25,7 @@ pub fn main() !void {
     webui.setTimeout(30); // 30 seconds timeout
 
     // Set window icon (raw SVG string)
-    const icon_svg = 
+    const icon_svg =
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\">" ++
         "<circle cx=\"8\" cy=\"8\" r=\"8\" fill=\"#4285F4\"/></svg>";
     window.setIcon(icon_svg, "image/svg+xml");
