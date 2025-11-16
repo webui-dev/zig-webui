@@ -2,6 +2,7 @@
 //! This example demonstrates running JavaScript from Zig and advanced communication
 const std = @import("std");
 const webui = @import("webui");
+const compat = @import("compat");
 
 const html = @embedFile("index.html");
 
@@ -133,7 +134,7 @@ fn sendDataToJs(e: *webui.Event, message: [:0]const u8, value: i64) void {
     var data: [256]u8 = undefined;
     const json_data = std.fmt.bufPrint(data[0..], 
         "{{\"message\":\"{s}\",\"value\":{},\"timestamp\":{}}}", 
-        .{message, value, std.time.timestamp()}) catch return;
+        .{message, value, compat.timestamp()}) catch return;
     
     // Send data to JavaScript function
     var js_call: [512]u8 = undefined;

@@ -86,8 +86,13 @@ pub fn build(b: *Build) !void {
     // Setup documentation generation
     generate_docs(b, optimize, target, flags_module);
 
+    // Create compatibility module for Zig version differences
+    const compat_module = b.addModule("compat", .{
+        .root_source_file = b.path(b.pathJoin(&.{ "examples", "compat.zig" })),
+    });
+
     // Build example applications
-    build_examples(b, optimize, target, webui_module, webui.artifact("webui")) catch |err| {
+    build_examples(b, optimize, target, webui_module, compat_module, webui.artifact("webui")) catch |err| {
         log.err("failed to build examples: {}", .{err});
         std.process.exit(1);
     };
@@ -126,7 +131,7 @@ fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget
 }
 
 // Function to build all example applications
-fn build_examples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, webui_lib: *Compile) !void {
+fn build_examples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, compat_module: *Module, webui_lib: *Compile) !void {
 
     // Get the absolute path to the examples directory
     var lazy_path = b.path("examples");
@@ -174,8 +179,9 @@ fn build_examples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarge
             }),
         });
 
-        // Add the webui module and link against the library
+        // Add the webui and compat modules and link against the library
         exe.root_module.addImport("webui", webui_module);
+        exe.root_module.addImport("compat", compat_module);
         exe.linkLibrary(webui_lib);
 
         // Setup installation

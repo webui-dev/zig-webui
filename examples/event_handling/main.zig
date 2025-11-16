@@ -3,6 +3,7 @@
 const std = @import("std");
 const webui = @import("webui");
 const builtin = @import("builtin");
+const compat = @import("compat");
 
 const html = @embedFile("index.html");
 
@@ -55,7 +56,7 @@ const UserContext = struct {
         context.* = UserContext{
             .user_id = user_id,
             .username = try allocator.dupe(u8, username),
-            .session_start = std.time.timestamp(),
+            .session_start = compat.timestamp(),
             .click_count = 0,
         };
         return context;
@@ -259,7 +260,7 @@ fn userLogout(e: *webui.Event) void {
     };
     
     // Calculate session duration
-    const session_duration = std.time.timestamp() - context.session_start;
+    const session_duration = compat.timestamp() - context.session_start;
     
     var response: [257]u8 = undefined; // +1 for null terminator
     const msg = std.fmt.bufPrint(response[0..256], 
@@ -324,7 +325,7 @@ fn getUserInfo(e: *webui.Event) void {
         return;
     };
     
-    const session_time = std.time.timestamp() - context.session_start;
+    const session_time = compat.timestamp() - context.session_start;
     
     var response: [513]u8 = undefined; // +1 for null terminator
     const json = std.fmt.bufPrint(response[0..512], 
@@ -371,7 +372,7 @@ fn broadcastUserListUpdate() void {
     var json_content: []const u8 = undefined;
     
     if (online_users) |users| {
-        var stream = std.io.fixedBufferStream(&users_json);
+        var stream = compat.fixedBufferStream(&users_json);
         var writer = stream.writer();
         
         writer.writeAll("[") catch return;
@@ -400,7 +401,7 @@ fn getOnlineUsers(e: *webui.Event) void {
     var json_content: []const u8 = undefined;
     
     if (online_users) |users| {
-        var stream = std.io.fixedBufferStream(&users_json);
+        var stream = compat.fixedBufferStream(&users_json);
         var writer = stream.writer();
         
         writer.writeAll("[") catch {

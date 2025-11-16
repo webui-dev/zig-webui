@@ -1,6 +1,7 @@
 const std = @import("std");
 const webui = @import("webui");
 const builtin = @import("builtin");
+const compat = @import("compat");
 
 pub fn main() !void {
     const window = webui.newWindow();
@@ -105,7 +106,7 @@ fn getPortInfo(e: *webui.Event) void {
     const window = e.getWindow();
 
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = compat.fixedBufferStream(&buffer);
     const writer = fbs.writer();
 
     const port = window.getPort() catch 0;
@@ -125,7 +126,7 @@ fn getProcessInfo(e: *webui.Event) void {
     const window = e.getWindow();
 
     var buffer: [512]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = compat.fixedBufferStream(&buffer);
     const writer = fbs.writer();
 
     const parent_pid = window.getParentProcessId() catch 0;

@@ -2,6 +2,7 @@
 //! This example demonstrates multiple WebUI features working together
 const std = @import("std");
 const webui = @import("webui");
+const compat = @import("compat");
 
 const html = @embedFile("index.html");
 
@@ -148,7 +149,7 @@ fn getAppStatus(e: *webui.Event) void {
     var buffer: [1024]u8 = undefined;
     const json = std.fmt.bufPrintZ(buffer[0..],
         \\{{"status":"running","users":{},"messages":{},"files":{},"port":{},"url":"{s}","clientId":{},"timestamp":{}}}
-    , .{ app_state.users_online, app_state.messages_sent, app_state.files_uploaded, port, url, e.client_id, std.time.timestamp() }) catch "{\"error\":\"format_error\"}";
+    , .{ app_state.users_online, app_state.messages_sent, app_state.files_uploaded, port, url, e.client_id, compat.timestamp() }) catch "{\"error\":\"format_error\"}";
 
     std.debug.print("App Status - Users: {}, Messages: {}, Files: {}\n", .{ app_state.users_online, app_state.messages_sent, app_state.files_uploaded });
 
@@ -262,15 +263,15 @@ fn executeCommand(e: *webui.Event, command: [:0]const u8, args: [:0]const u8) vo
     if (std.mem.eql(u8, command, "echo")) {
         result = std.fmt.bufPrintZ(response[0..], "Echo: {s}", .{args}) catch "Error";
     } else if (std.mem.eql(u8, command, "time")) {
-        const timestamp = std.time.timestamp();
+        const timestamp = compat.timestamp();
         result = std.fmt.bufPrintZ(response[0..], "Current time: {}", .{timestamp}) catch "Error";
     } else if (std.mem.eql(u8, command, "random")) {
-        var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
+        var prng = std.Random.DefaultPrng.init(@intCast(compat.timestamp()));
         const random_num = prng.random().int(u32);
         result = std.fmt.bufPrintZ(response[0..], "Random number: {}", .{random_num}) catch "Error";
     } else if (std.mem.eql(u8, command, "memory")) {
         // Simple memory info (simulated)
-        result = std.fmt.bufPrintZ(response[0..], "Memory usage: {}MB", .{50 + @rem(std.time.timestamp(), 100)}) catch "Error";
+        result = std.fmt.bufPrintZ(response[0..], "Memory usage: {}MB", .{50 + @rem(compat.timestamp(), 100)}) catch "Error";
     } else {
         result = "Unknown command";
     }
@@ -282,15 +283,15 @@ fn getSystemInfo(e: *webui.Event) void {
     const builtin = @import("builtin");
 
     var buffer: [1024]u8 = undefined;
-    const info = std.fmt.bufPrintZ(buffer[0..],
+    const info = std.fmt.bufPrintZ(buffer[0..], 
         \\{{"os":"{s}","arch":"{s}","zigVersion":"{s}","webuiVersion":"2.5.0","timestamp":{}}}
-    , .{ @tagName(builtin.os.tag), @tagName(builtin.cpu.arch), @import("builtin").zig_version_string, std.time.timestamp() }) catch "{}";
+    , .{ @tagName(builtin.os.tag), @tagName(builtin.cpu.arch), @import("builtin").zig_version_string, compat.timestamp() }) catch "{}";
 
     e.returnString(info);
 }
 
 fn testPerformance(e: *webui.Event, iterations: i64, operation: [:0]const u8) void {
-    const start_time = std.time.nanoTimestamp();
+    const start_time = compat.nanoTimestamp();
 
     var i: i64 = 0;
     var result: u64 = 0;
@@ -306,7 +307,7 @@ fn testPerformance(e: *webui.Event, iterations: i64, operation: [:0]const u8) vo
         }
     }
 
-    const end_time = std.time.nanoTimestamp();
+    const end_time = compat.nanoTimestamp();
     const duration_ms = @as(f64, @floatFromInt(end_time - start_time)) / 1_000_000.0;
 
     var response: [256]u8 = undefined;
