@@ -74,8 +74,14 @@ pub fn build(b: *Build) !void {
         std.process.exit(1);
     };
 
-    generateDocs(b, optimize, target, flags_module);
+    generateDocs(b, .{
+        .optimize = optimize,
+        .target = target,
+        .flags_module = flags_module,
+    });
 }
+
+// ========== Options Structures ==========
 
 const BuildExamplesOptions = struct {
     optimize: OptimizeMode,
@@ -84,22 +90,80 @@ const BuildExamplesOptions = struct {
     compat_module: *Module,
 };
 
-fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
-    const webui_lib = b.addObject(if (builtin.zig_version.minor == 14) .{
-        .name = "webui_lib",
-        .root_source_file = b.path(b.pathJoin(&.{ "src", "webui.zig" })),
-        .target = target,
-        .optimize = optimize,
-    } else .{
-        .name = "webui_lib",
-        .root_module = b.addModule("webui_lib", .{
-            .root_source_file = b.path(b.pathJoin(&.{ "src", "webui.zig" })),
+const GenerateDocsOptions = struct {
+    optimize: OptimizeMode,
+    target: Build.ResolvedTarget,
+    flags_module: *Module,
+};
+
+// ========== Helper Functions ==========
+
+/// Create an object artifact with version compatibility
+fn createObject(
+    b: *Build,
+    name: []const u8,
+    root_source: Build.LazyPath,
+    target: Build.ResolvedTarget,
+    optimize: OptimizeMode,
+) *Compile {
+    if (builtin.zig_version.minor == 14) {
+        return b.addObject(.{
+            .name = name,
+            .root_source_file = root_source,
             .target = target,
             .optimize = optimize,
-        }),
-    });
+        });
+    } else {
+        return b.addObject(.{
+            .name = name,
+            .root_module = b.addModule(name, .{
+                .root_source_file = root_source,
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+    }
+}
 
-    webui_lib.root_module.addImport("flags", flags_module);
+/// Create an executable artifact with version compatibility
+fn createExecutable(
+    b: *Build,
+    name: []const u8,
+    root_source: Build.LazyPath,
+    target: Build.ResolvedTarget,
+    optimize: OptimizeMode,
+) *Compile {
+    if (builtin.zig_version.minor == 14) {
+        return b.addExecutable(.{
+            .name = name,
+            .root_source_file = root_source,
+            .target = target,
+            .optimize = optimize,
+        });
+    } else {
+        return b.addExecutable(.{
+            .name = name,
+            .root_module = b.addModule(name, .{
+                .root_source_file = root_source,
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+    }
+}
+
+// ========== Documentation Generation ==========
+
+fn generateDocs(b: *Build, options: GenerateDocsOptions) void {
+    const webui_lib = createObject(
+        b,
+        "webui_lib",
+        b.path(b.pathJoin(&.{ "src", "webui.zig" })),
+        options.target,
+        options.optimize,
+    );
+
+    webui_lib.root_module.addImport("flags", options.flags_module);
 
     const docs_step = b.step("docs", "Generate docs");
     const docs_install = b.addInstallDirectory(.{
@@ -111,59 +175,62 @@ fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget,
     docs_step.dependOn(&docs_install.step);
 }
 
+// ========== Examples Building ==========
+
 fn buildExamples(b: *Build, options: BuildExamplesOptions) !void {
-    var lazy_path = b.path("examples");
+    const lazy_path = b.path("examples");
     const build_all_step = b.step("examples", "build all examples");
     const examples_path = lazy_path.getPath(b);
-    var iter_dir = std.fs.openDirAbsolute(
-        examples_path,
-        .{ .iterate = true },
-    ) catch |err| {
+
+    var examples_dir = std.fs.openDirAbsolute(examples_path, .{ .iterate = true }) catch |err| {
         switch (err) {
             error.FileNotFound => return,
             else => return err,
         }
     };
-    defer iter_dir.close();
+    defer examples_dir.close();
 
-    var itera = iter_dir.iterate();
-
-    while (try itera.next()) |val| {
-        if (val.kind != .directory) {
+    var iter = examples_dir.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind != .directory) {
             continue;
         }
 
-        const example_name = val.name;
-        const path = b.pathJoin(&.{ "examples", example_name, "main.zig" });
-        const exe = b.addExecutable(if (builtin.zig_version.minor == 14) .{
-            .name = example_name,
-            .root_source_file = b.path(path),
-            .target = options.target,
-            .optimize = options.optimize,
-        } else .{
-            .name = example_name,
-            .root_module = b.addModule(example_name, .{
-                .root_source_file = b.path(path),
-                .target = options.target,
-                .optimize = options.optimize,
-            }),
-        });
-
-        exe.root_module.addImport("webui", options.webui_module);
-        exe.root_module.addImport("compat", options.compat_module);
-
-        const exe_install = b.addInstallArtifact(exe, .{});
-        build_all_step.dependOn(&exe_install.step);
-
-        const exe_run = b.addRunArtifact(exe);
-        exe_run.step.dependOn(&exe_install.step);
-
-        const cwd = b.path(b.pathJoin(&.{ "examples", example_name }));
-        exe_run.setCwd(cwd);
-        const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-        const step_desc = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
-
-        const exe_run_step = b.step(step_name, step_desc);
-        exe_run_step.dependOn(&exe_run.step);
+        try buildExample(b, entry.name, options, build_all_step);
     }
 }
+
+fn buildExample(
+    b: *Build,
+    example_name: []const u8,
+    options: BuildExamplesOptions,
+    build_all_step: *Build.Step,
+) !void {
+    const main_path = b.pathJoin(&.{ "examples", example_name, "main.zig" });
+    const exe = createExecutable(
+        b,
+        example_name,
+        b.path(main_path),
+        options.target,
+        options.optimize,
+    );
+
+    exe.root_module.addImport("webui", options.webui_module);
+    exe.root_module.addImport("compat", options.compat_module);
+
+    // Install step
+    const exe_install = b.addInstallArtifact(exe, .{});
+    build_all_step.dependOn(&exe_install.step);
+
+    // Run step
+    const exe_run = b.addRunArtifact(exe);
+    exe_run.step.dependOn(&exe_install.step);
+    exe_run.setCwd(b.path(b.pathJoin(&.{ "examples", example_name })));
+
+    const step_name = try std.fmt.allocPrint(b.allocator, "run_{s}", .{example_name});
+    const step_desc = try std.fmt.allocPrint(b.allocator, "run {s} example", .{example_name});
+
+    const exe_run_step = b.step(step_name, step_desc);
+    exe_run_step.dependOn(&exe_run.step);
+}
+
