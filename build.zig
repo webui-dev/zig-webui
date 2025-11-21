@@ -64,13 +64,25 @@ pub fn build(b: *Build) !void {
 
     const compat_module = b.addModule("compat", .{ .root_source_file = b.path(b.pathJoin(&.{ "examples", "compat.zig" })) });
 
-    buildExamples(b, optimize, target, webui_module, compat_module) catch |err| {
+    buildExamples(b, .{
+        .optimize = optimize,
+        .target = target,
+        .webui_module = webui_module,
+        .compat_module = compat_module,
+    }) catch |err| {
         log.err("failed to build examples: {}", .{err});
         std.process.exit(1);
     };
 
     generateDocs(b, optimize, target, flags_module);
 }
+
+const BuildExamplesOptions = struct {
+    optimize: OptimizeMode,
+    target: Build.ResolvedTarget,
+    webui_module: *Module,
+    compat_module: *Module,
+};
 
 fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
     const webui_lib = b.addObject(if (builtin.zig_version.minor == 14) .{
@@ -99,13 +111,7 @@ fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget,
     docs_step.dependOn(&docs_install.step);
 }
 
-fn buildExamples(
-    b: *Build,
-    optimize: OptimizeMode,
-    target: Build.ResolvedTarget,
-    webui_module: *Module,
-    compat_module: *Module,
-) !void {
+fn buildExamples(b: *Build, options: BuildExamplesOptions) !void {
     var lazy_path = b.path("examples");
     const build_all_step = b.step("examples", "build all examples");
     const examples_path = lazy_path.getPath(b);
@@ -132,19 +138,19 @@ fn buildExamples(
         const exe = b.addExecutable(if (builtin.zig_version.minor == 14) .{
             .name = example_name,
             .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
+            .target = options.target,
+            .optimize = options.optimize,
         } else .{
             .name = example_name,
             .root_module = b.addModule(example_name, .{
                 .root_source_file = b.path(path),
-                .target = target,
-                .optimize = optimize,
+                .target = options.target,
+                .optimize = options.optimize,
             }),
         });
 
-        exe.root_module.addImport("webui", webui_module);
-        exe.root_module.addImport("compat", compat_module);
+        exe.root_module.addImport("webui", options.webui_module);
+        exe.root_module.addImport("compat", options.compat_module);
 
         const exe_install = b.addInstallArtifact(exe, .{});
         build_all_step.dependOn(&exe_install.step);
