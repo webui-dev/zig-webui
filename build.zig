@@ -1,12 +1,14 @@
 const std = @import("std");
-const builtin = @import("builtin");
-
 const Build = std.Build;
+const OptimizeMode = std.builtin.OptimizeMode;
+const CrossTarget = std.Target.Query;
+const Compile = Build.Step.Compile;
+const Module = Build.Module;
+const builtin = @import("builtin");
+const current_zig = builtin.zig_version;
 
 // Minimum required Zig version for this project
 const min_zig_string = "0.12.0";
-const current_zig = builtin.zig_version;
-
 // NOTE: we should note that when enable tls support we cannot compile with musl
 
 // Compile-time check to ensure the Zig version meets the minimum requirement
@@ -19,11 +21,6 @@ comptime {
 
 // Define logger and useful type aliases
 const log = std.log.scoped(.WebUI);
-const OptimizeMode = std.builtin.OptimizeMode;
-const CrossTarget = std.Target.Query;
-const Compile = Build.Step.Compile;
-const Module = Build.Module;
-
 // Default build configuration options
 const default_isStatic = true;
 const default_enableTLS = false;
