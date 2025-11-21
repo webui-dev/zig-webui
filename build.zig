@@ -64,7 +64,7 @@ pub fn build(b: *Build) !void {
 
     const compat_module = b.addModule("compat", .{ .root_source_file = b.path(b.pathJoin(&.{ "examples", "compat.zig" })) });
 
-    buildExamples(b, optimize, target, webui_module, compat_module, webui.artifact("webui")) catch |err| {
+    buildExamples(b, optimize, target, webui_module, compat_module) catch |err| {
         log.err("failed to build examples: {}", .{err});
         std.process.exit(1);
     };
@@ -99,7 +99,13 @@ fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget,
     docs_step.dependOn(&docs_install.step);
 }
 
-fn buildExamples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, compat_module: *Module, webui_lib: *Compile) !void {
+fn buildExamples(
+    b: *Build,
+    optimize: OptimizeMode,
+    target: Build.ResolvedTarget,
+    webui_module: *Module,
+    compat_module: *Module,
+) !void {
     var lazy_path = b.path("examples");
     const build_all_step = b.step("examples", "build all examples");
     const examples_path = lazy_path.getPath(b);
@@ -139,7 +145,6 @@ fn buildExamples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget
 
         exe.root_module.addImport("webui", webui_module);
         exe.root_module.addImport("compat", compat_module);
-        exe.linkLibrary(webui_lib);
 
         const exe_install = b.addInstallArtifact(exe, .{});
         build_all_step.dependOn(&exe_install.step);
