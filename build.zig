@@ -30,9 +30,7 @@ pub fn build(b: *Build) !void {
     const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse default_enableTLS;
     const enableWebUILog = b.option(bool, "enable_webui_log", "whether lib enable webui log") orelse default_enableWebUILog;
 
-    if (enableTLS) {
-        log.info("enable TLS support", .{});
-    }
+    if (enableTLS) log.info("enable TLS support", .{});
 
     // TLS does not support cross compilation
     if (enableTLS and !target.query.isNative()) {
@@ -55,25 +53,23 @@ pub fn build(b: *Build) !void {
     });
     const webui_module = b.addModule("webui", .{
         .root_source_file = b.path(b.pathJoin(&.{ "src", "webui.zig" })),
-        .imports = &.{ .{
+        .imports = &.{.{
             .name = "flags",
             .module = flags_module,
-        } },
+        }},
     });
     webui_module.linkLibrary(webui.artifact("webui"));
-    if (!isStatic) {
-        b.installArtifact(webui.artifact("webui"));
-    }
 
-    generateDocs(b, optimize, target, flags_module);
+    if (!isStatic) b.installArtifact(webui.artifact("webui"));
 
-    const compat_module = b.addModule("compat", .{
-        .root_source_file = b.path(b.pathJoin(&.{ "examples", "compat.zig" })),
-    });
+    const compat_module = b.addModule("compat", .{ .root_source_file = b.path(b.pathJoin(&.{ "examples", "compat.zig" })) });
+
     buildExamples(b, optimize, target, webui_module, compat_module, webui.artifact("webui")) catch |err| {
         log.err("failed to build examples: {}", .{err});
         std.process.exit(1);
     };
+
+    generateDocs(b, optimize, target, flags_module);
 }
 
 fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
