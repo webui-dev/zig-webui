@@ -12,7 +12,8 @@ const min_zig_string = "0.14.0";
 comptime {
     const min_zig = std.SemanticVersion.parse(min_zig_string) catch unreachable;
     if (current_zig.order(min_zig) == .lt) {
-        @compileError(std.fmt.comptimePrint("Your Zig version v{} does not meet the minimum build requirement of v{}", .{ current_zig, min_zig }));
+        const err_msg = std.fmt.comptimePrint("Your Zig version v{} does not meet the minimum build requirement of v{}", .{ current_zig, min_zig });
+        @compileError(err_msg);
     }
 }
 
