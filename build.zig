@@ -7,7 +7,7 @@ const Module = Build.Module;
 const builtin = @import("builtin");
 const current_zig = builtin.zig_version;
 
-const min_zig_string = "0.12.0";
+const min_zig_string = "0.14.0";
 // NOTE: when enable tls support we cannot compile with musl
 comptime {
     const min_zig = std.SemanticVersion.parse(min_zig_string) catch unreachable;
