@@ -20,27 +20,31 @@ comptime {
 const log = std.log.scoped(.WebUI);
 const default_isStatic = true;
 const default_enableTLS = false;
+const default_enableWebUILog = false;
 
 pub fn build(b: *Build) !void {
-    const isStatic = b.option(bool, "is_static", "whether lib is static") orelse default_isStatic;
-    const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse default_enableTLS;
-    const enableWebUILog = b.option(bool, "enable_webui_log", "whether lib enable tls") orelse default_enableTLS;
-
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // TLS does not support cross compilation
+    const isStatic = b.option(bool, "is_static", "whether lib is static") orelse default_isStatic;
+    const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse default_enableTLS;
+    const enableWebUILog = b.option(bool, "enable_webui_log", "whether lib enable webui log") orelse default_enableWebUILog;
+
     if (enableTLS) {
         log.info("enable TLS support", .{});
-        if (!target.query.isNative()) {
-            log.info("when enable tls, not support cross compile", .{});
-            std.process.exit(1);
-        }
+    }
+
+    // TLS does not support cross compilation
+    if (enableTLS and !target.query.isNative()) {
+        log.err("TLS support is only available for native builds", .{});
+        std.process.exit(1);
     }
 
     const flags_options = b.addOptions();
     flags_options.addOption(bool, "enableTLS", enableTLS);
+
     const flags_module = flags_options.createModule();
+
     const webui = b.dependency("webui", .{
         .target = target,
         .optimize = optimize,
@@ -51,12 +55,10 @@ pub fn build(b: *Build) !void {
     });
     const webui_module = b.addModule("webui", .{
         .root_source_file = b.path(b.pathJoin(&.{ "src", "webui.zig" })),
-        .imports = &.{
-            .{
-                .name = "flags",
-                .module = flags_module,
-            },
-        },
+        .imports = &.{ .{
+            .name = "flags",
+            .module = flags_module,
+        } },
     });
     webui_module.linkLibrary(webui.artifact("webui"));
     if (!isStatic) {
