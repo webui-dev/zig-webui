@@ -81,7 +81,7 @@ pub fn build(b: *Build) !void {
     }
 
     // Setup documentation generation
-    generate_docs(b, optimize, target, flags_module);
+    generateDocs(b, optimize, target, flags_module);
 
     // Create compatibility module for Zig version differences
     const compat_module = b.addModule("compat", .{
@@ -89,14 +89,14 @@ pub fn build(b: *Build) !void {
     });
 
     // Build example applications
-    build_examples(b, optimize, target, webui_module, compat_module, webui.artifact("webui")) catch |err| {
+    buildExamples(b, optimize, target, webui_module, compat_module, webui.artifact("webui")) catch |err| {
         log.err("failed to build examples: {}", .{err});
         std.process.exit(1);
     };
 }
 
 // Function to generate API documentation
-fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
+fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, flags_module: *Module) void {
     // Create a temporary object for documentation generation
     const webui_lib = b.addObject(if (builtin.zig_version.minor == 14) .{
         .name = "webui_lib",
@@ -128,7 +128,7 @@ fn generate_docs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget
 }
 
 // Function to build all example applications
-fn build_examples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, compat_module: *Module, webui_lib: *Compile) !void {
+fn buildExamples(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget, webui_module: *Module, compat_module: *Module, webui_lib: *Compile) !void {
 
     // Get the absolute path to the examples directory
     var lazy_path = b.path("examples");
