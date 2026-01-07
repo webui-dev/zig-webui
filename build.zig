@@ -182,7 +182,7 @@ fn buildExamples(b: *Build, options: BuildExamplesOptions) !void {
     const build_all_step = b.step("examples", "build all examples");
     const examples_path = lazy_path.getPath(b);
 
-    var examples_dir = std.fs.openDirAbsolute(examples_path, .{ .iterate = true }) catch |err| {
+    var examples_dir = b.build_root.handle.openDir(examples_path, .{ .iterate = true }) catch |err| {
         switch (err) {
             error.FileNotFound => return,
             else => return err,
@@ -233,4 +233,3 @@ fn buildExample(
     const exe_run_step = b.step(step_name, step_desc);
     exe_run_step.dependOn(&exe_run.step);
 }
-
