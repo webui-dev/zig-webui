@@ -12,14 +12,14 @@ on:
     branches: [main]
     paths:
       - "**.zig"
-  schedule:
-    - cron: "0 2 * * *"
+  # schedule:
+    # - cron: "0 2 * * *"
 jobs:
   build:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        version: [0.14.0, 0.15.1, ""]
+        version: [0.14.0, 0.15.1]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
