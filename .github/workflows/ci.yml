@@ -2,7 +2,6 @@
 # https://github.com/webui-dev/zig-webui
 # Licensed under MIT License.
 # All rights reserved.
-
 name: CI
 on:
   push:
@@ -12,7 +11,7 @@ on:
     branches: [main]
     paths:
       - "**.zig"
-  # schedule:
+      # schedule:
     # - cron: "0 2 * * *"
 jobs:
   build:
@@ -40,7 +39,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v2
-    - name: Verify formatting
-      run: zig fmt .
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+      - name: Verify formatting
+        run: zig fmt .
