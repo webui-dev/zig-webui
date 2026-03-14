@@ -170,6 +170,13 @@ pub extern fn webui_show_wv(window: usize, content: [*:0]const u8) callconv(.c) 
 /// @example webui_set_kiosk(my_window, true);
 pub extern fn webui_set_kiosk(window: usize, status: bool) callconv(.c) void;
 
+/// @brief Bring a window to the front and focus it.
+///
+/// @param window The window number
+///
+/// @example webui_focus(myWindow);
+pub extern fn webui_focus(window: usize) callconv(.c) void;
+
 /// @brief Add a user-defined web browser's CLI parameters.
 ///
 /// @param window The window number
@@ -214,6 +221,16 @@ pub extern fn webui_browser_exist(browser: Browser) callconv(.c) bool;
 ///
 /// @example webui_wait();
 pub extern fn webui_wait() callconv(.c) void;
+
+/// @brief Wait asynchronously until all opened windows get closed.
+/// Note: In WebView mode, you need to call this from the main thread.
+///
+/// @return Returns True if more windows are still opened, False otherwise.
+///
+/// @example while (webui_wait_async()) {
+///    // Your main thread code here
+/// }
+pub extern fn webui_wait_async() callconv(.c) bool;
 
 /// @brief Close a specific window only. The window object will still exist.
 /// All clients.

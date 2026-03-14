@@ -165,6 +165,11 @@ pub fn setKiosk(self: webui, status: bool) void {
     c.webui_set_kiosk(self.window_handle, status);
 }
 
+/// Bring a window to the front and focus it.
+pub fn focus(self: webui) void {
+    c.webui_focus(self.window_handle);
+}
+
 /// Add a user-defined web browser's CLI parameters.
 pub fn setCustomParameters(self: webui, params: [:0]const u8) void {
     c.webui_set_custom_parameters(self.window_handle, params.ptr);
@@ -194,6 +199,12 @@ pub fn browserExist(browser: Browser) bool {
 /// This function should be **called** at the end, it will **block** the current thread
 pub fn wait() void {
     c.webui_wait();
+}
+
+/// Wait asynchronously until all opened windows get closed.
+/// Returns `true` while there are still windows open.
+pub fn waitAsync() bool {
+    return c.webui_wait_async();
 }
 
 /// Set a custom logger function.
