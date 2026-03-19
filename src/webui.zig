@@ -49,7 +49,7 @@ pub const WebUIError = error{
 
 /// webui error wrapper
 pub const WebUIErrorInfo = struct {
-    num: i32,
+    num: usize,
     msg: [:0]const u8,
 };
 
@@ -311,7 +311,7 @@ pub fn interfaceSetResponseFileHandler(self: webui, response: []u8) void {
     c.webui_interface_set_response_file_handler(
         self.window_handle,
         @ptrCast(response.ptr),
-        response.len,
+        @intCast(response.len),
     );
 }
 
@@ -976,11 +976,11 @@ pub const WEBUI_VERSION: std.SemanticVersion = .{
     .major = 2,
     .minor = 5,
     .patch = 0,
-    .pre = "beta.2",
+    .pre = "beta.4",
 };
 
 /// Max windows, servers and threads
-pub const WEBUI_MAX_IDS = 256;
+pub const WEBUI_MAX_IDS = 65535;
 
 /// Max allowed argument's index
 pub const WEBUI_MAX_ARG = 16;
@@ -1065,18 +1065,22 @@ pub const Config = enum(c_int) {
     /// root folder gets changed.
     /// Default: False
     folder_monitor,
+    /// Allow multiple clients to connect to the same window,
+    /// This is helpful for web apps (non-desktop software),
+    /// Please see the documentation for more details.
+    /// Default: False
+    multi_client,
     /// Allow or prevent WebUI from adding `webui_auth` cookies.
     /// WebUI uses these cookies to identify clients and block
     /// unauthorized access to the window content using a URL.
     /// Please keep this option to `True` if you want only a single
     /// client to access the window content.
     /// Default: True
-    multi_client,
-    /// Allow multiple clients to connect to the same window,
-    /// This is helpful for web apps (non-desktop software),
-    /// Please see the documentation for more details.
-    /// Default: True
     use_cookies,
+    /// If the backend uses asynchronous operations, set this
+    /// option to `True`. This will make WebUI wait until the
+    /// backend sets a response using `webui_return_x()`.
+    asynchronous_response,
 };
 
 pub const Event = extern struct {

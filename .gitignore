@@ -3,3 +3,5 @@ zig-out
 .direnv
 .zig-cache
 examples/comprehensive/examples
+CLAUDE.md
+/.claude

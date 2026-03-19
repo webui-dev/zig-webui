@@ -341,7 +341,7 @@ pub extern fn webui_set_file_handler_window(
 pub extern fn webui_interface_set_response_file_handler(
     window: usize,
     response: *const anyopaque,
-    length: usize,
+    length: c_int,
 ) callconv(.c) void;
 
 /// @brief Check if the specified window is still running.
@@ -915,7 +915,7 @@ pub extern fn webui_return_bool(e: *Event, b: bool) callconv(.c) void;
 /// @brief Get the last WebUI error code.
 ///
 /// @example int error_num = webui_get_last_error_number();
-pub extern fn webui_get_last_error_number() callconv(.c) c_int;
+pub extern fn webui_get_last_error_number() callconv(.c) usize;
 
 /// @brief Get the last WebUI error message.
 ///
