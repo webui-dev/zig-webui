@@ -32,6 +32,16 @@
 - Using private profile for safety
 - Cross-platform WebView
 
+<div align="center">
+
+![GPT](https://github.com/user-attachments/assets/70455739-94c9-410e-9519-2b0318129b4a)
+
+### _Ask AI Any Question About the Zig-WebUI_
+
+### [WebUI GPT - Zig](https://chatgpt.com/g/g-69de5b9ed1488191828b8dbfa9873e2d-zig-webui)
+
+</div>
+
 ## API Documentation
 
 If you want a clearer architecture, you can check it out [here](https://deepwiki.com/webui-dev/zig-webui)
