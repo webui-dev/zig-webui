@@ -2,8 +2,9 @@
 // Note: if you want to run this example, you nedd a python, zig will wrap a child process to launch python server
 const std = @import("std");
 const webui = @import("webui");
+const compat = @import("compat");
 
-var python_server_proc: std.process.Child = undefined;
+var python_server_proc: compat.ChildProcess = undefined;
 var python_running: bool = false;
 
 var home_url: [:0]u8 = undefined;
@@ -38,10 +39,9 @@ pub fn main() !void {
     const port_argument1: []u8 = try std.fmt.bufPrintZ(&buf1, "{d}", .{backend_port});
     const port_argument2: []u8 = try std.fmt.bufPrintZ(&buf2, "{d}", .{webui_port});
     const argv = [_][]const u8{ "python", "./free_port_web_server.py", port_argument1, port_argument2 };
-    python_server_proc = std.process.Child.init(&argv, std.heap.page_allocator);
 
     // start the SPA web server:
-    startPythonWebServer();
+    startPythonWebServer(&argv);
 
     // Show a new window served by our custom web server (spawned above):
     var buf: [64]u8 = undefined;
@@ -58,11 +58,12 @@ pub fn main() !void {
     killPythonWebServer();
 }
 
-fn startPythonWebServer() void {
+fn startPythonWebServer(argv: []const []const u8) void {
     if (python_running == false) { // a better check would be a test for the process itself
-        if (python_server_proc.spawn()) |_| {
+        if (compat.ChildProcess.spawn(argv, std.heap.page_allocator)) |child| {
+            python_server_proc = child;
             python_running = true;
-            std.debug.print("Spawned python server process PID={}\n", .{python_server_proc.id});
+            std.debug.print("Spawned python server process PID={?}\n", .{python_server_proc.pid});
         } else |err| {
             std.debug.print("NOT Starting python server: {}\n", .{err});
         }

@@ -1,9 +1,10 @@
 const std = @import("std");
 const webui = @import("webui");
 const builtin = @import("builtin");
+const compat = @import("compat");
 
-// general purpose allocator
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+// general purpose allocator (renamed `DebugAllocator` in Zig 0.16)
+var gpa = compat.GeneralPurposeAllocator(.{}){};
 // allocator
 const allocator = gpa.allocator();
 

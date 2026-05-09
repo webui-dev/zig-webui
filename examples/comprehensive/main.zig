@@ -85,7 +85,7 @@ pub fn main() !void {
     main_window.setRuntime(.NodeJS);
 
     // Create public directory
-    std.fs.cwd().makeDir("examples/comprehensive/public") catch {};
+    compat.makeDir("examples/comprehensive/public") catch {};
 
     // Show window
     try main_window.show(html);
@@ -388,7 +388,7 @@ fn uploadFile(e: *webui.Event, filename: [:0]const u8, content: [:0]const u8) vo
     }
 
     // Ensure public directory exists
-    std.fs.cwd().makePath("examples/comprehensive/public") catch |err| {
+    compat.makePath("examples/comprehensive/public") catch |err| {
         std.debug.print("Warning: Failed to create public directory: {}\n", .{err});
         // Continue anyway, maybe directory already exists
     };
@@ -458,19 +458,10 @@ fn uploadFile(e: *webui.Event, filename: [:0]const u8, content: [:0]const u8) vo
 
     std.debug.print("Creating file at: {s}\n", .{file_path});
 
-    // Create file
-    const file = std.fs.cwd().createFile(file_path, .{}) catch |err| {
-        std.debug.print("Failed to create file {s}: {}\n", .{ file_path, err });
-        result = std.fmt.bufPrintZ(response[0..], "Error: Failed to create file '{s}' ({s})", .{ filename, @errorName(err) }) catch "Error";
-        e.returnString(result);
-        return;
-    };
-    defer file.close();
-
     // Write content to file
-    file.writeAll(content) catch |err| {
-        std.debug.print("Failed to write to file {s}: {}\n", .{ file_path, err });
-        result = std.fmt.bufPrintZ(response[0..], "Error: Failed to write to file '{s}' ({s})", .{ filename, @errorName(err) }) catch "Error";
+    compat.writeFile(file_path, content) catch |err| {
+        std.debug.print("Failed to write file {s}: {}\n", .{ file_path, err });
+        result = std.fmt.bufPrintZ(response[0..], "Error: Failed to write file '{s}' ({s})", .{ filename, @errorName(err) }) catch "Error";
         e.returnString(result);
         return;
     };

@@ -15,6 +15,11 @@ const windows = std.os.windows;
 
 const flags = @import("flags");
 
+/// Tuple-synthesis helper. The implementation differs between Zig versions
+/// (0.14/0.15 build the tuple via `@Type`; 0.16 uses the new `@Tuple`
+/// builtin), and `build.zig` selects the file matching the running compiler.
+const compat_tuple = @import("compat_tuple");
+
 pub const c = @import("c.zig");
 
 pub const WebUIError = error{
@@ -946,31 +951,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
 }
 
 /// this funciton will return a fn's params tuple
-fn fnParamsToTuple(comptime params: []const std.builtin.Type.Fn.Param) type {
-    const Type = std.builtin.Type;
-    const fields: [params.len]Type.StructField = blk: {
-        var res: [params.len]Type.StructField = undefined;
-
-        for (params, 0..params.len) |param, i| {
-            res[i] = Type.StructField{
-                .type = param.type.?,
-                .alignment = @alignOf(param.type.?),
-                .default_value_ptr = null,
-                .is_comptime = false,
-                .name = std.fmt.comptimePrint("{}", .{i}),
-            };
-        }
-        break :blk res;
-    };
-    return @Type(.{
-        .@"struct" = std.builtin.Type.Struct{
-            .layout = .auto,
-            .is_tuple = true,
-            .decls = &.{},
-            .fields = &fields,
-        },
-    });
-}
+const fnParamsToTuple = compat_tuple.fnParamsToTuple;
 
 pub const WEBUI_VERSION: std.SemanticVersion = .{
     .major = 2,
