@@ -27,12 +27,11 @@ fn ensureContextsInitialized() void {
         global_user_contexts = std.AutoHashMap(usize, *UserContext).init(allocator);
     }
     if (online_users == null) {
-        // Version compatibility: Zig 0.14/0.15 use managed ArrayList, 0.16+ use unmanaged
+        // Version compatibility: Zig 0.14 uses managed ArrayList; 0.15+ unmanaged.
+        // On 0.16 the unmanaged default-init (`{}`) was dropped — use `.empty`.
         if (comptime builtin.zig_version.minor >= 15) {
-            // Zig 0.16+ - ArrayList is unmanaged by default
-            online_users = std.ArrayList(OnlineUser){};
+            online_users = std.ArrayList(OnlineUser).empty;
         } else {
-            // Zig 0.14/0.15 - ArrayList is managed
             online_users = std.ArrayList(OnlineUser).init(allocator);
         }
     }
@@ -108,17 +107,11 @@ pub fn main() !void {
         // If that fails, try alternative approach
         std.debug.print("Warning: Failed to show embedded HTML ({}), trying alternative method...\n", .{err});
 
-        // Write HTML to temporary file and use startServer
+        // Write HTML to a temporary file and use startServer.
         const temp_file = "temp_index.html";
-        const file = std.fs.cwd().createFile(temp_file, .{}) catch |file_err| {
-            std.debug.print("Error: Could not create temporary HTML file: {}\n", .{file_err});
-            return;
-        };
-        defer file.close();
-        defer std.fs.cwd().deleteFile(temp_file) catch {};
-
-        file.writeAll(html) catch |write_err| {
-            std.debug.print("Error: Could not write HTML content: {}\n", .{write_err});
+        defer compat.deleteFile(temp_file) catch {};
+        compat.writeFile(temp_file, html) catch |write_err| {
+            std.debug.print("Error: Could not write temporary HTML file: {}\n", .{write_err});
             return;
         };
 

@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        version: [0.14.0, 0.15.1]
+        version: [0.14.0, 0.15.1, 0.16.0]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
@@ -27,7 +27,7 @@ jobs:
         with:
           xcode-version: latest-stable
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: ${{ matrix.version }}
       - uses: actions/checkout@v4
@@ -40,6 +40,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
       - name: Verify formatting
         run: zig fmt .

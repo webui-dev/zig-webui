@@ -43,6 +43,18 @@ pub fn build(b: *Build) !void {
 
     const flags_module = flags_options.createModule();
 
+    // Pick the tuple-synthesis helper that matches the running Zig version.
+    // 0.16 removed `@Type` and rejects it at parse time, so the legacy
+    // implementation must live in a sibling file that is never compiled
+    // on 0.16. See src/compat_tuple_{old,new}.zig.
+    const compat_tuple_path = if (current_zig.minor >= 16)
+        b.pathJoin(&.{ "src", "compat_tuple_new.zig" })
+    else
+        b.pathJoin(&.{ "src", "compat_tuple_old.zig" });
+    const compat_tuple_module = b.addModule("compat_tuple", .{
+        .root_source_file = b.path(compat_tuple_path),
+    });
+
     const webui = b.dependency("webui", .{
         .target = target,
         .optimize = optimize,
@@ -53,10 +65,10 @@ pub fn build(b: *Build) !void {
     });
     const webui_module = b.addModule("webui", .{
         .root_source_file = b.path(b.pathJoin(&.{ "src", "webui.zig" })),
-        .imports = &.{.{
-            .name = "flags",
-            .module = flags_module,
-        }},
+        .imports = &.{
+            .{ .name = "flags", .module = flags_module },
+            .{ .name = "compat_tuple", .module = compat_tuple_module },
+        },
     });
     webui_module.linkLibrary(webui.artifact("webui"));
 
@@ -78,6 +90,7 @@ pub fn build(b: *Build) !void {
         .optimize = optimize,
         .target = target,
         .flags_module = flags_module,
+        .compat_tuple_module = compat_tuple_module,
     });
 }
 
@@ -94,6 +107,7 @@ const GenerateDocsOptions = struct {
     optimize: OptimizeMode,
     target: Build.ResolvedTarget,
     flags_module: *Module,
+    compat_tuple_module: *Module,
 };
 
 // ========== Helper Functions ==========
@@ -164,6 +178,7 @@ fn generateDocs(b: *Build, options: GenerateDocsOptions) void {
     );
 
     webui_lib.root_module.addImport("flags", options.flags_module);
+    webui_lib.root_module.addImport("compat_tuple", options.compat_tuple_module);
 
     const docs_step = b.step("docs", "Generate docs");
     const docs_install = b.addInstallDirectory(.{
@@ -182,21 +197,37 @@ fn buildExamples(b: *Build, options: BuildExamplesOptions) !void {
     const build_all_step = b.step("examples", "build all examples");
     const examples_path = lazy_path.getPath(b);
 
-    var examples_dir = b.build_root.handle.openDir(examples_path, .{ .iterate = true }) catch |err| {
-        switch (err) {
-            error.FileNotFound => return,
-            else => return err,
-        }
-    };
-    defer examples_dir.close();
+    if (comptime builtin.zig_version.minor >= 16) {
+        // Zig 0.16+: build_root.handle is std.Io.Dir and requires an `io`.
+        const io = b.graph.io;
+        var examples_dir = b.build_root.handle.openDir(io, examples_path, .{ .iterate = true }) catch |err| {
+            switch (err) {
+                error.FileNotFound => return,
+                else => return err,
+            }
+        };
+        defer examples_dir.close(io);
 
-    var iter = examples_dir.iterate();
-    while (try iter.next()) |entry| {
-        if (entry.kind != .directory) {
-            continue;
+        var iter = examples_dir.iterate();
+        while (try iter.next(io)) |entry| {
+            if (entry.kind != .directory) continue;
+            try buildExample(b, entry.name, options, build_all_step);
         }
+    } else {
+        // Zig 0.14/0.15: build_root.handle is std.fs.Dir.
+        var examples_dir = b.build_root.handle.openDir(examples_path, .{ .iterate = true }) catch |err| {
+            switch (err) {
+                error.FileNotFound => return,
+                else => return err,
+            }
+        };
+        defer examples_dir.close();
 
-        try buildExample(b, entry.name, options, build_all_step);
+        var iter = examples_dir.iterate();
+        while (try iter.next()) |entry| {
+            if (entry.kind != .directory) continue;
+            try buildExample(b, entry.name, options, build_all_step);
+        }
     }
 }
 
