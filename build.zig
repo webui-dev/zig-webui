@@ -92,6 +92,15 @@ pub fn build(b: *Build) !void {
         .flags_module = flags_module,
         .compat_tuple_module = compat_tuple_module,
     });
+
+    buildTests(b, .{
+        .optimize = optimize,
+        .target = target,
+        .webui_module = webui_module,
+        .webui_artifact = webui.artifact("webui"),
+        .flags_module = flags_module,
+        .compat_tuple_module = compat_tuple_module,
+    });
 }
 
 // ========== Options Structures ==========
@@ -106,6 +115,15 @@ const BuildExamplesOptions = struct {
 const GenerateDocsOptions = struct {
     optimize: OptimizeMode,
     target: Build.ResolvedTarget,
+    flags_module: *Module,
+    compat_tuple_module: *Module,
+};
+
+const BuildTestsOptions = struct {
+    optimize: OptimizeMode,
+    target: Build.ResolvedTarget,
+    webui_module: *Module,
+    webui_artifact: *Compile,
     flags_module: *Module,
     compat_tuple_module: *Module,
 };
@@ -164,6 +182,38 @@ fn createExecutable(
             }),
         });
     }
+}
+
+// ========== Tests ==========
+
+fn buildTests(b: *Build, options: BuildTestsOptions) void {
+    const tests_path = b.path(b.pathJoin(&.{ "src", "tests.zig" }));
+
+    const tests = if (builtin.zig_version.minor == 14) b.addTest(.{
+        .name = "webui-tests",
+        .root_source_file = tests_path,
+        .target = options.target,
+        .optimize = options.optimize,
+    }) else b.addTest(.{
+        .name = "webui-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = tests_path,
+            .target = options.target,
+            .optimize = options.optimize,
+        }),
+    });
+
+    tests.root_module.addImport("webui", options.webui_module);
+    tests.root_module.addImport("flags", options.flags_module);
+    tests.root_module.addImport("compat_tuple", options.compat_tuple_module);
+    // `linkLibrary` lives on Compile in 0.14/0.15 but was moved entirely to
+    // Module in 0.16 — go through `root_module` which exists on every
+    // supported version.
+    tests.root_module.linkLibrary(options.webui_artifact);
+
+    const run_tests = b.addRunArtifact(tests);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_tests.step);
 }
 
 // ========== Documentation Generation ==========
