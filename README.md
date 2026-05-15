@@ -59,11 +59,13 @@ Like `zig build run_minimal`, this will build and run the `minimal` example.
 
 ## Installation
 
-> note: for `0.13.0` and previous version, please use tag `2.5.0-beta.2`
+> note: for `0.13.0` and previous versions, please use tag `2.5.0-beta.2`
 
-### Zig `0.14.0` \ `0.15.1`
+### Zig `0.14.0` / `0.15.1` / `0.16.0`
 
-> To be honest, I don’t recommend using the nightly version because the API of the build system is not yet stable, which means that there may be problems with not being able to build after nightly is updated.
+The same package builds against every supported stable Zig release. Nightly is
+still not recommended — the build-system API can change between dev builds
+and break the binding without warning.
 
 1. Add to `build.zig.zon`
 
