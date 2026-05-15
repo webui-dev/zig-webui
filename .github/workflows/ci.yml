@@ -36,6 +36,8 @@ jobs:
       - name: Build examples dynamic
         if: runner.os != 'Windows'
         run: zig build examples -Dis_static=false
+      - name: Run unit tests
+        run: zig build test --summary all
   lint:
     runs-on: ubuntu-latest
     steps:
