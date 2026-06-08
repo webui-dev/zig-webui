@@ -244,10 +244,26 @@ fn generateDocs(b: *Build, options: GenerateDocsOptions) void {
 
 fn buildExamples(b: *Build, options: BuildExamplesOptions) !void {
     const lazy_path = b.path("examples");
+    _ = lazy_path; // autofix
     const build_all_step = b.step("examples", "build all examples");
-    const examples_path = lazy_path.getPath(b);
+    const examples_path = "examples";
+    if (comptime builtin.zig_version.minor >= 17) {
+        // Zig 0.17+: build_root is remove.
+        const io = b.graph.io;
+        var examples_dir = b.root.root_dir.handle.openDir(io, examples_path, .{ .iterate = true }) catch |err| {
+            switch (err) {
+                error.FileNotFound => return,
+                else => return err,
+            }
+        };
+        defer examples_dir.close(io);
 
-    if (comptime builtin.zig_version.minor >= 16) {
+        var iter = examples_dir.iterate();
+        while (try iter.next(io)) |entry| {
+            if (entry.kind != .directory) continue;
+            try buildExample(b, entry.name, options, build_all_step);
+        }
+    } else if (comptime builtin.zig_version.minor >= 16) {
         // Zig 0.16+: build_root.handle is std.Io.Dir and requires an `io`.
         const io = b.graph.io;
         var examples_dir = b.build_root.handle.openDir(io, examples_path, .{ .iterate = true }) catch |err| {
