@@ -40,6 +40,16 @@ test "constants" {
     try std.testing.expectEqual(@as(usize, 16), webui.WEBUI_MAX_ARG);
 }
 
+test "convenience helpers are exposed" {
+    try std.testing.expect(@hasDecl(webui, "runFmt"));
+    try std.testing.expect(@hasDecl(webui, "scriptResult"));
+    try std.testing.expect(@hasDecl(webui.Event, "runClientFmt"));
+    try std.testing.expect(@hasDecl(webui.Event, "scriptClientResult"));
+    try std.testing.expect(@hasDecl(webui.Event, "returnFmt"));
+    try std.testing.expect(@hasDecl(webui.Event, "getRawSlice"));
+    try std.testing.expect(@hasDecl(webui.Event, "getRawSliceAt"));
+}
+
 test "Browser enum integer values match C ABI" {
     try std.testing.expectEqual(@as(usize, 0), @intFromEnum(webui.Browser.NoBrowser));
     try std.testing.expectEqual(@as(usize, 1), @intFromEnum(webui.Browser.AnyBrowser));
