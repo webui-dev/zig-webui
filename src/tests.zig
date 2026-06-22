@@ -15,6 +15,15 @@ const builtin = @import("builtin");
 const webui = @import("webui");
 const compat_tuple = @import("compat_tuple");
 
+fn memFind(comptime T: type, haystack: []const T, needle: []const T) ?usize {
+    if (comptime @hasDecl(std.mem, "find")) return std.mem.find(T, haystack, needle);
+    return std.mem.indexOf(T, haystack, needle);
+}
+
+fn memFindScalar(comptime T: type, haystack: []const T, needle: T) ?usize {
+    if (comptime @hasDecl(std.mem, "findScalar")) return std.mem.findScalar(T, haystack, needle);
+    return std.mem.indexOfScalar(T, haystack, needle);
+}
 // =============================================================================
 // Pure-Zig tests (no C calls)
 // =============================================================================
@@ -174,7 +183,7 @@ test "getMimeType resolves common extensions" {
     // a non-empty string that mentions javascript.
     const js_mime = webui.getMimeType("app.js");
     try std.testing.expect(js_mime.len > 0);
-    try std.testing.expect(std.mem.indexOf(u8, js_mime, "javascript") != null);
+    try std.testing.expect(memFind(u8, js_mime, "javascript") != null);
 }
 
 test "encode then decode roundtrips" {
@@ -183,7 +192,7 @@ test "encode then decode roundtrips" {
     defer webui.free(encoded);
     try std.testing.expect(encoded.len > 0);
     // Base64 of ASCII has no NUL bytes embedded.
-    try std.testing.expect(std.mem.indexOfScalar(u8, encoded, 0) == null);
+    try std.testing.expect(memFindScalar(u8, encoded, 0) == null);
 
     // Build a NUL-terminated copy for the decode call (the C API insists).
     var buf: [128]u8 = undefined;
