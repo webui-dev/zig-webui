@@ -585,9 +585,14 @@ pub fn run(self: webui, script_content: [:0]const u8) void {
     c.webui_run(self.window_handle, script_content.ptr);
 }
 
+/// Format JavaScript into `buffer`, then run it without waiting for a response.
+pub fn runFmt(self: webui, buffer: []u8, comptime fmt: []const u8, args: anytype) !void {
+    const script_content = try std.fmt.bufPrintZ(buffer, fmt, args);
+    self.run(script_content);
+}
+
 /// Run JavaScript and get the response back. Work only in single client mode.
 /// Make sure your local buffer can hold the response.
-/// Return True if there is no execution error
 pub fn script(self: webui, script_content: [:0]const u8, timeout: usize, buffer: []u8) !void {
     const success = c.webui_script(
         self.window_handle,
@@ -597,6 +602,19 @@ pub fn script(self: webui, script_content: [:0]const u8, timeout: usize, buffer:
         buffer.len,
     );
     if (!success) return WebUIError.ScriptError;
+}
+
+/// Run JavaScript and return the written response slice.
+pub fn scriptResult(self: webui, script_content: [:0]const u8, timeout: usize, buffer: []u8) ![:0]u8 {
+    try self.script(script_content, timeout, buffer);
+    return responseSlice(buffer);
+}
+
+fn responseSlice(buffer: []u8) WebUIError![:0]u8 {
+    for (buffer, 0..) |byte, i| {
+        if (byte == 0) return buffer[0..i :0];
+    }
+    return WebUIError.ScriptError;
 }
 
 /// Chose between Deno and Nodejs as runtime for .js and .ts files.
@@ -1120,6 +1138,12 @@ pub const Event = extern struct {
         c.webui_run_client(self, script_content.ptr);
     }
 
+    /// Format JavaScript into `buffer`, then run it on the event client.
+    pub fn runClientFmt(self: *Event, buffer: []u8, comptime fmt: []const u8, args: anytype) !void {
+        const script_content = try std.fmt.bufPrintZ(buffer, fmt, args);
+        self.runClient(script_content);
+    }
+
     /// Run JavaScript and get the response back. Single client.
     /// Make sure your local buffer can hold the response.
     pub fn scriptClient(
@@ -1138,6 +1162,17 @@ pub const Event = extern struct {
         if (!success) return WebUIError.ScriptError;
     }
 
+    /// Run JavaScript on the event client and return the written response slice.
+    pub fn scriptClientResult(
+        self: *Event,
+        script_content: [:0]const u8,
+        timeout: usize,
+        buffer: []u8,
+    ) ![:0]u8 {
+        try self.scriptClient(script_content, timeout, buffer);
+        return responseSlice(buffer);
+    }
+
     /// Return the response to JavaScript as integer.
     pub fn returnInt(e: *Event, n: i64) void {
         c.webui_return_int(e, n);
@@ -1151,6 +1186,12 @@ pub const Event = extern struct {
     /// Return the response to JavaScript as string.
     pub fn returnString(e: *Event, str: [:0]const u8) void {
         c.webui_return_string(e, str.ptr);
+    }
+
+    /// Format a string response into `buffer`, then return it to JavaScript.
+    pub fn returnFmt(e: *Event, buffer: []u8, comptime fmt: []const u8, args: anytype) !void {
+        const response = try std.fmt.bufPrintZ(buffer, fmt, args);
+        e.returnString(response);
     }
 
     /// Return the response to JavaScript as boolean.
@@ -1242,10 +1283,22 @@ pub const Event = extern struct {
         return @ptrCast(ptr);
     }
 
+    /// Get an argument as a raw byte slice at a specific index.
+    pub fn getRawSliceAt(e: *Event, index: usize) ![]const u8 {
+        const size = try e.getSizeAt(index);
+        return e.getRawAt(index)[0..size];
+    }
+
     // Get the first argument raw buffer
     pub fn getRaw(e: *Event) [*]const u8 {
         const ptr = c.webui_get_string(e);
         return @ptrCast(ptr);
+    }
+
+    /// Get the first argument as a raw byte slice.
+    pub fn getRawSlice(e: *Event) ![]const u8 {
+        const size = try e.getSize();
+        return e.getRaw()[0..size];
     }
 
     /// Get an argument as boolean at a specific index
