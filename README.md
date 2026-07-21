@@ -2,7 +2,7 @@
 
 ![Logo](https://raw.githubusercontent.com/webui-dev/webui-logo/main/webui_zig.png)
 
-# WebUI Zig v2.5.0-beta.4
+# WebUI Zig v2.5.1
 
 <!-- [build-status]: https://img.shields.io/github/actions/workflow/status/webui-dev/go-webui/ci.yml?branch=main&style=for-the-badge&logo=V&labelColor=414868&logoColor=C0CAF5 -->
 
@@ -47,7 +47,7 @@
 If you want a clearer architecture, you can check it out [here](https://deepwiki.com/webui-dev/zig-webui)
 
 * [https://webui-dev.github.io/zig-webui/](https://webui-dev.github.io/zig-webui/)
-* [https://webui.me/docs/2.5/#/](https://webui.me/docs/2.5/#/)
+* [https://webui.me/docs.html#/zig](https://webui.me/docs.html#/zig)
 
 ## Examples
 
@@ -59,11 +59,9 @@ Like `zig build run_minimal`, this will build and run the `minimal` example.
 
 ## Installation
 
-> note: for `0.13.0` and previous versions, please use tag `2.5.0-beta.2`
+### Zig `0.16.0` and later
 
-### Zig `0.14.0` / `0.15.1` / `0.16.0`
-
-The same package builds against every supported stable Zig release. Nightly is
+This package targets Zig `0.16.0` and up. Nightly is
 still not recommended — the build-system API can change between dev builds
 and break the binding without warning.
 

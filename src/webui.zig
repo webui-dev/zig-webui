@@ -4,7 +4,7 @@
 //! WebSite: [http://webui.me](http://webui.me),
 //! Github: [https://github.com/webui-dev/zig-webui](https://github.com/webui-dev/zig-webui)
 //!
-//! Copyright (c) 2020-2024 [Jinzhongjia](https://github.com/jinzhongjia),
+//! Copyright (c) 2020-2026 [Jinzhongjia](https://github.com/jinzhongjia),
 //! Licensed under MIT License.
 
 const webui = @This();
@@ -15,10 +15,8 @@ const windows = std.os.windows;
 
 const flags = @import("flags");
 
-/// Tuple-synthesis helper. The implementation differs between Zig versions
-/// (0.14/0.15 build the tuple via `@Type`; 0.16 uses the new `@Tuple`
-/// builtin), and `build.zig` selects the file matching the running compiler.
-const compat_tuple = @import("compat_tuple");
+/// Tuple-synthesis helper used by `bind` to build the callback argument tuple.
+const tuple = @import("tuple");
 
 pub const c = @import("c.zig");
 
@@ -969,7 +967,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
 }
 
 /// this funciton will return a fn's params tuple
-const fnParamsToTuple = compat_tuple.fnParamsToTuple;
+const fnParamsToTuple = tuple.fnParamsToTuple;
 
 pub const WEBUI_VERSION: std.SemanticVersion = .{
     .major = 2,

@@ -1,6 +1,5 @@
 const std = @import("std");
 const webui = @import("webui");
-const builtin = @import("builtin");
 const compat = @import("compat");
 
 // general purpose allocator (renamed `DebugAllocator` in Zig 0.16)
@@ -42,11 +41,7 @@ fn saveAll(e: *webui.Event) void {
     public_input = allocator.dupe(u8, publicInput) catch unreachable;
 
     // general new js
-    const js = if (builtin.zig_version.minor == 14) std.fmt.allocPrintZ(
-        allocator,
-        "document.getElementById(\"publicInput\").value = \"{s}\";",
-        .{publicInput},
-    ) catch unreachable else std.fmt.allocPrintSentinel(
+    const js = std.fmt.allocPrintSentinel(
         allocator,
         "document.getElementById(\"publicInput\").value = \"{s}\";",
         .{publicInput},

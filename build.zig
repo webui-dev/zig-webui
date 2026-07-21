@@ -7,7 +7,7 @@ const Module = Build.Module;
 const builtin = @import("builtin");
 const current_zig = builtin.zig_version;
 
-const min_zig_string = "0.14.0";
+const min_zig_string = "0.16.0";
 // NOTE: when enable tls support we cannot compile with musl
 comptime {
     const min_zig = std.SemanticVersion.parse(min_zig_string) catch unreachable;
@@ -43,16 +43,9 @@ pub fn build(b: *Build) !void {
 
     const flags_module = flags_options.createModule();
 
-    // Pick the tuple-synthesis helper that matches the running Zig version.
-    // 0.16 removed `@Type` and rejects it at parse time, so the legacy
-    // implementation must live in a sibling file that is never compiled
-    // on 0.16. See src/compat_tuple_{old,new}.zig.
-    const compat_tuple_path = if (current_zig.minor >= 16)
-        b.pathJoin(&.{ "src", "compat_tuple_new.zig" })
-    else
-        b.pathJoin(&.{ "src", "compat_tuple_old.zig" });
-    const compat_tuple_module = b.addModule("compat_tuple", .{
-        .root_source_file = b.path(compat_tuple_path),
+    // Tuple-synthesis helper (uses the `@Tuple` builtin available on 0.16+).
+    const tuple_module = b.addModule("tuple", .{
+        .root_source_file = b.path(b.pathJoin(&.{ "src", "tuple.zig" })),
     });
 
     const webui = b.dependency("webui", .{
@@ -67,7 +60,7 @@ pub fn build(b: *Build) !void {
         .root_source_file = b.path(b.pathJoin(&.{ "src", "webui.zig" })),
         .imports = &.{
             .{ .name = "flags", .module = flags_module },
-            .{ .name = "compat_tuple", .module = compat_tuple_module },
+            .{ .name = "tuple", .module = tuple_module },
         },
     });
     webui_module.linkLibrary(webui.artifact("webui"));
@@ -90,7 +83,7 @@ pub fn build(b: *Build) !void {
         .optimize = optimize,
         .target = target,
         .flags_module = flags_module,
-        .compat_tuple_module = compat_tuple_module,
+        .tuple_module = tuple_module,
     });
 
     buildTests(b, .{
@@ -99,7 +92,7 @@ pub fn build(b: *Build) !void {
         .webui_module = webui_module,
         .webui_artifact = webui.artifact("webui"),
         .flags_module = flags_module,
-        .compat_tuple_module = compat_tuple_module,
+        .tuple_module = tuple_module,
     });
 }
 
@@ -116,7 +109,7 @@ const GenerateDocsOptions = struct {
     optimize: OptimizeMode,
     target: Build.ResolvedTarget,
     flags_module: *Module,
-    compat_tuple_module: *Module,
+    tuple_module: *Module,
 };
 
 const BuildTestsOptions = struct {
@@ -125,12 +118,12 @@ const BuildTestsOptions = struct {
     webui_module: *Module,
     webui_artifact: *Compile,
     flags_module: *Module,
-    compat_tuple_module: *Module,
+    tuple_module: *Module,
 };
 
 // ========== Helper Functions ==========
 
-/// Create an object artifact with version compatibility
+/// Create an object artifact.
 fn createObject(
     b: *Build,
     name: []const u8,
@@ -138,26 +131,17 @@ fn createObject(
     target: Build.ResolvedTarget,
     optimize: OptimizeMode,
 ) *Compile {
-    if (builtin.zig_version.minor == 14) {
-        return b.addObject(.{
-            .name = name,
+    return b.addObject(.{
+        .name = name,
+        .root_module = b.addModule(name, .{
             .root_source_file = root_source,
             .target = target,
             .optimize = optimize,
-        });
-    } else {
-        return b.addObject(.{
-            .name = name,
-            .root_module = b.addModule(name, .{
-                .root_source_file = root_source,
-                .target = target,
-                .optimize = optimize,
-            }),
-        });
-    }
+        }),
+    });
 }
 
-/// Create an executable artifact with version compatibility
+/// Create an executable artifact.
 fn createExecutable(
     b: *Build,
     name: []const u8,
@@ -165,23 +149,14 @@ fn createExecutable(
     target: Build.ResolvedTarget,
     optimize: OptimizeMode,
 ) *Compile {
-    if (builtin.zig_version.minor == 14) {
-        return b.addExecutable(.{
-            .name = name,
+    return b.addExecutable(.{
+        .name = name,
+        .root_module = b.addModule(name, .{
             .root_source_file = root_source,
             .target = target,
             .optimize = optimize,
-        });
-    } else {
-        return b.addExecutable(.{
-            .name = name,
-            .root_module = b.addModule(name, .{
-                .root_source_file = root_source,
-                .target = target,
-                .optimize = optimize,
-            }),
-        });
-    }
+        }),
+    });
 }
 
 // ========== Tests ==========
@@ -189,12 +164,7 @@ fn createExecutable(
 fn buildTests(b: *Build, options: BuildTestsOptions) void {
     const tests_path = b.path(b.pathJoin(&.{ "src", "tests.zig" }));
 
-    const tests = if (builtin.zig_version.minor == 14) b.addTest(.{
-        .name = "webui-tests",
-        .root_source_file = tests_path,
-        .target = options.target,
-        .optimize = options.optimize,
-    }) else b.addTest(.{
+    const tests = b.addTest(.{
         .name = "webui-tests",
         .root_module = b.createModule(.{
             .root_source_file = tests_path,
@@ -205,10 +175,7 @@ fn buildTests(b: *Build, options: BuildTestsOptions) void {
 
     tests.root_module.addImport("webui", options.webui_module);
     tests.root_module.addImport("flags", options.flags_module);
-    tests.root_module.addImport("compat_tuple", options.compat_tuple_module);
-    // `linkLibrary` lives on Compile in 0.14/0.15 but was moved entirely to
-    // Module in 0.16 — go through `root_module` which exists on every
-    // supported version.
+    tests.root_module.addImport("tuple", options.tuple_module);
     tests.root_module.linkLibrary(options.webui_artifact);
 
     const run_tests = b.addRunArtifact(tests);
@@ -228,7 +195,7 @@ fn generateDocs(b: *Build, options: GenerateDocsOptions) void {
     );
 
     webui_lib.root_module.addImport("flags", options.flags_module);
-    webui_lib.root_module.addImport("compat_tuple", options.compat_tuple_module);
+    webui_lib.root_module.addImport("tuple", options.tuple_module);
 
     const docs_step = b.step("docs", "Generate docs");
     const docs_install = b.addInstallDirectory(.{
@@ -243,12 +210,10 @@ fn generateDocs(b: *Build, options: GenerateDocsOptions) void {
 // ========== Examples Building ==========
 
 fn buildExamples(b: *Build, options: BuildExamplesOptions) !void {
-    const lazy_path = b.path("examples");
-    _ = lazy_path; // autofix
     const build_all_step = b.step("examples", "build all examples");
     const examples_path = "examples";
     if (comptime builtin.zig_version.minor >= 17) {
-        // Zig 0.17+: build_root is remove.
+        // Zig 0.17+: build_root is removed.
         const io = b.graph.io;
         var examples_dir = b.root.root_dir.handle.openDir(io, examples_path, .{ .iterate = true }) catch |err| {
             switch (err) {
@@ -263,8 +228,8 @@ fn buildExamples(b: *Build, options: BuildExamplesOptions) !void {
             if (entry.kind != .directory) continue;
             try buildExample(b, entry.name, options, build_all_step);
         }
-    } else if (comptime builtin.zig_version.minor >= 16) {
-        // Zig 0.16+: build_root.handle is std.Io.Dir and requires an `io`.
+    } else {
+        // Zig 0.16: build_root.handle is std.Io.Dir and requires an `io`.
         const io = b.graph.io;
         var examples_dir = b.build_root.handle.openDir(io, examples_path, .{ .iterate = true }) catch |err| {
             switch (err) {
@@ -276,21 +241,6 @@ fn buildExamples(b: *Build, options: BuildExamplesOptions) !void {
 
         var iter = examples_dir.iterate();
         while (try iter.next(io)) |entry| {
-            if (entry.kind != .directory) continue;
-            try buildExample(b, entry.name, options, build_all_step);
-        }
-    } else {
-        // Zig 0.14/0.15: build_root.handle is std.fs.Dir.
-        var examples_dir = b.build_root.handle.openDir(examples_path, .{ .iterate = true }) catch |err| {
-            switch (err) {
-                error.FileNotFound => return,
-                else => return err,
-            }
-        };
-        defer examples_dir.close();
-
-        var iter = examples_dir.iterate();
-        while (try iter.next()) |entry| {
             if (entry.kind != .directory) continue;
             try buildExample(b, entry.name, options, build_all_step);
         }

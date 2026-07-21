@@ -60,7 +60,7 @@ pub fn main() !void {
 
 fn startPythonWebServer(argv: []const []const u8) void {
     if (python_running == false) { // a better check would be a test for the process itself
-        if (compat.ChildProcess.spawn(argv, std.heap.page_allocator)) |child| {
+        if (compat.ChildProcess.spawn(argv)) |child| {
             python_server_proc = child;
             python_running = true;
             std.debug.print("Spawned python server process PID={?}\n", .{python_server_proc.pid});

@@ -66,7 +66,16 @@ pub fn main() !void {
     main_window.setPublic(true);
     main_window.setIcon("<svg>...</svg>", "image/svg+xml");
 
-    // Set up file handling
+    // Set up file handling. webui_set_root_folder fails if the folder does not
+    // already exist, so check first and, if it's missing, tell the user exactly
+    // where to create it and stop. Paths are relative to the example directory
+    // (the run step sets that as the cwd).
+    if (!compat.folderExists("public")) {
+        var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const dir = compat.cwdPath(&path_buf) catch ".";
+        std.debug.print("Please create folder \"{s}{s}public\"\n", .{ dir, std.fs.path.sep_str });
+        return;
+    }
     try main_window.setRootFolder("public");
     main_window.setFileHandler(customFileHandler);
 
@@ -83,9 +92,6 @@ pub fn main() !void {
 
     // Set runtime for enhanced JavaScript support
     main_window.setRuntime(.NodeJS);
-
-    // Create public directory
-    compat.makeDir("examples/comprehensive/public") catch {};
 
     // Show window
     try main_window.show(html);

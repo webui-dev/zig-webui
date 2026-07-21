@@ -16,7 +16,7 @@ fn maximize(e: *webui.Event) void {
     win.maximize();
 }
 
-fn close(e: *webui.Event) void {
+fn close_win(e: *webui.Event) void {
     const win = e.getWindow();
     win.close();
 }
@@ -27,7 +27,7 @@ pub fn main() !void {
 
     _ = try nwin.bind("minimize", minimize);
     _ = try nwin.bind("maximize", maximize);
-    _ = try nwin.bind("close", close);
+    _ = try nwin.bind("close_win", close_win);
 
     nwin.setSize(800, 600);
     nwin.setFrameless(true);

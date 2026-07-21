@@ -11,9 +11,8 @@
 //! Run with `zig build test`.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const webui = @import("webui");
-const compat_tuple = @import("compat_tuple");
+const tuple = @import("tuple");
 
 fn memFind(comptime T: type, haystack: []const T, needle: []const T) ?usize {
     if (comptime @hasDecl(std.mem, "find")) return std.mem.find(T, haystack, needle);
@@ -115,14 +114,14 @@ test "WebUIError contains expected variants" {
     try std.testing.expectEqual(@as(usize, 13), want.len);
 }
 
-test "compat_tuple.fnParamsToTuple synthesizes correct tuple" {
+test "tuple.fnParamsToTuple synthesizes correct tuple" {
     const Type = std.builtin.Type;
     const params = [_]Type.Fn.Param{
         .{ .is_generic = false, .is_noalias = false, .type = i32 },
         .{ .is_generic = false, .is_noalias = false, .type = bool },
         .{ .is_generic = false, .is_noalias = false, .type = f64 },
     };
-    const Tup = compat_tuple.fnParamsToTuple(&params);
+    const Tup = tuple.fnParamsToTuple(&params);
 
     const info = @typeInfo(Tup).@"struct";
     try std.testing.expect(info.is_tuple);
@@ -248,10 +247,4 @@ test "browserExist for NoBrowser returns false" {
 test "clean is callable" {
     // No assertion: just make sure the symbol is wired up and doesn't crash.
     webui.clean();
-}
-
-// Suppress "unused" warnings for builtin import on 0.14 paths that don't
-// touch it directly.
-comptime {
-    _ = builtin;
 }

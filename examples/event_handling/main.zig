@@ -2,7 +2,6 @@
 //! This example demonstrates advanced event handling, context management, and multi-client support
 const std = @import("std");
 const webui = @import("webui");
-const builtin = @import("builtin");
 const compat = @import("compat");
 
 const html = @embedFile("index.html");
@@ -27,13 +26,7 @@ fn ensureContextsInitialized() void {
         global_user_contexts = std.AutoHashMap(usize, *UserContext).init(allocator);
     }
     if (online_users == null) {
-        // Version compatibility: Zig 0.14 uses managed ArrayList; 0.15+ unmanaged.
-        // On 0.16 the unmanaged default-init (`{}`) was dropped — use `.empty`.
-        if (comptime builtin.zig_version.minor >= 15) {
-            online_users = std.ArrayList(OnlineUser).empty;
-        } else {
-            online_users = std.ArrayList(OnlineUser).init(allocator);
-        }
+        online_users = std.ArrayList(OnlineUser).empty;
     }
 }
 
@@ -216,18 +209,10 @@ fn userLogin(e: *webui.Event) void {
     // Add user to online list
     ensureContextsInitialized();
     if (online_users) |*users| {
-        // Version compatibility for append method
-        if (comptime builtin.zig_version.minor >= 15) {
-            // Zig 0.16+ - unmanaged ArrayList needs allocator parameter
-            users.append(allocator, OnlineUser{ .client_id = e.client_id, .username = context.username }) catch {
-                std.debug.print("Failed to add user to online list\n", .{});
-            };
-        } else {
-            // Zig 0.14/0.15 - managed ArrayList doesn't need allocator parameter
-            users.append(OnlineUser{ .client_id = e.client_id, .username = context.username }) catch {
-                std.debug.print("Failed to add user to online list\n", .{});
-            };
-        }
+        // Unmanaged ArrayList: append takes the allocator explicitly.
+        users.append(allocator, OnlineUser{ .client_id = e.client_id, .username = context.username }) catch {
+            std.debug.print("Failed to add user to online list\n", .{});
+        };
     }
 
     // Broadcast user list update to all clients
