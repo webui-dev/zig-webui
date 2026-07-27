@@ -32,9 +32,16 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
 
     let windowClosed = false;
     let received;
+    let clickListener;
     globalThis.WebSocket = WebSocketMock;
     globalThis.__zigWebuiCapability = "0123456789abcdef0123456789abcdef";
+    globalThis.__zigWebuiEvents = true;
     globalThis.__zigWebuiToken = 7;
+    globalThis.document = {
+        addEventListener(type, listener) {
+            if (type === "click") clickListener = listener;
+        },
+    };
     globalThis.location = {
         protocol: "http:",
         host: "localhost",
@@ -59,6 +66,44 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
             new TextDecoder().decode(new Uint8Array(socket.sent).subarray(8)),
             globalThis.__zigWebuiCapability,
         );
+        await socket.onmessage({
+            data: frame(0xf5, Uint8Array.of(1)),
+        });
+
+        const button = { id: "run" };
+        clickListener({
+            target: {
+                closest(selector) {
+                    return selector === "[id]" ? button : null;
+                },
+            },
+        });
+        let eventPacket = new Uint8Array(socket.sent);
+        assert.equal(eventPacket[7], 0xfc);
+        assert.equal(
+            new TextDecoder().decode(eventPacket.subarray(8)),
+            "run",
+        );
+
+        let prevented = false;
+        const link = { href: "http://localhost/next" };
+        clickListener({
+            target: {
+                closest(selector) {
+                    return selector === "a[href]" ? link : null;
+                },
+            },
+            preventDefault() {
+                prevented = true;
+            },
+        });
+        eventPacket = new Uint8Array(socket.sent);
+        assert.equal(prevented, true);
+        assert.equal(eventPacket[7], 0xfb);
+        assert.equal(
+            new TextDecoder().decode(eventPacket.subarray(8)),
+            link.href,
+        );
 
         await socket.onmessage({
             data: frame(0xfb, encoder.encode("/next")),
@@ -75,13 +120,46 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
         await socket.onmessage({ data: frame(0xfa) });
         assert.equal(socket.closed, true);
         assert.equal(windowClosed, true);
+
+        let navigationListener;
+        globalThis.navigation = {
+            addEventListener(type, listener) {
+                if (type === "navigate") navigationListener = listener;
+            },
+        };
+        delete globalThis.webui;
+        delete require.cache[require.resolve("./bridge.js")];
+        require("./bridge.js");
+        const navigationSocket = WebSocketMock.instance;
+        navigationSocket.onopen();
+        await navigationSocket.onmessage({
+            data: frame(0xf5, Uint8Array.of(1)),
+        });
+        prevented = false;
+        navigationListener({
+            cancelable: true,
+            destination: { url: "http://localhost/history" },
+            preventDefault() {
+                prevented = true;
+            },
+        });
+        eventPacket = new Uint8Array(navigationSocket.sent);
+        assert.equal(prevented, true);
+        assert.equal(eventPacket[7], 0xfb);
+        assert.equal(
+            new TextDecoder().decode(eventPacket.subarray(8)),
+            "http://localhost/history",
+        );
     } finally {
         delete globalThis.WebSocket;
+        delete globalThis.document;
         delete globalThis.location;
+        delete globalThis.navigation;
         delete globalThis.close;
         delete globalThis.receiveRaw;
         delete globalThis.webui;
         delete globalThis.__zigWebuiCapability;
+        delete globalThis.__zigWebuiEvents;
         delete globalThis.__zigWebuiToken;
     }
 });

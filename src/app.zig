@@ -8,8 +8,27 @@ const default_max_pending_evals = 64;
 const capability_len = 32;
 
 pub const Handler = *const fn (*Call, ?*anyopaque) anyerror!void;
+pub const EventHandler = *const fn (
+    *const Event,
+    ?*anyopaque,
+) anyerror!void;
 pub const Request = Linsang.Request;
 pub const Response = Linsang.Response;
+
+pub const EventKind = enum {
+    connected,
+    disconnected,
+    click,
+    navigation,
+};
+
+pub const Event = struct {
+    kind: EventKind,
+    client: Client,
+    /// Element ID for clicks, URL for navigation, and empty for lifecycle
+    /// events. The slice is only valid for the duration of the handler.
+    data: []const u8 = "",
+};
 
 pub const ResourceHandler = *const fn (
     path: []const u8,
@@ -35,6 +54,11 @@ pub const Content = union(enum) {
 const Binding = struct {
     name: []u8,
     handler: Handler,
+    user_data: ?*anyopaque,
+};
+
+const EventBinding = struct {
+    handler: EventHandler,
     user_data: ?*anyopaque,
 };
 
@@ -153,6 +177,7 @@ const WindowState = struct {
     capability: [capability_len]u8 = @splat(0),
     token: u32 = 0,
     bindings: std.ArrayList(Binding) = .empty,
+    event_binding: ?EventBinding = null,
     mutex: std.Io.Mutex = .init,
     clients: std.ArrayList(ConnectedClient) = .empty,
     pending_evals: std.ArrayList(*PendingEval) = .empty,
@@ -205,23 +230,28 @@ const WindowState = struct {
         return self.clients.items.len != 0;
     }
 
-    fn authenticate(self: *WindowState, connection: *Linsang.Connection) !void {
+    fn authenticate(
+        self: *WindowState,
+        connection: *Linsang.Connection,
+    ) !?Client {
         self.mutex.lockUncancelable(connection.io);
         defer self.mutex.unlock(connection.io);
         const key = @intFromPtr(connection);
-        if (self.clientIndexByKey(key) != null) return;
+        if (self.clientIndexByKey(key) != null) return null;
         if (self.clients.items.len >= self.max_clients)
             return error.ClientLimitReached;
 
         var peer = try connection.peer();
         errdefer peer.deinit();
+        const client_id = self.next_client_id;
         try self.clients.append(self.gpa, .{
-            .id = self.next_client_id,
+            .id = client_id,
             .key = key,
             .peer = peer,
         });
         self.next_client_id +%= 1;
         if (self.next_client_id == 0) self.next_client_id = 1;
+        return .{ .state = self, .client_id = client_id };
     }
 
     fn client(self: *WindowState, connection: *Linsang.Connection) ?Client {
@@ -232,11 +262,14 @@ const WindowState = struct {
         return .{ .state = self, .client_id = self.clients.items[index].id };
     }
 
-    fn disconnected(self: *WindowState, connection: *Linsang.Connection) bool {
+    fn disconnected(
+        self: *WindowState,
+        connection: *Linsang.Connection,
+    ) ?Client {
         self.mutex.lockUncancelable(connection.io);
         defer self.mutex.unlock(connection.io);
         const index = self.clientIndexByKey(@intFromPtr(connection)) orelse
-            return false;
+            return null;
         var disconnected_client = self.clients.swapRemove(index);
         disconnected_client.peer.deinit();
         for (self.pending_evals.items) |pending| {
@@ -245,7 +278,16 @@ const WindowState = struct {
                 pending.done.set(connection.io);
             }
         }
-        return true;
+        return .{
+            .state = self,
+            .client_id = disconnected_client.id,
+        };
+    }
+
+    fn dispatch(self: *WindowState, event: Event) void {
+        const registered = self.event_binding orelse return;
+        registered.handler(&event, registered.user_data) catch |err|
+            std.log.err("WebUI event handler failed: {}", .{err});
     }
 
     fn finishEval(
@@ -614,6 +656,18 @@ fn evalBroadcastClient(
 pub const Window = struct {
     state: *WindowState,
 
+    /// Install the browser event handler before starting the application.
+    pub fn onEvent(
+        self: Window,
+        handler: EventHandler,
+        user_data: ?*anyopaque,
+    ) void {
+        self.state.event_binding = .{
+            .handler = handler,
+            .user_data = user_data,
+        };
+    }
+
     pub fn bind(
         self: Window,
         name: []const u8,
@@ -953,6 +1007,10 @@ fn onRequest(
             "globalThis.__zigWebuiCapability=\"{s}\";\n",
             .{window.capability},
         ) catch return failResponse(response);
+        response.print(
+            "globalThis.__zigWebuiEvents={};\n",
+            .{window.event_binding != null},
+        ) catch return failResponse(response);
         response.write(bridge) catch return failResponse(response);
         return .respond;
     }
@@ -1026,12 +1084,16 @@ fn onMessage(
             send(connection, app.gpa, packet.header, &.{0}) catch {};
             return;
         }
-        window.authenticate(connection) catch {
+        const new_client = window.authenticate(connection) catch {
             send(connection, app.gpa, packet.header, &.{0}) catch {};
             connection.wsClose(.policy_violation, "");
             return;
         };
         send(connection, app.gpa, packet.header, &.{1}) catch {};
+        if (new_client) |client| window.dispatch(.{
+            .kind = .connected,
+            .client = client,
+        });
         return;
     }
     const window = authenticated orelse {
@@ -1073,6 +1135,24 @@ fn onMessage(
             };
             send(connection, app.gpa, packet.header, call.response.items) catch {};
         },
+        .click, .navigation => {
+            const client = window.client(connection) orelse {
+                connection.wsClose(.policy_violation, "");
+                return;
+            };
+            const data = protocol.decodeEventText(packet.payload) catch {
+                connection.wsClose(.protocol_error, "");
+                return;
+            };
+            window.dispatch(.{
+                .kind = if (packet.header.command == .click)
+                    .click
+                else
+                    .navigation,
+                .client = client,
+                .data = data,
+            });
+        },
         else => connection.wsClose(.unsupported_data, ""),
     }
 }
@@ -1080,8 +1160,15 @@ fn onMessage(
 fn onClose(connection: *Linsang.Connection, user_data: ?*anyopaque) void {
     const app = appFrom(user_data);
     var disconnected = false;
-    for (app.windows.items) |window|
-        disconnected = window.disconnected(connection) or disconnected;
+    for (app.windows.items) |window| {
+        if (window.disconnected(connection)) |client| {
+            window.dispatch(.{
+                .kind = .disconnected,
+                .client = client,
+            });
+            disconnected = true;
+        }
+    }
     if (disconnected and !app.hasClients(connection.io))
         app.closed.store(true, .release);
 }
@@ -1154,6 +1241,36 @@ fn integrationHandler(call: *Call, user_data: ?*anyopaque) !void {
         @ptrCast(@alignCast(user_data.?));
     client_id.store(call.client.id(), .release);
     try call.reply("Hello from Zig");
+}
+
+const IntegrationEventState = struct {
+    expected_click: []const u8,
+    connected: std.atomic.Value(bool) = .init(false),
+    disconnected: std.atomic.Value(bool) = .init(false),
+    clicked: std.atomic.Value(bool) = .init(false),
+    navigated: std.atomic.Value(bool) = .init(false),
+};
+
+fn integrationEventHandler(
+    event: *const Event,
+    user_data: ?*anyopaque,
+) !void {
+    const state: *IntegrationEventState =
+        @ptrCast(@alignCast(user_data.?));
+    switch (event.kind) {
+        .connected => state.connected.store(true, .release),
+        .disconnected => state.disconnected.store(true, .release),
+        .click => {
+            if (!std.mem.eql(u8, event.data, state.expected_click))
+                return error.UnexpectedClick;
+            state.clicked.store(true, .release);
+        },
+        .navigation => {
+            if (!std.mem.eql(u8, event.data, "http://localhost/next"))
+                return error.UnexpectedNavigation;
+            state.navigated.store(true, .release);
+        },
+    }
 }
 
 fn integrationResourceHandler(
@@ -1343,6 +1460,14 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
             .handler = integrationResourceHandler,
         } },
     });
+    var primary_events: IntegrationEventState = .{
+        .expected_click = "primary",
+    };
+    window.onEvent(integrationEventHandler, &primary_events);
+    var secondary_events: IntegrationEventState = .{
+        .expected_click = "secondary",
+    };
+    second_window.onEvent(integrationEventHandler, &secondary_events);
     var called_client_id: std.atomic.Value(u64) = .init(0);
     try window.bind("greet", integrationHandler, &called_client_id);
     var running = try app.start(io);
@@ -1373,6 +1498,21 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
             &response,
         );
         try std.testing.expect(std.mem.indexOf(u8, bytes, "HTTP/1.1 200 OK") != null);
+    }
+    {
+        var target: [capability_len + 10]u8 = undefined;
+        var response: [8192]u8 = undefined;
+        const enabled = "globalThis.__zigWebuiEvents=true;";
+        const bytes = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/webui.js", .{
+                window.state.capability,
+            }),
+            enabled,
+            &response,
+        );
+        try std.testing.expect(std.mem.indexOf(u8, bytes, enabled) != null);
     }
     {
         var target: [capability_len + 2]u8 = undefined;
@@ -1511,6 +1651,18 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     defer packet.deinit(gpa);
     try protocol.append(&packet, gpa, .{
         .token = window.state.token,
+        .command = .click,
+    }, "primary");
+    try sendClientFrame(client, io, packet.items);
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .command = .navigation,
+    }, "http://localhost/next");
+    try sendClientFrame(client, io, packet.items);
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
         .id = 9,
         .command = .call,
     }, "greet\x003\x00Zig\x00");
@@ -1519,6 +1671,10 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     const reply_packet = try protocol.decode(replied);
     try std.testing.expectEqual(@as(u16, 9), reply_packet.header.id);
     try std.testing.expectEqualStrings("Hello from Zig", reply_packet.payload);
+    try std.testing.expect(primary_events.connected.load(.acquire));
+    try std.testing.expect(primary_events.clicked.load(.acquire));
+    try std.testing.expect(primary_events.navigated.load(.acquire));
+    try std.testing.expect(!secondary_events.connected.load(.acquire));
     const targeted_client: Client = .{
         .state = window.state,
         .client_id = called_client_id.load(.acquire),
@@ -1544,6 +1700,12 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     packet.clearRetainingCapacity();
     try protocol.append(&packet, gpa, .{
         .token = second_window.state.token,
+        .command = .click,
+    }, "secondary\x00");
+    try sendClientFrame(second_client, io, packet.items);
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = second_window.state.token,
         .id = 10,
         .command = .call,
     }, "greet\x003\x00Zig\x00");
@@ -1554,6 +1716,9 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         &second_response,
     ));
     try std.testing.expectEqual(@as(usize, 0), isolated_reply.payload.len);
+    try std.testing.expect(secondary_events.connected.load(.acquire));
+    try std.testing.expect(secondary_events.clicked.load(.acquire));
+    try std.testing.expect(!secondary_events.navigated.load(.acquire));
 
     var eval_buffer: [64]u8 = undefined;
     var eval_future = io.async(Client.eval, .{
@@ -1681,6 +1846,8 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     try std.testing.expect(!app.closed.load(.acquire));
     try second_client.shutdown(io, .both);
     try running.wait();
+    try std.testing.expect(primary_events.disconnected.load(.acquire));
+    try std.testing.expect(secondary_events.disconnected.load(.acquire));
 }
 
 test "multi-client limits, targeting, and disconnect lifecycle" {

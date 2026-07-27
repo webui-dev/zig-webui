@@ -209,7 +209,7 @@ and clean shutdown; `zig build test` passes; the build graph contains no C.
 Acceptance: the call-js-from-zig example passes, and an idle connection
 immediately receives Zig-initiated messages. Complete.
 
-### 3. Resources and multiple clients (in progress)
+### 3. Resources, multiple clients, and events (complete)
 
 - Implemented `.html` and `.directory` content.
 - Implemented buffered custom resource handlers using Linsang `Request` and
@@ -220,8 +220,12 @@ immediately receives Zig-initiated messages. Complete.
   the default and `WindowOptions.max_clients` explicitly enables more.
 - Implemented a bounded pending-eval table keyed by client and request ID.
 - Implemented `Window` navigation, close, raw-data, and evaluation broadcasts.
+- Implemented one `Window.onEvent` handler for connected, disconnected, click,
+  and intercepted navigation events.
 
-Acceptance: serve-a-folder, custom-server, and multi-client examples pass.
+Acceptance: integration tests cover isolated resources, multiple windows,
+multiple clients, lifecycle events, click and navigation events, and
+disconnect cleanup. Complete.
 
 ### 4. Browser and security completion
 
@@ -305,7 +309,9 @@ zig build -Dtarget=aarch64-macos
 
 ## Next Implementation Work
 
-Begin phase 3:
+Begin phase 4:
 
-1. Decide whether `.external_url` belongs in the core API.
-2. Begin browser and security completion.
+1. Validate WebSocket origins and add explicit protocol size limits.
+2. Add caller-provided TLS configuration before enabling public listening.
+3. Keep `.external_url` deferred until its capability bridge contract is
+   defined.

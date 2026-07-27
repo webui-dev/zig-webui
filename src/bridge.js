@@ -1,6 +1,7 @@
 (() => {
     const signature = 0xdd;
     const commandJs = 0xfe;
+    const commandClick = 0xfc;
     const commandNavigation = 0xfb;
     const commandClose = 0xfa;
     const commandCall = 0xf9;
@@ -27,6 +28,33 @@
         bytes[7] = command;
         bytes.set(payload, 8);
         return bytes;
+    }
+
+    function sendEvent(command, value) {
+        if (connected)
+            socket.send(packet(command, 0, encoder.encode(value)));
+    }
+
+    if (globalThis.__zigWebuiEvents) {
+        document.addEventListener("click", (event) => {
+            const element = event.target?.closest?.("[id]");
+            if (element) sendEvent(commandClick, element.id);
+
+            if (!("navigation" in globalThis)) {
+                const link = event.target?.closest?.("a[href]");
+                if (link && connected) {
+                    event.preventDefault();
+                    sendEvent(commandNavigation, link.href);
+                }
+            }
+        });
+        if ("navigation" in globalThis) {
+            globalThis.navigation.addEventListener("navigate", (event) => {
+                if (!connected) return;
+                if (event.cancelable) event.preventDefault();
+                sendEvent(commandNavigation, event.destination.url);
+            });
+        }
     }
 
     socket.onopen = () => socket.send(

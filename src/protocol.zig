@@ -117,6 +117,19 @@ pub fn decodeCall(payload: []const u8) DecodeError!CallPayload {
     return result;
 }
 
+pub fn decodeEventText(payload: []const u8) DecodeError![]const u8 {
+    var text = payload;
+    if (text.len > 0 and text[text.len - 1] == 0)
+        text = text[0 .. text.len - 1];
+    if (text.len == 0 or
+        std.mem.indexOfScalar(u8, text, 0) != null or
+        !std.unicode.utf8ValidateSlice(text))
+    {
+        return error.InvalidPacket;
+    }
+    return text;
+}
+
 test "packet and call payload decode" {
     const gpa = std.testing.allocator;
     var bytes: std.ArrayList(u8) = .empty;
@@ -136,6 +149,8 @@ test "packet and call payload decode" {
     try std.testing.expectEqual(@as(usize, 2), call.count);
     try std.testing.expectEqualStrings("7", call.args[0]);
     try std.testing.expectEqualStrings("1234", call.args[1]);
+    try std.testing.expectEqualStrings("button", try decodeEventText("button"));
+    try std.testing.expectEqualStrings("button", try decodeEventText("button\x00"));
 }
 
 test "untrusted packets are rejected" {
@@ -151,5 +166,14 @@ test "untrusted packets are rejected" {
     try std.testing.expectError(
         error.InvalidPacket,
         decodeCall("call\x00\x00trailing"),
+    );
+    try std.testing.expectError(error.InvalidPacket, decodeEventText(""));
+    try std.testing.expectError(
+        error.InvalidPacket,
+        decodeEventText("button\x00trailing"),
+    );
+    try std.testing.expectError(
+        error.InvalidPacket,
+        decodeEventText(&.{0xff}),
     );
 }

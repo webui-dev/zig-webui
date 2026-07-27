@@ -20,6 +20,8 @@ The current phase provides:
   `WindowOptions.max_pending_evals`;
 - window navigation, close, raw-data, and JavaScript broadcasts with
   per-client results;
+- connected, disconnected, click, and intercepted navigation events through
+  `Window.onEvent`;
 - default-browser launching and deterministic shutdown.
 
 ```zig
@@ -82,6 +84,12 @@ Serve a directory by setting
 `.content = .{ .directory = "path/to/public" }`. The path is opened when the
 app starts and closed when it stops. Custom resources receive `webui.Request`
 and `webui.Response` directly.
+
+`Window.onEvent` installs one handler for browser lifecycle, click, and
+navigation events. `Event.data` contains the element ID for clicks, the target
+URL for navigation, and is empty for connected or disconnected events.
+Navigation attempts are intercepted while an event handler is installed; call
+`Event.client.navigate` from the handler to continue them.
 
 See the
 [pure Zig refactor plan](docs/PURE_ZIG_REFACTOR.md) for the complete scope and
