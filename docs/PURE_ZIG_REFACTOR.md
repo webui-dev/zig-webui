@@ -212,6 +212,7 @@ immediately receives Zig-initiated messages. Complete.
   accepting assembled HTTP strings.
 - Implemented a bounded collection of stable `Client` handles; one client is
   the default and `WindowOptions.max_clients` explicitly enables more.
+- Implemented a bounded pending-eval table keyed by client and request ID.
 - Add `Window` broadcasts; targeted sends are implemented.
 
 Acceptance: serve-a-folder, custom-server, and multi-client examples pass.
@@ -300,6 +301,5 @@ zig build -Dtarget=aarch64-macos
 
 Begin phase 3:
 
-1. Replace `pending_eval` with a bounded table keyed by client and request ID.
-2. Add real `Window` broadcasts over the client collection.
-3. Add directory, external URL, and custom resource content.
+1. Add real `Window` broadcasts over the client collection.
+2. Add directory, external URL, and custom resource content.

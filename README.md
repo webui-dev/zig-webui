@@ -15,6 +15,8 @@ The current phase provides:
   timeouts, and stale-client detection;
 - targeted client navigation, close, and raw binary delivery;
 - bounded multi-client windows through `WindowOptions.max_clients`;
+- bounded concurrent evaluations through
+  `WindowOptions.max_pending_evals`;
 - default-browser launching and deterministic shutdown.
 
 ```zig

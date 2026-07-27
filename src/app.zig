@@ -4,6 +4,7 @@ const browser = @import("browser.zig");
 const protocol = @import("protocol.zig");
 
 const bridge = @embedFile("bridge.js");
+const default_max_pending_evals = 64;
 
 pub const Handler = *const fn (*Call, ?*anyopaque) anyerror!void;
 
@@ -45,17 +46,18 @@ const WindowState = struct {
     gpa: std.mem.Allocator,
     html: []u8,
     max_clients: usize,
+    max_pending_evals: usize,
     token: u32 = 0,
     bindings: std.ArrayList(Binding) = .empty,
     mutex: std.Io.Mutex = .init,
-    eval_mutex: std.Io.Mutex = .init,
     clients: std.ArrayList(ConnectedClient) = .empty,
+    pending_evals: std.ArrayList(*PendingEval) = .empty,
     next_client_id: u64 = 1,
     next_eval_id: u16 = 1,
-    pending_eval: ?PendingEval = null,
 
     fn deinit(self: *WindowState) void {
-        std.debug.assert(self.pending_eval == null);
+        std.debug.assert(self.pending_evals.items.len == 0);
+        self.pending_evals.deinit(self.gpa);
         for (self.clients.items) |*connected| connected.peer.deinit();
         self.clients.deinit(self.gpa);
         for (self.bindings.items) |item| self.gpa.free(item.name);
@@ -118,7 +120,7 @@ const WindowState = struct {
             return false;
         var disconnected_client = self.clients.swapRemove(index);
         disconnected_client.peer.deinit();
-        if (self.pending_eval) |*pending| {
+        for (self.pending_evals.items) |pending| {
             if (pending.client_id == disconnected_client.id) {
                 pending.status = .disconnected;
                 pending.done.set(connection.io);
@@ -139,10 +141,11 @@ const WindowState = struct {
         const client_index = self.clientIndexByKey(@intFromPtr(connection)) orelse
             return;
         const client_id = self.clients.items[client_index].id;
-        const pending = if (self.pending_eval) |*pending| pending else return;
-        if (pending.id != id or
-            pending.client_id != client_id or
-            pending.status != .waiting) return;
+        const pending = for (self.pending_evals.items) |candidate| {
+            if (candidate.id == id and candidate.client_id == client_id)
+                break candidate;
+        } else return;
+        if (pending.status != .waiting) return;
 
         var value = payload[1..];
         if (value.len > 0 and value[value.len - 1] == 0)
@@ -157,20 +160,29 @@ const WindowState = struct {
         pending.done.set(connection.io);
     }
 
-    fn cancelEval(self: *WindowState, io: std.Io, id: u16) void {
-        self.mutex.lockUncancelable(io);
-        defer self.mutex.unlock(io);
-        if (self.pending_eval) |pending| {
-            if (pending.id == id) self.pending_eval = null;
-        }
+    fn pendingIndex(self: *WindowState, pending: *PendingEval) ?usize {
+        for (self.pending_evals.items, 0..) |candidate, index|
+            if (candidate == pending) return index;
+        return null;
     }
 
-    fn takeEval(self: *WindowState, io: std.Io, id: u16) !EvalResult {
+    fn removeEval(self: *WindowState, io: std.Io, pending: *PendingEval) void {
         self.mutex.lockUncancelable(io);
         defer self.mutex.unlock(io);
-        const pending = self.pending_eval orelse return error.ConnectionClosed;
-        if (pending.id != id) return error.ConnectionClosed;
-        self.pending_eval = null;
+        const index = self.pendingIndex(pending) orelse return;
+        _ = self.pending_evals.swapRemove(index);
+    }
+
+    fn takeEval(
+        self: *WindowState,
+        io: std.Io,
+        pending: *PendingEval,
+    ) !EvalResult {
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+        const index = self.pendingIndex(pending) orelse
+            return error.ConnectionClosed;
+        _ = self.pending_evals.swapRemove(index);
         const value = pending.buffer[0..pending.len];
         return switch (pending.status) {
             .value => .{ .value = value },
@@ -179,6 +191,17 @@ const WindowState = struct {
             .disconnected => error.ConnectionClosed,
             .waiting => error.Timeout,
         };
+    }
+
+    fn nextEvalId(self: *WindowState) u16 {
+        while (true) {
+            const id = self.next_eval_id;
+            self.next_eval_id +%= 1;
+            if (self.next_eval_id == 0) self.next_eval_id = 1;
+            for (self.pending_evals.items) |pending| {
+                if (pending.id == id) break;
+            } else return id;
+        }
     }
 
     fn eval(
@@ -190,8 +213,6 @@ const WindowState = struct {
         timeout: std.Io.Duration,
     ) !EvalResult {
         if (!std.unicode.utf8ValidateSlice(script)) return error.InvalidUtf8;
-        if (!self.eval_mutex.tryLock()) return error.Busy;
-        defer self.eval_mutex.unlock(io);
 
         const deadline = std.Io.Clock.Timestamp.fromNow(io, .{
             .clock = .awake,
@@ -228,24 +249,29 @@ const WindowState = struct {
         };
         defer peer.deinit();
 
+        var pending: PendingEval = undefined;
         self.mutex.lockUncancelable(io);
-        const id = self.next_eval_id;
-        self.next_eval_id +%= 1;
-        if (self.next_eval_id == 0) self.next_eval_id = 1;
-        self.pending_eval = .{
-            .id = id,
+        if (self.pending_evals.items.len >= self.max_pending_evals) {
+            self.mutex.unlock(io);
+            return error.TooManyPendingEvals;
+        }
+        pending = .{
+            .id = self.nextEvalId(),
             .client_id = client_id,
             .buffer = result_buffer,
         };
-        const done = &self.pending_eval.?.done;
+        self.pending_evals.append(self.gpa, &pending) catch |err| {
+            self.mutex.unlock(io);
+            return err;
+        };
         self.mutex.unlock(io);
-        errdefer self.cancelEval(io, id);
+        errdefer self.removeEval(io, &pending);
 
         var packet: std.ArrayList(u8) = .empty;
         defer packet.deinit(self.gpa);
         try protocol.append(&packet, self.gpa, .{
             .token = self.token,
-            .id = id,
+            .id = pending.id,
             .command = .js,
         }, script);
         peer.sendBinary(packet.items) catch |err| switch (err) {
@@ -254,12 +280,9 @@ const WindowState = struct {
         };
 
         while (true) {
-            done.waitTimeout(io, .{ .deadline = deadline }) catch |wait_error| {
+            pending.done.waitTimeout(io, .{ .deadline = deadline }) catch |wait_error| {
                 self.mutex.lockUncancelable(io);
-                const still_waiting = if (self.pending_eval) |pending|
-                    pending.id == id and pending.status == .waiting
-                else
-                    false;
+                const still_waiting = pending.status == .waiting;
                 self.mutex.unlock(io);
                 if (!still_waiting) break;
                 if (wait_error == error.Canceled) return wait_error;
@@ -269,7 +292,7 @@ const WindowState = struct {
             };
             break;
         }
-        return self.takeEval(io, id);
+        return self.takeEval(io, &pending);
     }
 };
 
@@ -467,6 +490,8 @@ pub const App = struct {
         /// One client by default; values above one explicitly enable
         /// bounded multi-client mode.
         max_clients: usize = 1,
+        /// Maximum number of concurrent Zig-to-JavaScript calls.
+        max_pending_evals: usize = default_max_pending_evals,
     };
 
     pub fn init(gpa: std.mem.Allocator, options: Options) App {
@@ -482,6 +507,11 @@ pub const App = struct {
     pub fn createWindow(self: *App, options: WindowOptions) !Window {
         if (self.started) return error.AlreadyStarted;
         if (options.max_clients == 0) return error.InvalidClientLimit;
+        if (options.max_pending_evals == 0 or
+            options.max_pending_evals > std.math.maxInt(u16))
+        {
+            return error.InvalidPendingEvalLimit;
+        }
         // ponytail: phase 1 supports one window; replace with a map in phase 3.
         if (self.window != null) return error.OneWindowOnly;
         const state = try self.gpa.create(WindowState);
@@ -490,6 +520,7 @@ pub const App = struct {
             .gpa = self.gpa,
             .html = try self.gpa.dupe(u8, options.html),
             .max_clients = options.max_clients,
+            .max_pending_evals = options.max_pending_evals,
         };
         self.window = state;
         return .{ .state = state };
@@ -673,6 +704,15 @@ test "call accessors and one-window lifecycle" {
     try std.testing.expectError(
         error.InvalidClientLimit,
         invalid_app.createWindow(.{ .html = "invalid", .max_clients = 0 }),
+    );
+    var invalid_pending_app = App.init(gpa, .{});
+    defer invalid_pending_app.deinit();
+    try std.testing.expectError(
+        error.InvalidPendingEvalLimit,
+        invalid_pending_app.createWindow(.{
+            .html = "invalid",
+            .max_pending_evals = 0,
+        }),
     );
 
     var app = App.init(gpa, .{});
@@ -1017,6 +1057,7 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
     const window = try app.createWindow(.{
         .html = "multi-client test",
         .max_clients = 2,
+        .max_pending_evals = 2,
     });
     var called_client_id: std.atomic.Value(u64) = .init(0);
     try window.bind("greet", integrationHandler, &called_client_id);
@@ -1142,23 +1183,47 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
     );
     try std.testing.expectEqualStrings("/second", second_navigation.payload);
 
-    var targeted_eval_buffer: [16]u8 = undefined;
-    var targeted_eval = io.async(Client.eval, .{
+    var first_eval_buffer: [16]u8 = undefined;
+    var first_eval = io.async(Client.eval, .{
+        first,
+        io,
+        "return 3",
+        &first_eval_buffer,
+        std.Io.Duration.fromSeconds(1),
+    });
+    const first_eval_request = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+
+    var second_eval_buffer: [16]u8 = undefined;
+    var second_eval = io.async(Client.eval, .{
         second,
         io,
         "return 7",
-        &targeted_eval_buffer,
+        &second_eval_buffer,
         std.Io.Duration.fromSeconds(1),
     });
-    const targeted_eval_request = try protocol.decode(try readServerFrame(
+    const second_eval_request = try protocol.decode(try readServerFrame(
         second_stream,
         io,
         &second_response,
     ));
     try std.testing.expectEqual(
         protocol.Command.js,
-        targeted_eval_request.header.command,
+        first_eval_request.header.command,
     );
+    try std.testing.expectEqual(protocol.Command.js, second_eval_request.header.command);
+    try std.testing.expect(first_eval_request.header.id != second_eval_request.header.id);
+
+    var rejected_eval_buffer: [16]u8 = undefined;
+    try std.testing.expectError(error.TooManyPendingEvals, second.eval(
+        io,
+        "return 11",
+        &rejected_eval_buffer,
+        std.Io.Duration.fromSeconds(1),
+    ));
 
     try first_stream.shutdown(io, .both);
     var first_disconnected = false;
@@ -1172,15 +1237,16 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
     try std.testing.expect(first_disconnected);
     try std.testing.expect(second.isConnected(io));
     try std.testing.expect(!app.closed.load(.acquire));
+    try std.testing.expectError(error.ConnectionClosed, first_eval.await(io));
 
     packet.clearRetainingCapacity();
     try protocol.append(&packet, gpa, .{
         .token = window.state.token,
-        .id = targeted_eval_request.header.id,
+        .id = second_eval_request.header.id,
         .command = .js,
     }, "\x007\x00");
     try sendClientFrame(second_stream, io, packet.items);
-    switch (try targeted_eval.await(io)) {
+    switch (try second_eval.await(io)) {
         .value => |value| try std.testing.expectEqualStrings("7", value),
         .javascript_error => return error.UnexpectedJavaScriptError,
     }
