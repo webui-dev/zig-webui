@@ -18,6 +18,9 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{ .root_module = webui });
     const test_step = b.step("test", "Run unit and integration tests");
     test_step.dependOn(&b.addRunArtifact(tests).step);
+    const bridge_tests = b.addSystemCommand(&.{ "node", "--test" });
+    bridge_tests.addFileArg(b.path("src/bridge.test.js"));
+    test_step.dependOn(&bridge_tests.step);
 
     const minimal = b.addExecutable(.{
         .name = "minimal",

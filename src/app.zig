@@ -286,6 +286,37 @@ pub const Client = struct {
     state: *WindowState,
     client_id: u64,
 
+    fn send(
+        self: Client,
+        io: std.Io,
+        command: protocol.Command,
+        payload: []const u8,
+    ) !void {
+        self.state.mutex.lockUncancelable(io);
+        const stored = self.state.peer orelse {
+            self.state.mutex.unlock(io);
+            return error.ConnectionClosed;
+        };
+        if (self.state.client_id != self.client_id) {
+            self.state.mutex.unlock(io);
+            return error.ConnectionClosed;
+        }
+        var peer = stored.clone();
+        self.state.mutex.unlock(io);
+        defer peer.deinit();
+
+        var packet: std.ArrayList(u8) = .empty;
+        defer packet.deinit(self.state.gpa);
+        try protocol.append(&packet, self.state.gpa, .{
+            .token = self.state.token,
+            .command = command,
+        }, payload);
+        peer.sendBinary(packet.items) catch |err| switch (err) {
+            error.Closed => return error.ConnectionClosed,
+            else => return err,
+        };
+    }
+
     pub fn id(self: Client) u64 {
         return self.client_id;
     }
@@ -311,6 +342,38 @@ pub const Client = struct {
             result_buffer,
             timeout,
         );
+    }
+
+    pub fn navigate(self: Client, io: std.Io, url: []const u8) !void {
+        if (url.len == 0 or std.mem.indexOfScalar(u8, url, 0) != null)
+            return error.InvalidUrl;
+        if (!std.unicode.utf8ValidateSlice(url)) return error.InvalidUtf8;
+        try self.send(io, .navigation, url);
+    }
+
+    pub fn close(self: Client, io: std.Io) !void {
+        try self.send(io, .close, "");
+    }
+
+    pub fn sendRaw(
+        self: Client,
+        io: std.Io,
+        function: []const u8,
+        data: []const u8,
+    ) !void {
+        if (function.len == 0 or
+            std.mem.indexOfScalar(u8, function, 0) != null)
+        {
+            return error.InvalidFunctionName;
+        }
+        if (!std.unicode.utf8ValidateSlice(function)) return error.InvalidUtf8;
+
+        var payload: std.ArrayList(u8) = .empty;
+        defer payload.deinit(self.state.gpa);
+        try payload.appendSlice(self.state.gpa, function);
+        try payload.append(self.state.gpa, 0);
+        try payload.appendSlice(self.state.gpa, data);
+        try self.send(io, .raw, payload.items);
     }
 };
 
@@ -785,6 +848,47 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         .javascript_error => |message| try std.testing.expectEqualStrings("nope", message),
     }
 
+    try std.testing.expectError(
+        error.InvalidUrl,
+        targeted_client.navigate(io, ""),
+    );
+    try targeted_client.navigate(io, "/next");
+    const navigation = try protocol.decode(try readServerFrame(
+        client,
+        io,
+        &response_payload,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        navigation.header.command,
+    );
+    try std.testing.expectEqualStrings("/next", navigation.payload);
+
+    try std.testing.expectError(
+        error.InvalidFunctionName,
+        targeted_client.sendRaw(io, "", ""),
+    );
+    const raw_data = [_]u8{ 0, 1, 255 };
+    try targeted_client.sendRaw(io, "receiveRaw", &raw_data);
+    const raw = try protocol.decode(try readServerFrame(
+        client,
+        io,
+        &response_payload,
+    ));
+    try std.testing.expectEqual(protocol.Command.raw, raw.header.command);
+    try std.testing.expectEqualStrings("receiveRaw", raw.payload[0..10]);
+    try std.testing.expectEqual(@as(u8, 0), raw.payload[10]);
+    try std.testing.expectEqualSlices(u8, &raw_data, raw.payload[11..]);
+
+    try targeted_client.close(io);
+    const close = try protocol.decode(try readServerFrame(
+        client,
+        io,
+        &response_payload,
+    ));
+    try std.testing.expectEqual(protocol.Command.close, close.header.command);
+    try std.testing.expectEqual(@as(usize, 0), close.payload.len);
+
     var timeout_future = io.async(Window.eval, .{
         window,
         io,
@@ -812,5 +916,9 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         &eval_buffer,
         std.Io.Duration.fromSeconds(1),
     ));
+    try std.testing.expectError(
+        error.ConnectionClosed,
+        targeted_client.close(io),
+    );
     try running.wait();
 }

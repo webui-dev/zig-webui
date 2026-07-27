@@ -194,23 +194,24 @@ Acceptance: all 101 tests pass at `3b50417`.
 Acceptance: the minimal example passed a real Chromium JavaScript-to-Zig call
 and clean shutdown; `zig build test` passes; the build graph contains no C.
 
-### 2. Bidirectional calls (in progress)
+### 2. Bidirectional calls (complete)
 
 - Implemented single-client `Window.eval` with request IDs.
 - Implemented results, JavaScript errors, timeouts, and disconnect cleanup.
 - Implemented stable `Client` handles and targeted `Client.eval`.
-- Add broadcast `Window.eval`.
-- Add navigate, close, and raw binary operations.
+- Implemented targeted navigation, close, and raw binary operations.
+- Move broadcast `Window.eval` into the multi-client work.
 
 Acceptance: the call-js-from-zig example passes, and an idle connection
-immediately receives Zig-initiated messages.
+immediately receives Zig-initiated messages. Complete.
 
 ### 3. Resources and multiple clients
 
 - Add `.html`, `.directory`, and `.external_url` content.
 - Pass Linsang `Request` and `Response` to custom resource handlers instead of
   accepting assembled HTTP strings.
-- Merge client and connection IDs into a stable `Client` handle.
+- Replace the single peer with a bounded collection of stable `Client`
+  handles.
 - Support single-client mode, explicit multi-client mode, broadcasts, and
   targeted sends.
 
@@ -273,6 +274,8 @@ zig build -Dtarget=aarch64-macos
 
 - Protocol tests cover every command, truncated packets, invalid lengths,
   invalid tokens, and unknown commands.
+- Node's built-in test runner covers browser bridge command behavior without
+  npm dependencies.
 - Integration tests cover HTTP content, WebSocket handshake, JavaScript-to-Zig,
   Zig-to-JavaScript, disconnect, and shutdown.
 - Fuzz input never panics or reads out of bounds. Messages and pending calls
@@ -296,8 +299,9 @@ zig build -Dtarget=aarch64-macos
 
 ## Next Implementation Work
 
-Complete the remaining phase 2 work:
+Begin phase 3:
 
-1. Add explicit broadcast behavior.
-2. Add navigate, close, and raw binary operations.
-3. Keep the pending-call count bounded when concurrent calls are introduced.
+1. Replace the single peer with a bounded client collection.
+2. Replace `pending_eval` with a bounded table keyed by client and request ID.
+3. Add real `Window` broadcasts over that collection.
+4. Add directory, external URL, and custom resource content.

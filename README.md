@@ -13,6 +13,7 @@ The current phase provides:
 - JavaScript calls to Zig bindings with return values;
 - window and targeted `Call.client` calls to JavaScript with results, errors,
   timeouts, and stale-client detection;
+- targeted client navigation, close, and raw binary delivery;
 - default-browser launching and deterministic shutdown.
 
 ```zig
@@ -63,6 +64,9 @@ zig build test
 zig build
 zig build run
 ```
+
+`zig build test` uses Node's built-in test runner for the browser bridge.
+Building and using the library does not require Node or npm.
 
 Multiple windows, directory content, broadcasts, and multiple clients belong
 to later phases. See the

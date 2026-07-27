@@ -1,7 +1,10 @@
 (() => {
     const signature = 0xdd;
     const commandJs = 0xfe;
+    const commandNavigation = 0xfb;
+    const commandClose = 0xfa;
     const commandCall = 0xf9;
+    const commandRaw = 0xf8;
     const commandCheckToken = 0xf5;
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
@@ -61,6 +64,24 @@
             response[0] = failed;
             response.set(value, 1);
             socket.send(packet(commandJs, id, response));
+            return;
+        }
+        if (bytes[7] === commandNavigation) {
+            location.href = decoder.decode(bytes.subarray(8));
+            return;
+        }
+        if (bytes[7] === commandClose) {
+            socket.close();
+            globalThis.close();
+            return;
+        }
+        if (bytes[7] === commandRaw) {
+            const separator = bytes.indexOf(0, 8);
+            if (separator < 0) return;
+            const functionName = decoder.decode(bytes.subarray(8, separator));
+            const callback = globalThis[functionName];
+            if (typeof callback === "function")
+                callback(bytes.subarray(separator + 1));
             return;
         }
         if (bytes[7] === commandCall) {
