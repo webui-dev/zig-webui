@@ -8,6 +8,7 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
         constructor(url) {
             this.url = url;
             this.closed = false;
+            this.sent = undefined;
             WebSocketMock.instance = this;
         }
 
@@ -15,7 +16,9 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
             this.closed = true;
         }
 
-        send() {}
+        send(data) {
+            this.sent = data;
+        }
     }
 
     const encoder = new TextEncoder();
@@ -30,6 +33,8 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
     let windowClosed = false;
     let received;
     globalThis.WebSocket = WebSocketMock;
+    globalThis.__zigWebuiCapability = "0123456789abcdef0123456789abcdef";
+    globalThis.__zigWebuiToken = 7;
     globalThis.location = {
         protocol: "http:",
         host: "localhost",
@@ -45,7 +50,15 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
     try {
         require("./bridge.js");
         const socket = WebSocketMock.instance;
-        assert.equal(socket.url, "ws://localhost/_webui_ws_connect");
+        assert.equal(
+            socket.url,
+            "ws://localhost/0123456789abcdef0123456789abcdef/_webui_ws_connect",
+        );
+        socket.onopen();
+        assert.equal(
+            new TextDecoder().decode(new Uint8Array(socket.sent).subarray(8)),
+            globalThis.__zigWebuiCapability,
+        );
 
         await socket.onmessage({
             data: frame(0xfb, encoder.encode("/next")),
@@ -68,5 +81,7 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
         delete globalThis.close;
         delete globalThis.receiveRaw;
         delete globalThis.webui;
+        delete globalThis.__zigWebuiCapability;
+        delete globalThis.__zigWebuiToken;
     }
 });

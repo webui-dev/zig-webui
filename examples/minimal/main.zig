@@ -7,7 +7,7 @@ const html =
     \\<body>
     \\  <button id="hello">Call Zig</button>
     \\  <output id="result"></output>
-    \\  <script src="/webui.js"></script>
+    \\  <script src="webui.js"></script>
     \\  <script>
     \\    hello.onclick = async () => result.value = await webui.call("hello", "Zig");
     \\  </script>
@@ -38,7 +38,7 @@ pub fn main() !void {
     var running = try app.start(io);
     defer running.stop() catch {};
 
-    const url = try running.url(gpa);
+    const url = try window.url(&running, gpa);
     defer gpa.free(url);
     std.debug.print("WebUI: {s}\n", .{url});
 

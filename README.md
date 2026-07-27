@@ -8,7 +8,7 @@ support.
 The current phase provides:
 
 - Zig 0.16;
-- one `App`, one window, and automatic port selection;
+- one `App`, multiple isolated windows, and automatic port selection;
 - embedded HTML and a built-in JavaScript bridge;
 - JavaScript calls to Zig bindings with return values;
 - window and targeted `Call.client` calls to JavaScript with results, errors,
@@ -40,7 +40,7 @@ pub fn main() !void {
     const window = try app.createWindow(.{
         .html =
         \\<button onclick="webui.call('hello').then(alert)">Call Zig</button>
-        \\<script src="/webui.js"></script>
+        \\<script src="webui.js"></script>
         ,
     });
     try window.bind("hello", hello, null);
@@ -75,7 +75,7 @@ Building and using the library does not require Node or npm. `Window.evalAll`
 returns owned results; call `deinit` on them after consuming every per-client
 outcome.
 
-Multiple windows and directory content belong to later phases. See the
+Directory content belongs to a later phase. See the
 [pure Zig refactor plan](docs/PURE_ZIG_REFACTOR.md) for the complete scope and
 implementation order.
 

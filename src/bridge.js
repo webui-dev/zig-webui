@@ -14,7 +14,7 @@
     let connected = false;
 
     const socket = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/_webui_ws_connect`,
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/${globalThis.__zigWebuiCapability}/_webui_ws_connect`,
     );
     socket.binaryType = "arraybuffer";
 
@@ -29,7 +29,9 @@
         return bytes;
     }
 
-    socket.onopen = () => socket.send(packet(commandCheckToken, 0));
+    socket.onopen = () => socket.send(
+        packet(commandCheckToken, 0, encoder.encode(globalThis.__zigWebuiCapability)),
+    );
     socket.onclose = () => {
         connected = false;
         for (const promise of pending.values())

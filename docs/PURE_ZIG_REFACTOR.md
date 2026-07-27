@@ -105,6 +105,10 @@ Support `CHECK_TK`, `CALL_FUNC`, `CLICK`, `JS`, `JS_QUICK`, `NAVIGATION`,
 `CLOSE`, and `SEND_RAW` first. Implement `MULTI` only if messages actually
 exceed the WebSocket message limit.
 
+`CHECK_TK` carries the 128-bit window capability in its payload. Successful
+authentication permanently associates that WebSocket connection with one
+window.
+
 Commit the distributable JavaScript bridge as a repository asset. Building
 zig-webui must not require Node, npm, or esbuild. Preserve upstream MIT
 licensing and attribution. A second protocol version can be considered after
@@ -210,6 +214,7 @@ immediately receives Zig-initiated messages. Complete.
 - Add `.html`, `.directory`, and `.external_url` content.
 - Pass Linsang `Request` and `Response` to custom resource handlers instead of
   accepting assembled HTTP strings.
+- Implemented multiple windows with isolated capability-based routes.
 - Implemented a bounded collection of stable `Client` handles; one client is
   the default and `WindowOptions.max_clients` explicitly enables more.
 - Implemented a bounded pending-eval table keyed by client and request ID.
@@ -301,5 +306,4 @@ zig build -Dtarget=aarch64-macos
 
 Begin phase 3:
 
-1. Support multiple windows with capability-based routes.
-2. Add directory, external URL, and custom resource content.
+1. Add directory, external URL, and custom resource content.
