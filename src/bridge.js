@@ -1,9 +1,11 @@
 (() => {
     const signature = 0xdd;
+    const commandJs = 0xfe;
     const commandCall = 0xf9;
     const commandCheckToken = 0xf5;
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
     const pending = new Map();
     let nextId = 1;
     let connected = false;
@@ -31,13 +33,34 @@
             promise.reject(new Error("WebUI connection closed"));
         pending.clear();
     };
-    socket.onmessage = ({ data }) => {
+    socket.onmessage = async ({ data }) => {
         const bytes = new Uint8Array(data);
         if (bytes.length < 8 || bytes[0] !== signature) return;
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         const id = view.getUint16(5, true);
         if (bytes[7] === commandCheckToken) {
             connected = bytes.length > 8 && bytes[8] === 1;
+            return;
+        }
+        if (bytes[7] === commandJs) {
+            let failed = 0;
+            let value;
+            try {
+                const source = decoder.decode(bytes.subarray(8)).replace(/\0$/, "");
+                const result = await AsyncFunction(source)();
+                value = result instanceof Uint8Array
+                    ? result
+                    : encoder.encode(String(result));
+            } catch (error) {
+                failed = 1;
+                value = encoder.encode(
+                    error instanceof Error ? error.message : String(error),
+                );
+            }
+            const response = new Uint8Array(value.length + 2);
+            response[0] = failed;
+            response.set(value, 1);
+            socket.send(packet(commandJs, id, response));
             return;
         }
         if (bytes[7] === commandCall) {

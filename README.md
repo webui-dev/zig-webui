@@ -11,6 +11,7 @@ The current phase provides:
 - one `App`, one window, and automatic port selection;
 - embedded HTML and a built-in JavaScript bridge;
 - JavaScript calls to Zig bindings with return values;
+- single-client Zig calls to JavaScript with results, errors, and timeouts;
 - default-browser launching and deterministic shutdown.
 
 ```zig
@@ -40,6 +41,18 @@ pub fn main() !void {
     var running = try app.start(io);
     defer running.stop() catch {};
     try window.open(io, &running);
+
+    var result_buffer: [64]u8 = undefined;
+    const result = try window.eval(
+        io,
+        "return 6 * 7",
+        &result_buffer,
+        .fromSeconds(5),
+    );
+    switch (result) {
+        .value => |value| std.debug.print("JavaScript: {s}\n", .{value}),
+        .javascript_error => |message| std.log.err("JavaScript: {s}", .{message}),
+    }
     try running.wait();
 }
 ```
@@ -50,8 +63,8 @@ zig build
 zig build run
 ```
 
-Multiple windows, directory content, Zig-to-JavaScript calls, and multiple
-clients belong to later phases. See the
+Multiple windows, directory content, broadcasts, and multiple clients belong
+to later phases. See the
 [pure Zig refactor plan](docs/PURE_ZIG_REFACTOR.md) for the complete scope and
 implementation order.
 

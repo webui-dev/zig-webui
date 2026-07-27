@@ -45,5 +45,21 @@ pub fn main() !void {
     window.open(io, &running) catch |err| {
         std.log.warn("could not open the default browser: {}", .{err});
     };
+
+    var result_buffer: [64]u8 = undefined;
+    const evaluated = window.eval(
+        io,
+        "document.getElementById('result').value = '42 from JavaScript'; return 6 * 7",
+        &result_buffer,
+        .fromSeconds(30),
+    ) catch |err| {
+        std.log.warn("could not call JavaScript: {}", .{err});
+        try running.wait();
+        return;
+    };
+    switch (evaluated) {
+        .value => |value| std.debug.print("JavaScript: {s}\n", .{value}),
+        .javascript_error => |message| std.log.err("JavaScript: {s}", .{message}),
+    }
     try running.wait();
 }

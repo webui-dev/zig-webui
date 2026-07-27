@@ -194,13 +194,12 @@ Acceptance: all 101 tests pass at `3b50417`.
 Acceptance: the minimal example passed a real Chromium JavaScript-to-Zig call
 and clean shutdown; `zig build test` passes; the build graph contains no C.
 
-### 2. Bidirectional calls
+### 2. Bidirectional calls (in progress)
 
-- Allocate request IDs and maintain a pending-call table.
+- Implemented single-client `Window.eval` with request IDs.
+- Implemented results, JavaScript errors, timeouts, and disconnect cleanup.
 - Add broadcast `Window.eval` and single-client `Client.eval`.
-- Support results, errors, and timeouts.
 - Add navigate, close, and raw binary operations.
-- Complete pending calls with connection-closed when a client disconnects.
 
 Acceptance: the call-js-from-zig example passes, and an idle connection
 immediately receives Zig-initiated messages.
@@ -296,9 +295,9 @@ zig build -Dtarget=aarch64-macos
 
 ## Next Implementation Work
 
-Proceed to phase 2 bidirectional calls:
+Complete the remaining phase 2 work:
 
-1. Retain Linsang `WebSocketPeer` with strictly paired `clone` and `deinit`.
-2. Add request IDs and a bounded pending-call table.
-3. Implement `Window.eval`, results, timeouts, and disconnect cleanup.
-4. Add a call-js-from-zig integration example and test.
+1. Introduce stable `Client` handles for targeted calls.
+2. Add explicit broadcast behavior.
+3. Add navigate, close, and raw binary operations.
+4. Keep the pending-call count bounded when concurrent calls are introduced.
