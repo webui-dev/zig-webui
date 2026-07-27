@@ -17,6 +17,8 @@ The current phase provides:
 - bounded multi-client windows through `WindowOptions.max_clients`;
 - bounded concurrent evaluations through
   `WindowOptions.max_pending_evals`;
+- window navigation, close, raw-data, and JavaScript broadcasts with
+  per-client results;
 - default-browser launching and deterministic shutdown.
 
 ```zig
@@ -69,10 +71,11 @@ zig build run
 ```
 
 `zig build test` uses Node's built-in test runner for the browser bridge.
-Building and using the library does not require Node or npm.
+Building and using the library does not require Node or npm. `Window.evalAll`
+returns owned results; call `deinit` on them after consuming every per-client
+outcome.
 
-Multiple windows, directory content, and broadcasts belong to later phases.
-See the
+Multiple windows and directory content belong to later phases. See the
 [pure Zig refactor plan](docs/PURE_ZIG_REFACTOR.md) for the complete scope and
 implementation order.
 

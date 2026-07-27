@@ -200,7 +200,7 @@ and clean shutdown; `zig build test` passes; the build graph contains no C.
 - Implemented results, JavaScript errors, timeouts, and disconnect cleanup.
 - Implemented stable `Client` handles and targeted `Client.eval`.
 - Implemented targeted navigation, close, and raw binary operations.
-- Move broadcast `Window.eval` into the multi-client work.
+- Implemented broadcast `Window.evalAll` in the multi-client work.
 
 Acceptance: the call-js-from-zig example passes, and an idle connection
 immediately receives Zig-initiated messages. Complete.
@@ -213,7 +213,7 @@ immediately receives Zig-initiated messages. Complete.
 - Implemented a bounded collection of stable `Client` handles; one client is
   the default and `WindowOptions.max_clients` explicitly enables more.
 - Implemented a bounded pending-eval table keyed by client and request ID.
-- Add `Window` broadcasts; targeted sends are implemented.
+- Implemented `Window` navigation, close, raw-data, and evaluation broadcasts.
 
 Acceptance: serve-a-folder, custom-server, and multi-client examples pass.
 
@@ -301,5 +301,5 @@ zig build -Dtarget=aarch64-macos
 
 Begin phase 3:
 
-1. Add real `Window` broadcasts over the client collection.
+1. Support multiple windows with capability-based routes.
 2. Add directory, external URL, and custom resource content.

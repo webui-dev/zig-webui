@@ -19,6 +19,49 @@ pub const EvalResult = union(enum) {
     javascript_error: []const u8,
 };
 
+pub const BroadcastEvalOutcome = union(enum) {
+    value: []const u8,
+    javascript_error: []const u8,
+    failed: anyerror,
+};
+
+pub const BroadcastEval = struct {
+    client: Client,
+    outcome: BroadcastEvalOutcome,
+};
+
+pub const BroadcastEvalResults = struct {
+    gpa: std.mem.Allocator,
+    storage: []u8,
+    items: []BroadcastEval,
+
+    pub fn deinit(self: *BroadcastEvalResults) void {
+        self.gpa.free(self.items);
+        self.gpa.free(self.storage);
+        self.* = undefined;
+    }
+};
+
+fn validateUrl(url: []const u8) !void {
+    if (url.len == 0 or std.mem.indexOfScalar(u8, url, 0) != null)
+        return error.InvalidUrl;
+    if (!std.unicode.utf8ValidateSlice(url)) return error.InvalidUtf8;
+}
+
+fn appendRawPayload(
+    payload: *std.ArrayList(u8),
+    gpa: std.mem.Allocator,
+    function: []const u8,
+    data: []const u8,
+) !void {
+    if (function.len == 0 or std.mem.indexOfScalar(u8, function, 0) != null)
+        return error.InvalidFunctionName;
+    if (!std.unicode.utf8ValidateSlice(function)) return error.InvalidUtf8;
+    try payload.appendSlice(gpa, function);
+    try payload.append(gpa, 0);
+    try payload.appendSlice(gpa, data);
+}
+
 const EvalStatus = enum {
     waiting,
     value,
@@ -202,6 +245,58 @@ const WindowState = struct {
                 if (pending.id == id) break;
             } else return id;
         }
+    }
+
+    fn snapshotClients(
+        self: *WindowState,
+        io: std.Io,
+    ) ![]Client {
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+        const clients = try self.gpa.alloc(Client, self.clients.items.len);
+        for (self.clients.items, clients) |connected, *snapshot|
+            snapshot.* = .{ .state = self, .client_id = connected.id };
+        return clients;
+    }
+
+    fn broadcast(
+        self: *WindowState,
+        io: std.Io,
+        command: protocol.Command,
+        payload: []const u8,
+    ) !usize {
+        self.mutex.lockUncancelable(io);
+        const peers = self.gpa.alloc(
+            Linsang.WebSocketPeer,
+            self.clients.items.len,
+        ) catch |err| {
+            self.mutex.unlock(io);
+            return err;
+        };
+        for (self.clients.items, peers) |connected, *peer|
+            peer.* = connected.peer.clone();
+        self.mutex.unlock(io);
+        defer {
+            for (peers) |*peer| peer.deinit();
+            self.gpa.free(peers);
+        }
+
+        var packet: std.ArrayList(u8) = .empty;
+        defer packet.deinit(self.gpa);
+        try protocol.append(&packet, self.gpa, .{
+            .token = self.token,
+            .command = command,
+        }, payload);
+
+        var sent: usize = 0;
+        for (peers) |peer| {
+            peer.sendBinary(packet.items) catch |err| switch (err) {
+                error.Closed => continue,
+                else => return err,
+            };
+            sent += 1;
+        }
+        return sent;
     }
 
     fn eval(
@@ -397,9 +492,7 @@ pub const Client = struct {
     }
 
     pub fn navigate(self: Client, io: std.Io, url: []const u8) !void {
-        if (url.len == 0 or std.mem.indexOfScalar(u8, url, 0) != null)
-            return error.InvalidUrl;
-        if (!std.unicode.utf8ValidateSlice(url)) return error.InvalidUtf8;
+        try validateUrl(url);
         try self.send(io, .navigation, url);
     }
 
@@ -413,21 +506,34 @@ pub const Client = struct {
         function: []const u8,
         data: []const u8,
     ) !void {
-        if (function.len == 0 or
-            std.mem.indexOfScalar(u8, function, 0) != null)
-        {
-            return error.InvalidFunctionName;
-        }
-        if (!std.unicode.utf8ValidateSlice(function)) return error.InvalidUtf8;
-
         var payload: std.ArrayList(u8) = .empty;
         defer payload.deinit(self.state.gpa);
-        try payload.appendSlice(self.state.gpa, function);
-        try payload.append(self.state.gpa, 0);
-        try payload.appendSlice(self.state.gpa, data);
+        try appendRawPayload(&payload, self.state.gpa, function, data);
         try self.send(io, .raw, payload.items);
     }
 };
+
+fn evalBroadcastClient(
+    client: Client,
+    io: std.Io,
+    script: []const u8,
+    result_buffer: []u8,
+    timeout: std.Io.Duration,
+    output: *BroadcastEval,
+) std.Io.Cancelable!void {
+    const result = client.eval(io, script, result_buffer, timeout) catch |err| {
+        output.* = .{ .client = client, .outcome = .{ .failed = err } };
+        if (err == error.Canceled) return error.Canceled;
+        return;
+    };
+    output.* = .{
+        .client = client,
+        .outcome = switch (result) {
+            .value => |value| .{ .value = value },
+            .javascript_error => |message| .{ .javascript_error = message },
+        },
+    };
+}
 
 pub const Window = struct {
     state: *WindowState,
@@ -469,6 +575,65 @@ pub const Window = struct {
         timeout: std.Io.Duration,
     ) !EvalResult {
         return self.state.eval(io, null, script, result_buffer, timeout);
+    }
+
+    pub fn evalAll(
+        self: Window,
+        io: std.Io,
+        script: []const u8,
+        result_buffer_size: usize,
+        timeout: std.Io.Duration,
+    ) !BroadcastEvalResults {
+        if (!std.unicode.utf8ValidateSlice(script)) return error.InvalidUtf8;
+
+        const clients = try self.state.snapshotClients(io);
+        defer self.state.gpa.free(clients);
+        const storage_len = std.math.mul(
+            usize,
+            clients.len,
+            result_buffer_size,
+        ) catch return error.ResultBufferTooLarge;
+        const storage = try self.state.gpa.alloc(u8, storage_len);
+        errdefer self.state.gpa.free(storage);
+        const items = try self.state.gpa.alloc(BroadcastEval, clients.len);
+        errdefer self.state.gpa.free(items);
+
+        var group: std.Io.Group = .init;
+        defer group.cancel(io);
+        for (clients, items, 0..) |client, *item, index| {
+            const start = index * result_buffer_size;
+            group.async(io, evalBroadcastClient, .{
+                client,
+                io,
+                script,
+                storage[start..][0..result_buffer_size],
+                timeout,
+                item,
+            });
+        }
+        try group.await(io);
+        return .{ .gpa = self.state.gpa, .storage = storage, .items = items };
+    }
+
+    pub fn navigate(self: Window, io: std.Io, url: []const u8) !usize {
+        try validateUrl(url);
+        return self.state.broadcast(io, .navigation, url);
+    }
+
+    pub fn close(self: Window, io: std.Io) !usize {
+        return self.state.broadcast(io, .close, "");
+    }
+
+    pub fn sendRaw(
+        self: Window,
+        io: std.Io,
+        function: []const u8,
+        data: []const u8,
+    ) !usize {
+        var payload: std.ArrayList(u8) = .empty;
+        defer payload.deinit(self.state.gpa);
+        try appendRawPayload(&payload, self.state.gpa, function, data);
+        return self.state.broadcast(io, .raw, payload.items);
     }
 };
 
@@ -1182,6 +1347,166 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
         second_navigation.header.command,
     );
     try std.testing.expectEqualStrings("/second", second_navigation.payload);
+
+    try std.testing.expectEqual(@as(usize, 2), try window.navigate(io, "/all"));
+    const first_broadcast_navigation = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    const second_broadcast_navigation = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        first_broadcast_navigation.header.command,
+    );
+    try std.testing.expectEqualStrings("/all", first_broadcast_navigation.payload);
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        second_broadcast_navigation.header.command,
+    );
+    try std.testing.expectEqualStrings("/all", second_broadcast_navigation.payload);
+
+    try std.testing.expectEqual(
+        @as(usize, 2),
+        try window.sendRaw(io, "receiveRaw", &raw_data),
+    );
+    const first_broadcast_raw = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    const second_broadcast_raw = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqual(protocol.Command.raw, first_broadcast_raw.header.command);
+    try std.testing.expectEqual(protocol.Command.raw, second_broadcast_raw.header.command);
+    try std.testing.expectEqualSlices(
+        u8,
+        first_broadcast_raw.payload,
+        second_broadcast_raw.payload,
+    );
+
+    try std.testing.expectEqual(@as(usize, 2), try window.close(io));
+    const first_broadcast_close = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    const second_broadcast_close = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.close,
+        first_broadcast_close.header.command,
+    );
+    try std.testing.expectEqual(
+        protocol.Command.close,
+        second_broadcast_close.header.command,
+    );
+
+    var broadcast_eval = io.async(Window.evalAll, .{
+        window,
+        io,
+        "return 21",
+        16,
+        std.Io.Duration.fromSeconds(1),
+    });
+    const first_broadcast_eval = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    const second_broadcast_eval = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .id = first_broadcast_eval.header.id,
+        .command = .js,
+    }, "\x0021\x00");
+    try sendClientFrame(first_stream, io, packet.items);
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .id = second_broadcast_eval.header.id,
+        .command = .js,
+    }, "\x01failed\x00");
+    try sendClientFrame(second_stream, io, packet.items);
+
+    var broadcast_results = try broadcast_eval.await(io);
+    defer broadcast_results.deinit();
+    try std.testing.expectEqual(@as(usize, 2), broadcast_results.items.len);
+    for (broadcast_results.items) |result| {
+        if (result.client.id() == first.id()) {
+            switch (result.outcome) {
+                .value => |value| try std.testing.expectEqualStrings("21", value),
+                else => return error.UnexpectedBroadcastResult,
+            }
+        } else if (result.client.id() == second.id()) {
+            switch (result.outcome) {
+                .javascript_error => |message| {
+                    try std.testing.expectEqualStrings("failed", message);
+                },
+                else => return error.UnexpectedBroadcastResult,
+            }
+        } else {
+            return error.UnexpectedBroadcastClient;
+        }
+    }
+
+    var timeout_broadcast = io.async(Window.evalAll, .{
+        window,
+        io,
+        "return 'late'",
+        16,
+        std.Io.Duration.fromMilliseconds(50),
+    });
+    const first_timeout_eval = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    _ = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .id = first_timeout_eval.header.id,
+        .command = .js,
+    }, "\x00ready\x00");
+    try sendClientFrame(first_stream, io, packet.items);
+
+    var timeout_results = try timeout_broadcast.await(io);
+    defer timeout_results.deinit();
+    for (timeout_results.items) |result| {
+        if (result.client.id() == first.id()) {
+            switch (result.outcome) {
+                .value => |value| try std.testing.expectEqualStrings("ready", value),
+                else => return error.UnexpectedBroadcastResult,
+            }
+        } else if (result.client.id() == second.id()) {
+            switch (result.outcome) {
+                .failed => |err| try std.testing.expectEqual(error.Timeout, err),
+                else => return error.UnexpectedBroadcastResult,
+            }
+        } else {
+            return error.UnexpectedBroadcastClient;
+        }
+    }
 
     var first_eval_buffer: [16]u8 = undefined;
     var first_eval = io.async(Client.eval, .{
