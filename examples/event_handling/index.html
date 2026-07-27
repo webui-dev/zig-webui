@@ -129,7 +129,7 @@
             border-radius: 10px;
         }
         
-        /* 自定义滚动条样式 - Webkit浏览器 (Chrome, Safari, Edge) */
+        /* Custom scrollbars for WebKit browsers (Chrome, Safari, Edge). */
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -157,15 +157,15 @@
             background: rgba(255, 255, 255, 0.1);
         }
         
-        /* Firefox 64+ 支持的滚动条样式 */
+        /* Scrollbar styling supported by Firefox 64+. */
         * {
             scrollbar-width: thin;
             scrollbar-color: rgba(255, 107, 107, 0.8) rgba(255, 255, 255, 0.1);
         }
         
-        /* 为特定容器提供更精细的滚动条控制 */
+        /* More precise scrollbar control for this container. */
         .message-area {
-            /* 加强消息区域的滚动条样式 */
+            /* Make the message-area scrollbar more prominent. */
             scrollbar-width: thin;
             scrollbar-color: rgba(78, 205, 196, 0.8) rgba(0, 0, 0, 0.2);
         }
@@ -189,19 +189,19 @@
             background: linear-gradient(180deg, #45B7C7, #4ECDC4);
         }
         
-        /* 为body提供平滑滚动 */
+        /* Enable smooth page scrolling. */
         html {
             scroll-behavior: smooth;
         }
         
         body {
-            /* 确保body滚动条也有样式 */
-            overflow-x: hidden; /* 隐藏水平滚动条 */
+            /* Ensure the body scrollbar is styled too. */
+            overflow-x: hidden; /* Hide the horizontal scrollbar. */
         }
         
-        /* 可选：隐藏滚动条但保持滚动功能的类 */
+        /* Optionally hide the scrollbar while preserving scrolling. */
         .hide-scrollbar {
-            -ms-overflow-style: none;  /* IE 和 Edge */
+            -ms-overflow-style: none;  /* IE and Edge */
             scrollbar-width: none;  /* Firefox */
         }
         

@@ -6,10 +6,10 @@ const webui = @import("webui");
 const html = @embedFile("index.html");
 
 pub fn main() !void {
-    // 配置WebUI全局设置以避免安全警告
+    // Configure global WebUI settings to avoid security warnings.
     webui.setConfig(.show_wait_connection, true);
     webui.setConfig(.use_cookies, true);
-    webui.setConfig(.multi_client, false); // 单客户端模式更安全
+    webui.setConfig(.multi_client, false); // Single-client mode is safer.
 
     // Create multiple windows
     var main_window = webui.newWindow();
@@ -40,7 +40,7 @@ pub fn main() !void {
     _ = try second_window.binding("close_second", closeSecondWindow);
 
     // Show main window
-    // 使用普通浏览器模式
+    // Use regular browser mode.
     try main_window.show(html);
 
     // Wait for all windows to close
@@ -61,7 +61,7 @@ fn closeWindow(e: *webui.Event) void {
 }
 
 fn toggleKiosk(e: *webui.Event) void {
-    // 使用WebUI原生API设置kiosk模式
+    // Set kiosk mode through the native WebUI API.
     const win = e.getWindow();
     is_kiosk = !is_kiosk;
     win.setKiosk(is_kiosk);
@@ -81,12 +81,12 @@ fn getWindowInfo(e: *webui.Event) void {
     var buffer: [512]u8 = undefined;
     const info = std.fmt.bufPrint(buffer[0..], "Port: {}, URL: {s}, Shown: {}", .{ port, url, is_shown }) catch "";
 
-    // 确保有足够空间容纳null终止符
+    // Leave enough room for the null terminator.
     if (info.len < buffer.len) {
         buffer[info.len] = 0;
         e.returnString(buffer[0..info.len :0]);
     } else {
-        // 如果缓冲区太小，返回错误信息
+        // Return an error if the buffer is too small.
         const error_msg = "Buffer too small";
         e.returnString(error_msg);
     }
@@ -94,9 +94,9 @@ fn getWindowInfo(e: *webui.Event) void {
 }
 
 fn openSecondWindow(e: *webui.Event) void {
-    // 检查第二个窗口是否存在且仍在运行
+    // Check whether the second window exists and is still running.
     if (second_win == null or (second_win != null and !second_win.?.isShown())) {
-        // 如果窗口已经被外部关闭，重置为null
+        // Reset the handle if the window was closed externally.
         if (second_win != null and !second_win.?.isShown()) {
             std.debug.print("Detected second window was closed externally, resetting\n", .{});
             second_win = null;
@@ -104,14 +104,14 @@ fn openSecondWindow(e: *webui.Event) void {
 
         second_win = webui.newWindow();
         if (second_win) |*win| {
-            // 重新绑定第二个窗口的关闭函数
+            // Rebind the second window's close handler.
             _ = win.binding("close_second", closeSecondWindow) catch {
                 std.debug.print("Failed to bind close_second function\n", .{});
                 e.returnString("Failed to bind second window functions");
                 return;
             };
 
-            // 绑定空的断开连接事件处理器，用于清理状态
+            // Bind the empty event to clean up disconnected state.
             _ = win.binding("", handleSecondWindowDisconnect) catch {
                 std.debug.print("Failed to bind disconnect handler\n", .{});
             };
@@ -139,8 +139,8 @@ fn closeSecondWindow(e: *webui.Event) void {
 }
 
 fn handleSecondWindowDisconnect(e: *webui.Event) void {
-    // 当第二个窗口断开连接时（包括用户点击x关闭），清理状态
-    _ = e; // 标记参数已使用
+    // Clean up when the second window disconnects, including a user close.
+    _ = e; // Mark the parameter as used.
     second_win = null;
     std.debug.print("Second window disconnected\n", .{});
 }
@@ -152,12 +152,12 @@ fn setWindowSize(e: *webui.Event, width: i64, height: i64) void {
     var buffer: [128]u8 = undefined;
     const response = std.fmt.bufPrint(buffer[0..], "Size set to {}x{}", .{ width, height }) catch "";
 
-    // 确保有足够空间容纳null终止符
+    // Leave enough room for the null terminator.
     if (response.len < buffer.len) {
         buffer[response.len] = 0;
         e.returnString(buffer[0..response.len :0]);
     } else {
-        // 如果缓冲区太小，返回错误信息
+        // Return an error if the buffer is too small.
         const error_msg = "Buffer too small";
         e.returnString(error_msg);
     }
@@ -172,7 +172,7 @@ fn centerWindow(e: *webui.Event) void {
 }
 
 fn showBrowserInfo(e: *webui.Event) void {
-    // 显示浏览器和窗口信息
+    // Display browser and window information.
     e.runClient(
         \\const info = {
         \\    userAgent: navigator.userAgent,

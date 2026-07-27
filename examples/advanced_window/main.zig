@@ -60,11 +60,11 @@ fn toggleHide(e: *webui.Event) void {
     const window = e.getWindow();
     const hide = e.getBool();
     if (hide) {
-        // 使用 WebUI API 最小化窗口，避免触发 wait() 返回
+        // Minimize through WebUI without making wait() return.
         window.minimize();
         e.returnString("Window minimized");
     } else {
-        // 使用 WebUI API 最大化/还原窗口
+        // Maximize or restore through WebUI.
         window.maximize();
         e.returnString("Window maximized");
     }

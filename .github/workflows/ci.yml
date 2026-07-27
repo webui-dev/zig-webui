@@ -1,47 +1,31 @@
-# http://webui.me
-# https://github.com/webui-dev/zig-webui
-# Licensed under MIT License.
-# All rights reserved.
 name: CI
-on:
-  push:
-    paths:
-      - "**.zig"
-  pull_request:
-    branches: [main]
-    paths:
-      - "**.zig"
-      # schedule:
-    # - cron: "0 2 * * *"
+
+on: [push, pull_request]
+
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        version: [0.14.0, 0.15.1, 0.16.0]
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: maxim-lobanov/setup-xcode@v1
-        if: runner.os == 'macOS'
-        with:
-          xcode-version: latest-stable
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ matrix.version }}
-      - uses: actions/checkout@v4
-      - name: Build examples
-        run: zig build examples
-      - name: Build examples dynamic
-        if: runner.os != 'Windows'
-        run: zig build examples -Dis_static=false
-      - name: Run unit tests
-        run: zig build test --summary all
-  lint:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-      - name: Verify formatting
-        run: zig fmt .
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - run: zig fmt --check build.zig src examples/minimal
+      - run: zig build test
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-linux
+          - aarch64-linux
+          - x86_64-windows
+          - x86_64-macos
+          - aarch64-macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - run: zig build -Dtarget=${{ matrix.target }}

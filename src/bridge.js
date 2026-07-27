@@ -1,0 +1,88 @@
+(() => {
+    const signature = 0xdd;
+    const commandCall = 0xf9;
+    const commandCheckToken = 0xf5;
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const pending = new Map();
+    let nextId = 1;
+    let connected = false;
+
+    const socket = new WebSocket(
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/_webui_ws_connect`,
+    );
+    socket.binaryType = "arraybuffer";
+
+    function packet(command, id, payload = new Uint8Array()) {
+        const bytes = new Uint8Array(8 + payload.length);
+        const view = new DataView(bytes.buffer);
+        bytes[0] = signature;
+        view.setUint32(1, globalThis.__zigWebuiToken, true);
+        view.setUint16(5, id, true);
+        bytes[7] = command;
+        bytes.set(payload, 8);
+        return bytes;
+    }
+
+    socket.onopen = () => socket.send(packet(commandCheckToken, 0));
+    socket.onclose = () => {
+        connected = false;
+        for (const promise of pending.values())
+            promise.reject(new Error("WebUI connection closed"));
+        pending.clear();
+    };
+    socket.onmessage = ({ data }) => {
+        const bytes = new Uint8Array(data);
+        if (bytes.length < 8 || bytes[0] !== signature) return;
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const id = view.getUint16(5, true);
+        if (bytes[7] === commandCheckToken) {
+            connected = bytes.length > 8 && bytes[8] === 1;
+            return;
+        }
+        if (bytes[7] === commandCall) {
+            const promise = pending.get(id);
+            if (promise) {
+                pending.delete(id);
+                promise.resolve(decoder.decode(bytes.subarray(8)));
+            }
+        }
+    };
+
+    globalThis.webui = {
+        isConnected: () => connected,
+        call(name, ...args) {
+            if (!connected) return Promise.reject(new Error("WebUI is not connected"));
+            const values = args.map((arg) =>
+                arg instanceof Uint8Array ? arg : encoder.encode(String(arg)),
+            );
+            const lengths = encoder.encode(values.map((value) => value.length).join(";"));
+            const nameBytes = encoder.encode(name);
+            const size =
+                nameBytes.length + 1 +
+                lengths.length + 1 +
+                values.reduce((total, value) => total + value.length + 1, 0);
+            const payload = new Uint8Array(size);
+            let at = 0;
+            payload.set(nameBytes, at);
+            at += nameBytes.length + 1;
+            payload.set(lengths, at);
+            at += lengths.length + 1;
+            for (const value of values) {
+                payload.set(value, at);
+                at += value.length + 1;
+            }
+
+            const id = nextId++ & 0xffff || nextId++ & 0xffff;
+            return new Promise((resolve, reject) => {
+                pending.set(id, { resolve, reject });
+                try {
+                    socket.send(packet(commandCall, id, payload));
+                } catch (error) {
+                    pending.delete(id);
+                    reject(error);
+                }
+            });
+        },
+    };
+})();

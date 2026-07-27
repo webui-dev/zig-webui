@@ -2,16 +2,17 @@
     .name = .zig_webui,
     .version = "2.5.0-beta.4",
     .fingerprint = 0x95965ed3cdfb8c33,
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{
-        .webui = .{
-            .hash = "webui-2.5.0-beta.4-pxqD5TCWQABe1AyvdqsBEmQyFjbMMFb7yJHmMVAq_ZBZ",
-            .url = "https://github.com/webui-dev/webui/archive/dadf4175d6f2c4060b7a27a32e6e9e64e647116f.tar.gz",
+        .linsang = .{
+            .hash = "Linsang-0.0.0-SZhixM2mBgBduGnOKEercDaJfHwmo4LfNMlXcyk0DGUa",
+            .url = "https://github.com/jinzhongjia/Linsang/archive/3b50417e3ddb7a0651a8dd8b7154f26c4d4e5608.tar.gz",
         },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "examples/minimal",
         "src",
     },
 }
