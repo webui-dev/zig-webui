@@ -35,23 +35,29 @@ const PendingEval = struct {
     done: std.Io.Event = .unset,
 };
 
+const ConnectedClient = struct {
+    id: u64,
+    key: usize,
+    peer: Linsang.WebSocketPeer,
+};
+
 const WindowState = struct {
     gpa: std.mem.Allocator,
     html: []u8,
+    max_clients: usize,
     token: u32 = 0,
     bindings: std.ArrayList(Binding) = .empty,
     mutex: std.Io.Mutex = .init,
     eval_mutex: std.Io.Mutex = .init,
-    peer: ?Linsang.WebSocketPeer = null,
-    peer_key: usize = 0,
-    client_id: u64 = 0,
+    clients: std.ArrayList(ConnectedClient) = .empty,
     next_client_id: u64 = 1,
     next_eval_id: u16 = 1,
     pending_eval: ?PendingEval = null,
 
     fn deinit(self: *WindowState) void {
         std.debug.assert(self.pending_eval == null);
-        if (self.peer) |*peer| peer.deinit();
+        for (self.clients.items) |*connected| connected.peer.deinit();
+        self.clients.deinit(self.gpa);
         for (self.bindings.items) |item| self.gpa.free(item.name);
         self.bindings.deinit(self.gpa);
         self.gpa.free(self.html);
@@ -65,17 +71,34 @@ const WindowState = struct {
         return null;
     }
 
+    fn clientIndexById(self: *WindowState, id: u64) ?usize {
+        // ponytail: max_clients is bounded and small; use a map if limits grow.
+        for (self.clients.items, 0..) |connected, index|
+            if (connected.id == id) return index;
+        return null;
+    }
+
+    fn clientIndexByKey(self: *WindowState, key: usize) ?usize {
+        for (self.clients.items, 0..) |connected, index|
+            if (connected.key == key) return index;
+        return null;
+    }
+
     fn authenticate(self: *WindowState, connection: *Linsang.Connection) !void {
         self.mutex.lockUncancelable(connection.io);
         defer self.mutex.unlock(connection.io);
         const key = @intFromPtr(connection);
-        if (self.peer) |_| {
-            if (self.peer_key == key) return;
-            return error.ClientAlreadyConnected;
-        }
-        self.peer = try connection.peer();
-        self.peer_key = key;
-        self.client_id = self.next_client_id;
+        if (self.clientIndexByKey(key) != null) return;
+        if (self.clients.items.len >= self.max_clients)
+            return error.ClientLimitReached;
+
+        var peer = try connection.peer();
+        errdefer peer.deinit();
+        try self.clients.append(self.gpa, .{
+            .id = self.next_client_id,
+            .key = key,
+            .peer = peer,
+        });
         self.next_client_id +%= 1;
         if (self.next_client_id == 0) self.next_client_id = 1;
     }
@@ -83,25 +106,25 @@ const WindowState = struct {
     fn client(self: *WindowState, connection: *Linsang.Connection) ?Client {
         self.mutex.lockUncancelable(connection.io);
         defer self.mutex.unlock(connection.io);
-        if (self.peer == null or self.peer_key != @intFromPtr(connection))
+        const index = self.clientIndexByKey(@intFromPtr(connection)) orelse
             return null;
-        return .{ .state = self, .client_id = self.client_id };
+        return .{ .state = self, .client_id = self.clients.items[index].id };
     }
 
     fn disconnected(self: *WindowState, connection: *Linsang.Connection) bool {
         self.mutex.lockUncancelable(connection.io);
         defer self.mutex.unlock(connection.io);
-        if (self.peer == null or self.peer_key != @intFromPtr(connection))
+        const index = self.clientIndexByKey(@intFromPtr(connection)) orelse
             return false;
-        self.peer.?.deinit();
-        self.peer = null;
-        self.peer_key = 0;
-        self.client_id = 0;
+        var disconnected_client = self.clients.swapRemove(index);
+        disconnected_client.peer.deinit();
         if (self.pending_eval) |*pending| {
-            pending.status = .disconnected;
-            pending.done.set(connection.io);
+            if (pending.client_id == disconnected_client.id) {
+                pending.status = .disconnected;
+                pending.done.set(connection.io);
+            }
         }
-        return true;
+        return self.clients.items.len == 0;
     }
 
     fn finishEval(
@@ -113,10 +136,12 @@ const WindowState = struct {
         if (payload.len < 1) return error.InvalidPacket;
         self.mutex.lockUncancelable(connection.io);
         defer self.mutex.unlock(connection.io);
-        if (self.peer_key != @intFromPtr(connection)) return;
+        const client_index = self.clientIndexByKey(@intFromPtr(connection)) orelse
+            return;
+        const client_id = self.clients.items[client_index].id;
         const pending = if (self.pending_eval) |*pending| pending else return;
         if (pending.id != id or
-            pending.client_id != self.client_id or
+            pending.client_id != client_id or
             pending.status != .waiting) return;
 
         var value = payload[1..];
@@ -175,21 +200,30 @@ const WindowState = struct {
         var client_id: u64 = undefined;
         var peer: Linsang.WebSocketPeer = while (true) {
             self.mutex.lockUncancelable(io);
-            if (self.peer) |stored| {
-                if (target_client_id == null or
-                    target_client_id.? == self.client_id)
-                {
-                    client_id = self.client_id;
-                    const owned = stored.clone();
+            if (target_client_id) |target| {
+                if (self.clientIndexById(target)) |index| {
+                    client_id = target;
+                    const owned = self.clients.items[index].peer.clone();
                     self.mutex.unlock(io);
                     break owned;
                 }
+                self.mutex.unlock(io);
+                return error.ConnectionClosed;
+            }
+            if (self.clients.items.len == 1) {
+                client_id = self.clients.items[0].id;
+                const owned = self.clients.items[0].peer.clone();
+                self.mutex.unlock(io);
+                break owned;
+            }
+            if (self.clients.items.len > 1) {
+                self.mutex.unlock(io);
+                return error.MultipleClientsConnected;
             }
             self.mutex.unlock(io);
-            if (target_client_id != null) return error.ConnectionClosed;
             if (deadline.compare(.lte, .now(io, .awake))) return error.Timeout;
-            // ponytail: phase 2 has one client; replace polling with an event
-            // when reconnecting clients are supported.
+            // ponytail: polling is enough while one window owns the server;
+            // replace it with an event when multiple windows are supported.
             try std.Io.sleep(io, .fromMilliseconds(1), .awake);
         };
         defer peer.deinit();
@@ -293,15 +327,11 @@ pub const Client = struct {
         payload: []const u8,
     ) !void {
         self.state.mutex.lockUncancelable(io);
-        const stored = self.state.peer orelse {
+        const index = self.state.clientIndexById(self.client_id) orelse {
             self.state.mutex.unlock(io);
             return error.ConnectionClosed;
         };
-        if (self.state.client_id != self.client_id) {
-            self.state.mutex.unlock(io);
-            return error.ConnectionClosed;
-        }
-        var peer = stored.clone();
+        var peer = self.state.clients.items[index].peer.clone();
         self.state.mutex.unlock(io);
         defer peer.deinit();
 
@@ -324,8 +354,7 @@ pub const Client = struct {
     pub fn isConnected(self: Client, io: std.Io) bool {
         self.state.mutex.lockUncancelable(io);
         defer self.state.mutex.unlock(io);
-        return self.state.peer != null and
-            self.state.client_id == self.client_id;
+        return self.state.clientIndexById(self.client_id) != null;
     }
 
     pub fn eval(
@@ -435,6 +464,9 @@ pub const App = struct {
 
     pub const WindowOptions = struct {
         html: []const u8,
+        /// One client by default; values above one explicitly enable
+        /// bounded multi-client mode.
+        max_clients: usize = 1,
     };
 
     pub fn init(gpa: std.mem.Allocator, options: Options) App {
@@ -449,6 +481,7 @@ pub const App = struct {
 
     pub fn createWindow(self: *App, options: WindowOptions) !Window {
         if (self.started) return error.AlreadyStarted;
+        if (options.max_clients == 0) return error.InvalidClientLimit;
         // ponytail: phase 1 supports one window; replace with a map in phase 3.
         if (self.window != null) return error.OneWindowOnly;
         const state = try self.gpa.create(WindowState);
@@ -456,6 +489,7 @@ pub const App = struct {
         state.* = .{
             .gpa = self.gpa,
             .html = try self.gpa.dupe(u8, options.html),
+            .max_clients = options.max_clients,
         };
         self.window = state;
         return .{ .state = state };
@@ -634,6 +668,13 @@ fn onClose(connection: *Linsang.Connection, user_data: ?*anyopaque) void {
 
 test "call accessors and one-window lifecycle" {
     const gpa = std.testing.allocator;
+    var invalid_app = App.init(gpa, .{});
+    defer invalid_app.deinit();
+    try std.testing.expectError(
+        error.InvalidClientLimit,
+        invalid_app.createWindow(.{ .html = "invalid", .max_clients = 0 }),
+    );
+
     var app = App.init(gpa, .{});
     defer app.deinit();
     const window = try app.createWindow(.{ .html = "hello" });
@@ -725,6 +766,49 @@ fn readServerFrame(
     return buffer[0..header[1]];
 }
 
+fn connectTestWebSocket(
+    address: std.Io.net.IpAddress,
+    io: std.Io,
+) !std.Io.net.Stream {
+    const stream = try address.connect(io, .{ .mode = .stream });
+    errdefer stream.close(io);
+    try writeAll(
+        stream,
+        io,
+        "GET /_webui_ws_connect HTTP/1.1\r\nHost: localhost\r\n" ++
+            "Upgrade: websocket\r\nConnection: Upgrade\r\n" ++
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" ++
+            "Sec-WebSocket-Version: 13\r\n\r\n",
+    );
+    var handshake: [512]u8 = undefined;
+    const accepted = try readUntil(stream, io, &handshake, "\r\n\r\n");
+    if (!std.mem.startsWith(u8, accepted, "HTTP/1.1 101"))
+        return error.WebSocketUpgradeFailed;
+    return stream;
+}
+
+fn authenticateTestClient(
+    stream: std.Io.net.Stream,
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    token: u32,
+    response_buffer: []u8,
+) !bool {
+    var packet: std.ArrayList(u8) = .empty;
+    defer packet.deinit(gpa);
+    try protocol.append(&packet, gpa, .{
+        .token = token,
+        .command = .check_token,
+    }, "");
+    try sendClientFrame(stream, io, packet.items);
+    const response = try protocol.decode(try readServerFrame(
+        stream,
+        io,
+        response_buffer,
+    ));
+    return std.mem.eql(u8, response.payload, &.{1});
+}
+
 test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
     const gpa = std.testing.allocator;
@@ -753,33 +837,31 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         try std.testing.expect(std.mem.indexOf(u8, bytes, "HTTP/1.1 200 OK") != null);
     }
 
-    const client = try running.inner.address.connect(io, .{ .mode = .stream });
+    const client = try connectTestWebSocket(running.inner.address, io);
     defer client.close(io);
-    try writeAll(
+    var response_payload: [125]u8 = undefined;
+    try std.testing.expect(try authenticateTestClient(
         client,
         io,
-        "GET /_webui_ws_connect HTTP/1.1\r\nHost: localhost\r\n" ++
-            "Upgrade: websocket\r\nConnection: Upgrade\r\n" ++
-            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" ++
-            "Sec-WebSocket-Version: 13\r\n\r\n",
-    );
-    var handshake: [512]u8 = undefined;
-    const accepted = try readUntil(client, io, &handshake, "\r\n\r\n");
-    try std.testing.expect(std.mem.startsWith(u8, accepted, "HTTP/1.1 101"));
+        gpa,
+        window.state.token,
+        &response_payload,
+    ));
+    {
+        const rejected = try connectTestWebSocket(running.inner.address, io);
+        defer rejected.close(io);
+        var rejected_payload: [125]u8 = undefined;
+        try std.testing.expect(!try authenticateTestClient(
+            rejected,
+            io,
+            gpa,
+            window.state.token,
+            &rejected_payload,
+        ));
+    }
 
     var packet: std.ArrayList(u8) = .empty;
     defer packet.deinit(gpa);
-    try protocol.append(&packet, gpa, .{
-        .token = window.state.token,
-        .command = .check_token,
-    }, "");
-    try sendClientFrame(client, io, packet.items);
-    var response_payload: [125]u8 = undefined;
-    const checked = try readServerFrame(client, io, &response_payload);
-    const check_packet = try protocol.decode(checked);
-    try std.testing.expectEqualSlices(u8, &.{1}, check_packet.payload);
-
-    packet.clearRetainingCapacity();
     try protocol.append(&packet, gpa, .{
         .token = window.state.token,
         .id = 9,
@@ -920,5 +1002,196 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         error.ConnectionClosed,
         targeted_client.close(io),
     );
+    try running.wait();
+}
+
+test "multi-client limits, targeting, and disconnect lifecycle" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    const gpa = std.testing.allocator;
+    var threaded = std.Io.Threaded.init(gpa, .{ .async_limit = .unlimited });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var app = App.init(gpa, .{});
+    defer app.deinit();
+    const window = try app.createWindow(.{
+        .html = "multi-client test",
+        .max_clients = 2,
+    });
+    var called_client_id: std.atomic.Value(u64) = .init(0);
+    try window.bind("greet", integrationHandler, &called_client_id);
+    var running = try app.start(io);
+    defer running.stop() catch {};
+
+    const first_stream = try connectTestWebSocket(running.inner.address, io);
+    defer first_stream.close(io);
+    var first_response: [125]u8 = undefined;
+    try std.testing.expect(try authenticateTestClient(
+        first_stream,
+        io,
+        gpa,
+        window.state.token,
+        &first_response,
+    ));
+
+    var packet: std.ArrayList(u8) = .empty;
+    defer packet.deinit(gpa);
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .id = 1,
+        .command = .call,
+    }, "greet\x003\x00Zig\x00");
+    try sendClientFrame(first_stream, io, packet.items);
+    const first_reply = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    try std.testing.expectEqualStrings("Hello from Zig", first_reply.payload);
+    const first = Client{
+        .state = window.state,
+        .client_id = called_client_id.load(.acquire),
+    };
+
+    const second_stream = try connectTestWebSocket(running.inner.address, io);
+    defer second_stream.close(io);
+    var second_response: [125]u8 = undefined;
+    try std.testing.expect(try authenticateTestClient(
+        second_stream,
+        io,
+        gpa,
+        window.state.token,
+        &second_response,
+    ));
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .id = 2,
+        .command = .call,
+    }, "greet\x003\x00Zig\x00");
+    try sendClientFrame(second_stream, io, packet.items);
+    const second_reply = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqualStrings("Hello from Zig", second_reply.payload);
+    const second = Client{
+        .state = window.state,
+        .client_id = called_client_id.load(.acquire),
+    };
+    try std.testing.expect(first.id() != second.id());
+
+    {
+        const rejected = try connectTestWebSocket(running.inner.address, io);
+        defer rejected.close(io);
+        var rejected_response: [125]u8 = undefined;
+        try std.testing.expect(!try authenticateTestClient(
+            rejected,
+            io,
+            gpa,
+            window.state.token,
+            &rejected_response,
+        ));
+    }
+
+    var eval_buffer: [16]u8 = undefined;
+    try std.testing.expectError(error.MultipleClientsConnected, window.eval(
+        io,
+        "return 1",
+        &eval_buffer,
+        .fromSeconds(1),
+    ));
+
+    try first.navigate(io, "/first");
+    const raw_data = [_]u8{ 2, 3, 5 };
+    try second.sendRaw(io, "receiveRaw", &raw_data);
+    const first_targeted = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        first_targeted.header.command,
+    );
+    try std.testing.expectEqualStrings("/first", first_targeted.payload);
+    const second_targeted = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqual(protocol.Command.raw, second_targeted.header.command);
+
+    try first.close(io);
+    const first_close = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    try std.testing.expectEqual(protocol.Command.close, first_close.header.command);
+    try second.navigate(io, "/second");
+    const second_navigation = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        second_navigation.header.command,
+    );
+    try std.testing.expectEqualStrings("/second", second_navigation.payload);
+
+    var targeted_eval_buffer: [16]u8 = undefined;
+    var targeted_eval = io.async(Client.eval, .{
+        second,
+        io,
+        "return 7",
+        &targeted_eval_buffer,
+        std.Io.Duration.fromSeconds(1),
+    });
+    const targeted_eval_request = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.js,
+        targeted_eval_request.header.command,
+    );
+
+    try first_stream.shutdown(io, .both);
+    var first_disconnected = false;
+    for (0..100) |_| {
+        if (!first.isConnected(io)) {
+            first_disconnected = true;
+            break;
+        }
+        try std.Io.sleep(io, .fromMilliseconds(1), .awake);
+    }
+    try std.testing.expect(first_disconnected);
+    try std.testing.expect(second.isConnected(io));
+    try std.testing.expect(!app.closed.load(.acquire));
+
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .id = targeted_eval_request.header.id,
+        .command = .js,
+    }, "\x007\x00");
+    try sendClientFrame(second_stream, io, packet.items);
+    switch (try targeted_eval.await(io)) {
+        .value => |value| try std.testing.expectEqualStrings("7", value),
+        .javascript_error => return error.UnexpectedJavaScriptError,
+    }
+
+    try second.close(io);
+    const second_close = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqual(protocol.Command.close, second_close.header.command);
+    try second_stream.shutdown(io, .both);
     try running.wait();
 }

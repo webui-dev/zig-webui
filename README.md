@@ -14,6 +14,7 @@ The current phase provides:
 - window and targeted `Call.client` calls to JavaScript with results, errors,
   timeouts, and stale-client detection;
 - targeted client navigation, close, and raw binary delivery;
+- bounded multi-client windows through `WindowOptions.max_clients`;
 - default-browser launching and deterministic shutdown.
 
 ```zig
@@ -68,8 +69,8 @@ zig build run
 `zig build test` uses Node's built-in test runner for the browser bridge.
 Building and using the library does not require Node or npm.
 
-Multiple windows, directory content, broadcasts, and multiple clients belong
-to later phases. See the
+Multiple windows, directory content, and broadcasts belong to later phases.
+See the
 [pure Zig refactor plan](docs/PURE_ZIG_REFACTOR.md) for the complete scope and
 implementation order.
 

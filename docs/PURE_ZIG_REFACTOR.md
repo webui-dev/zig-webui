@@ -205,15 +205,14 @@ and clean shutdown; `zig build test` passes; the build graph contains no C.
 Acceptance: the call-js-from-zig example passes, and an idle connection
 immediately receives Zig-initiated messages. Complete.
 
-### 3. Resources and multiple clients
+### 3. Resources and multiple clients (in progress)
 
 - Add `.html`, `.directory`, and `.external_url` content.
 - Pass Linsang `Request` and `Response` to custom resource handlers instead of
   accepting assembled HTTP strings.
-- Replace the single peer with a bounded collection of stable `Client`
-  handles.
-- Support single-client mode, explicit multi-client mode, broadcasts, and
-  targeted sends.
+- Implemented a bounded collection of stable `Client` handles; one client is
+  the default and `WindowOptions.max_clients` explicitly enables more.
+- Add `Window` broadcasts; targeted sends are implemented.
 
 Acceptance: serve-a-folder, custom-server, and multi-client examples pass.
 
@@ -301,7 +300,6 @@ zig build -Dtarget=aarch64-macos
 
 Begin phase 3:
 
-1. Replace the single peer with a bounded client collection.
-2. Replace `pending_eval` with a bounded table keyed by client and request ID.
-3. Add real `Window` broadcasts over that collection.
-4. Add directory, external URL, and custom resource content.
+1. Replace `pending_eval` with a bounded table keyed by client and request ID.
+2. Add real `Window` broadcasts over the client collection.
+3. Add directory, external URL, and custom resource content.
