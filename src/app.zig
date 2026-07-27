@@ -28,6 +28,7 @@ const EvalStatus = enum {
 
 const PendingEval = struct {
     id: u16,
+    client_id: u64,
     buffer: []u8,
     len: usize = 0,
     status: EvalStatus = .waiting,
@@ -43,6 +44,8 @@ const WindowState = struct {
     eval_mutex: std.Io.Mutex = .init,
     peer: ?Linsang.WebSocketPeer = null,
     peer_key: usize = 0,
+    client_id: u64 = 0,
+    next_client_id: u64 = 1,
     next_eval_id: u16 = 1,
     pending_eval: ?PendingEval = null,
 
@@ -72,12 +75,17 @@ const WindowState = struct {
         }
         self.peer = try connection.peer();
         self.peer_key = key;
+        self.client_id = self.next_client_id;
+        self.next_client_id +%= 1;
+        if (self.next_client_id == 0) self.next_client_id = 1;
     }
 
-    fn isClient(self: *WindowState, connection: *Linsang.Connection) bool {
+    fn client(self: *WindowState, connection: *Linsang.Connection) ?Client {
         self.mutex.lockUncancelable(connection.io);
         defer self.mutex.unlock(connection.io);
-        return self.peer != null and self.peer_key == @intFromPtr(connection);
+        if (self.peer == null or self.peer_key != @intFromPtr(connection))
+            return null;
+        return .{ .state = self, .client_id = self.client_id };
     }
 
     fn disconnected(self: *WindowState, connection: *Linsang.Connection) bool {
@@ -88,6 +96,7 @@ const WindowState = struct {
         self.peer.?.deinit();
         self.peer = null;
         self.peer_key = 0;
+        self.client_id = 0;
         if (self.pending_eval) |*pending| {
             pending.status = .disconnected;
             pending.done.set(connection.io);
@@ -106,7 +115,9 @@ const WindowState = struct {
         defer self.mutex.unlock(connection.io);
         if (self.peer_key != @intFromPtr(connection)) return;
         const pending = if (self.pending_eval) |*pending| pending else return;
-        if (pending.id != id or pending.status != .waiting) return;
+        if (pending.id != id or
+            pending.client_id != self.client_id or
+            pending.status != .waiting) return;
 
         var value = payload[1..];
         if (value.len > 0 and value[value.len - 1] == 0)
@@ -144,10 +155,93 @@ const WindowState = struct {
             .waiting => error.Timeout,
         };
     }
+
+    fn eval(
+        self: *WindowState,
+        io: std.Io,
+        target_client_id: ?u64,
+        script: []const u8,
+        result_buffer: []u8,
+        timeout: std.Io.Duration,
+    ) !EvalResult {
+        if (!std.unicode.utf8ValidateSlice(script)) return error.InvalidUtf8;
+        if (!self.eval_mutex.tryLock()) return error.Busy;
+        defer self.eval_mutex.unlock(io);
+
+        const deadline = std.Io.Clock.Timestamp.fromNow(io, .{
+            .clock = .awake,
+            .raw = timeout,
+        });
+        var client_id: u64 = undefined;
+        var peer: Linsang.WebSocketPeer = while (true) {
+            self.mutex.lockUncancelable(io);
+            if (self.peer) |stored| {
+                if (target_client_id == null or
+                    target_client_id.? == self.client_id)
+                {
+                    client_id = self.client_id;
+                    const owned = stored.clone();
+                    self.mutex.unlock(io);
+                    break owned;
+                }
+            }
+            self.mutex.unlock(io);
+            if (target_client_id != null) return error.ConnectionClosed;
+            if (deadline.compare(.lte, .now(io, .awake))) return error.Timeout;
+            // ponytail: phase 2 has one client; replace polling with an event
+            // when reconnecting clients are supported.
+            try std.Io.sleep(io, .fromMilliseconds(1), .awake);
+        };
+        defer peer.deinit();
+
+        self.mutex.lockUncancelable(io);
+        const id = self.next_eval_id;
+        self.next_eval_id +%= 1;
+        if (self.next_eval_id == 0) self.next_eval_id = 1;
+        self.pending_eval = .{
+            .id = id,
+            .client_id = client_id,
+            .buffer = result_buffer,
+        };
+        const done = &self.pending_eval.?.done;
+        self.mutex.unlock(io);
+        errdefer self.cancelEval(io, id);
+
+        var packet: std.ArrayList(u8) = .empty;
+        defer packet.deinit(self.gpa);
+        try protocol.append(&packet, self.gpa, .{
+            .token = self.token,
+            .id = id,
+            .command = .js,
+        }, script);
+        peer.sendBinary(packet.items) catch |err| switch (err) {
+            error.Closed => return error.ConnectionClosed,
+            else => return err,
+        };
+
+        while (true) {
+            done.waitTimeout(io, .{ .deadline = deadline }) catch |wait_error| {
+                self.mutex.lockUncancelable(io);
+                const still_waiting = if (self.pending_eval) |pending|
+                    pending.id == id and pending.status == .waiting
+                else
+                    false;
+                self.mutex.unlock(io);
+                if (!still_waiting) break;
+                if (wait_error == error.Canceled) return wait_error;
+                if (deadline.compare(.lte, .now(io, .awake)))
+                    return error.Timeout;
+                continue;
+            };
+            break;
+        }
+        return self.takeEval(io, id);
+    }
 };
 
 pub const Call = struct {
     gpa: std.mem.Allocator,
+    client: Client,
     arguments: []const []const u8,
     response: std.ArrayList(u8) = .empty,
 
@@ -185,6 +279,38 @@ pub const Call = struct {
     pub fn replyInt(self: *Call, value: anytype) !void {
         var buffer: [64]u8 = undefined;
         try self.reply(try std.fmt.bufPrint(&buffer, "{d}", .{value}));
+    }
+};
+
+pub const Client = struct {
+    state: *WindowState,
+    client_id: u64,
+
+    pub fn id(self: Client) u64 {
+        return self.client_id;
+    }
+
+    pub fn isConnected(self: Client, io: std.Io) bool {
+        self.state.mutex.lockUncancelable(io);
+        defer self.state.mutex.unlock(io);
+        return self.state.peer != null and
+            self.state.client_id == self.client_id;
+    }
+
+    pub fn eval(
+        self: Client,
+        io: std.Io,
+        script: []const u8,
+        result_buffer: []u8,
+        timeout: std.Io.Duration,
+    ) !EvalResult {
+        return self.state.eval(
+            io,
+            self.client_id,
+            script,
+            result_buffer,
+            timeout,
+        );
     }
 };
 
@@ -227,66 +353,7 @@ pub const Window = struct {
         result_buffer: []u8,
         timeout: std.Io.Duration,
     ) !EvalResult {
-        if (!std.unicode.utf8ValidateSlice(script)) return error.InvalidUtf8;
-        if (!self.state.eval_mutex.tryLock()) return error.Busy;
-        defer self.state.eval_mutex.unlock(io);
-
-        const deadline = std.Io.Clock.Timestamp.fromNow(io, .{
-            .clock = .awake,
-            .raw = timeout,
-        });
-        var peer: Linsang.WebSocketPeer = while (true) {
-            self.state.mutex.lockUncancelable(io);
-            if (self.state.peer) |stored| {
-                const owned = stored.clone();
-                self.state.mutex.unlock(io);
-                break owned;
-            }
-            self.state.mutex.unlock(io);
-            if (deadline.compare(.lte, .now(io, .awake))) return error.Timeout;
-            // ponytail: phase 2 has one client; replace polling with an event
-            // when reconnecting clients are supported.
-            try std.Io.sleep(io, .fromMilliseconds(1), .awake);
-        };
-        defer peer.deinit();
-
-        self.state.mutex.lockUncancelable(io);
-        const id = self.state.next_eval_id;
-        self.state.next_eval_id +%= 1;
-        if (self.state.next_eval_id == 0) self.state.next_eval_id = 1;
-        self.state.pending_eval = .{ .id = id, .buffer = result_buffer };
-        const done = &self.state.pending_eval.?.done;
-        self.state.mutex.unlock(io);
-        errdefer self.state.cancelEval(io, id);
-
-        var packet: std.ArrayList(u8) = .empty;
-        defer packet.deinit(self.state.gpa);
-        try protocol.append(&packet, self.state.gpa, .{
-            .token = self.state.token,
-            .id = id,
-            .command = .js,
-        }, script);
-        peer.sendBinary(packet.items) catch |err| switch (err) {
-            error.Closed => return error.ConnectionClosed,
-            else => return err,
-        };
-
-        while (true) {
-            done.waitTimeout(io, .{ .deadline = deadline }) catch |wait_error| {
-                self.state.mutex.lockUncancelable(io);
-                const still_waiting = if (self.state.pending_eval) |pending|
-                    pending.id == id and pending.status == .waiting
-                else
-                    false;
-                self.state.mutex.unlock(io);
-                if (!still_waiting) break;
-                if (wait_error == error.Canceled) return wait_error;
-                if (deadline.compare(.lte, .now(io, .awake))) return error.Timeout;
-                continue;
-            };
-            break;
-        }
-        return self.state.takeEval(io, id);
+        return self.state.eval(io, null, script, result_buffer, timeout);
     }
 };
 
@@ -469,10 +536,10 @@ fn onMessage(
             packet.payload,
         ) catch connection.wsClose(.protocol_error, ""),
         .call => {
-            if (!window.isClient(connection)) {
+            const client = window.client(connection) orelse {
                 connection.wsClose(.policy_violation, "");
                 return;
-            }
+            };
             const decoded = protocol.decodeCall(packet.payload) catch {
                 connection.wsClose(.protocol_error, "");
                 return;
@@ -483,6 +550,7 @@ fn onMessage(
             };
             var call: Call = .{
                 .gpa = app.gpa,
+                .client = client,
                 .arguments = decoded.slice(),
             };
             defer call.deinit();
@@ -513,6 +581,7 @@ test "call accessors and one-window lifecycle" {
 
     var call: Call = .{
         .gpa = gpa,
+        .client = .{ .state = window.state, .client_id = 1 },
         .arguments = &.{ "42", "true" },
     };
     defer call.deinit();
@@ -520,12 +589,14 @@ test "call accessors and one-window lifecycle" {
     try std.testing.expect(try call.boolean(1));
     try call.replyInt(84);
     try std.testing.expectEqualStrings("84", call.response.items);
-    _ = window;
 }
 
-fn integrationHandler(call: *Call, _: ?*anyopaque) !void {
+fn integrationHandler(call: *Call, user_data: ?*anyopaque) !void {
     if (!std.mem.eql(u8, try call.string(0), "Zig"))
         return error.UnexpectedArgument;
+    const client_id: *std.atomic.Value(u64) =
+        @ptrCast(@alignCast(user_data.?));
+    client_id.store(call.client.id(), .release);
     try call.reply("Hello from Zig");
 }
 
@@ -601,7 +672,8 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     var app = App.init(gpa, .{});
     defer app.deinit();
     const window = try app.createWindow(.{ .html = "test page" });
-    try window.bind("greet", integrationHandler, null);
+    var called_client_id: std.atomic.Value(u64) = .init(0);
+    try window.bind("greet", integrationHandler, &called_client_id);
     var running = try app.start(io);
     defer running.stop() catch {};
 
@@ -655,10 +727,16 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     const reply_packet = try protocol.decode(replied);
     try std.testing.expectEqual(@as(u16, 9), reply_packet.header.id);
     try std.testing.expectEqualStrings("Hello from Zig", reply_packet.payload);
+    const targeted_client: Client = .{
+        .state = window.state,
+        .client_id = called_client_id.load(.acquire),
+    };
+    try std.testing.expect(targeted_client.id() != 0);
+    try std.testing.expect(targeted_client.isConnected(io));
 
     var eval_buffer: [64]u8 = undefined;
-    var eval_future = io.async(Window.eval, .{
-        window,
+    var eval_future = io.async(Client.eval, .{
+        targeted_client,
         io,
         "return 6 * 7",
         &eval_buffer,
@@ -727,5 +805,12 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     _ = try readServerFrame(client, io, &response_payload);
     try client.shutdown(io, .both);
     try std.testing.expectError(error.ConnectionClosed, disconnect_future.await(io));
+    try std.testing.expect(!targeted_client.isConnected(io));
+    try std.testing.expectError(error.ConnectionClosed, targeted_client.eval(
+        io,
+        "return 'stale'",
+        &eval_buffer,
+        std.Io.Duration.fromSeconds(1),
+    ));
     try running.wait();
 }

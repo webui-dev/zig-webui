@@ -198,7 +198,8 @@ and clean shutdown; `zig build test` passes; the build graph contains no C.
 
 - Implemented single-client `Window.eval` with request IDs.
 - Implemented results, JavaScript errors, timeouts, and disconnect cleanup.
-- Add broadcast `Window.eval` and single-client `Client.eval`.
+- Implemented stable `Client` handles and targeted `Client.eval`.
+- Add broadcast `Window.eval`.
 - Add navigate, close, and raw binary operations.
 
 Acceptance: the call-js-from-zig example passes, and an idle connection
@@ -297,7 +298,6 @@ zig build -Dtarget=aarch64-macos
 
 Complete the remaining phase 2 work:
 
-1. Introduce stable `Client` handles for targeted calls.
-2. Add explicit broadcast behavior.
-3. Add navigate, close, and raw binary operations.
-4. Keep the pending-call count bounded when concurrent calls are introduced.
+1. Add explicit broadcast behavior.
+2. Add navigate, close, and raw binary operations.
+3. Keep the pending-call count bounded when concurrent calls are introduced.

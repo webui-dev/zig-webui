@@ -11,7 +11,8 @@ The current phase provides:
 - one `App`, one window, and automatic port selection;
 - embedded HTML and a built-in JavaScript bridge;
 - JavaScript calls to Zig bindings with return values;
-- single-client Zig calls to JavaScript with results, errors, and timeouts;
+- window and targeted `Call.client` calls to JavaScript with results, errors,
+  timeouts, and stale-client detection;
 - default-browser launching and deterministic shutdown.
 
 ```zig
