@@ -8,6 +8,29 @@ const default_max_pending_evals = 64;
 const capability_len = 32;
 
 pub const Handler = *const fn (*Call, ?*anyopaque) anyerror!void;
+pub const Request = Linsang.Request;
+pub const Response = Linsang.Response;
+
+pub const ResourceHandler = *const fn (
+    path: []const u8,
+    request: *const Request,
+    response: *Response,
+    user_data: ?*anyopaque,
+) anyerror!void;
+
+pub const CustomResource = struct {
+    handler: ResourceHandler,
+    user_data: ?*anyopaque = null,
+};
+
+pub const Content = union(enum) {
+    /// HTML copied into the window and served at its capability root.
+    html: []const u8,
+    /// Directory path opened by `App.start` and closed by `Running.stop`.
+    directory: []const u8,
+    /// Buffered resource handler. The bridge and WebSocket paths stay reserved.
+    custom: CustomResource,
+};
 
 const Binding = struct {
     name: []u8,
@@ -86,9 +109,45 @@ const ConnectedClient = struct {
     peer: Linsang.WebSocketPeer,
 };
 
+const DirectoryContent = struct {
+    path: []u8,
+    dir: ?std.Io.Dir = null,
+};
+
+const StoredContent = union(enum) {
+    html: []u8,
+    directory: DirectoryContent,
+    custom: CustomResource,
+
+    fn init(gpa: std.mem.Allocator, content: Content) !StoredContent {
+        return switch (content) {
+            .html => |html| .{ .html = try gpa.dupe(u8, html) },
+            .directory => |path| blk: {
+                if (path.len == 0) return error.InvalidDirectory;
+                break :blk .{ .directory = .{
+                    .path = try gpa.dupe(u8, path),
+                } };
+            },
+            .custom => |custom| .{ .custom = custom },
+        };
+    }
+
+    fn deinit(self: *StoredContent, gpa: std.mem.Allocator) void {
+        switch (self.*) {
+            .html => |html| gpa.free(html),
+            .directory => |directory| {
+                std.debug.assert(directory.dir == null);
+                gpa.free(directory.path);
+            },
+            .custom => {},
+        }
+        self.* = undefined;
+    }
+};
+
 const WindowState = struct {
     gpa: std.mem.Allocator,
-    html: []u8,
+    content: StoredContent,
     max_clients: usize,
     max_pending_evals: usize,
     capability: [capability_len]u8 = @splat(0),
@@ -107,7 +166,7 @@ const WindowState = struct {
         self.clients.deinit(self.gpa);
         for (self.bindings.items) |item| self.gpa.free(item.name);
         self.bindings.deinit(self.gpa);
-        self.gpa.free(self.html);
+        self.content.deinit(self.gpa);
         self.gpa.destroy(self);
     }
 
@@ -681,7 +740,7 @@ pub const App = struct {
     };
 
     pub const WindowOptions = struct {
-        html: []const u8,
+        content: Content,
         /// One client by default; values above one explicitly enable
         /// bounded multi-client mode.
         max_clients: usize = 1,
@@ -710,11 +769,11 @@ pub const App = struct {
         }
         const state = try self.gpa.create(WindowState);
         errdefer self.gpa.destroy(state);
-        const html = try self.gpa.dupe(u8, options.html);
-        errdefer self.gpa.free(html);
+        var content = try StoredContent.init(self.gpa, options.content);
+        errdefer content.deinit(self.gpa);
         state.* = .{
             .gpa = self.gpa,
-            .html = html,
+            .content = content,
             .max_clients = options.max_clients,
             .max_pending_evals = options.max_pending_evals,
         };
@@ -725,6 +784,8 @@ pub const App = struct {
     pub fn start(self: *App, io: std.Io) !Running {
         if (self.started) return error.AlreadyStarted;
         if (self.windows.items.len == 0) return error.NoWindow;
+        errdefer self.closeDirectories(io);
+        try self.openDirectories(io);
         for (self.windows.items, 0..) |window, index| {
             while (true) {
                 var random: [20]u8 = undefined;
@@ -755,6 +816,33 @@ pub const App = struct {
         const inner = try self.server.?.start(io);
         self.started = true;
         return .{ .app = self, .inner = inner };
+    }
+
+    fn openDirectories(self: *App, io: std.Io) !void {
+        for (self.windows.items) |window| switch (window.content) {
+            .directory => |*directory| {
+                std.debug.assert(directory.dir == null);
+                directory.dir = if (std.fs.path.isAbsolute(directory.path))
+                    try std.Io.Dir.openDirAbsolute(io, directory.path, .{
+                        .follow_symlinks = false,
+                    })
+                else
+                    try std.Io.Dir.cwd().openDir(io, directory.path, .{
+                        .follow_symlinks = false,
+                    });
+            },
+            else => {},
+        };
+    }
+
+    fn closeDirectories(self: *App, io: std.Io) void {
+        for (self.windows.items) |window| switch (window.content) {
+            .directory => |*directory| if (directory.dir) |dir| {
+                dir.close(io);
+                directory.dir = null;
+            },
+            else => {},
+        };
     }
 
     fn hasWindow(self: *const App, state: *WindowState) bool {
@@ -796,10 +884,13 @@ pub const Running = struct {
 
     pub fn stop(self: *Running) !void {
         if (self.stopped) return;
+        defer {
+            self.app.closeDirectories(self.inner.io);
+            self.stopped = true;
+            self.app.started = false;
+            self.app.server = null;
+        }
         try self.inner.stop();
-        self.stopped = true;
-        self.app.started = false;
-        self.app.server = null;
     }
 
     pub fn wait(self: *Running) !void {
@@ -853,12 +944,6 @@ fn onRequest(
     const window = resolved.window;
     if (std.mem.eql(u8, resolved.resource, "_webui_ws_connect"))
         return .upgrade;
-    if (resolved.resource.len == 0) {
-        response.setHeader("Content-Type", "text/html; charset=utf-8") catch
-            return failResponse(response);
-        response.write(window.html) catch return failResponse(response);
-        return .respond;
-    }
     if (std.mem.eql(u8, resolved.resource, "webui.js")) {
         response.setHeader("Content-Type", "text/javascript; charset=utf-8") catch
             return failResponse(response);
@@ -871,8 +956,33 @@ fn onRequest(
         response.write(bridge) catch return failResponse(response);
         return .respond;
     }
-    response.status = .not_found;
-    return .respond;
+    return switch (window.content) {
+        .html => |html| if (resolved.resource.len == 0) blk: {
+            response.setHeader("Content-Type", "text/html; charset=utf-8") catch
+                break :blk failResponse(response);
+            response.write(html) catch break :blk failResponse(response);
+            break :blk .respond;
+        } else blk: {
+            response.status = .not_found;
+            break :blk .respond;
+        },
+        .directory => |directory| blk: {
+            const dir = directory.dir orelse break :blk failResponse(response);
+            // ponytail: Linsang StaticFiles has no mount prefix yet. Rewrite
+            // only the validated path slice; use strip_prefix when available.
+            @constCast(request).path = request.path[capability_len + 1 ..];
+            break :blk .{ .files = .{ .dir = dir } };
+        },
+        .custom => |custom| blk: {
+            custom.handler(
+                resolved.resource,
+                request,
+                response,
+                custom.user_data,
+            ) catch break :blk failResponse(response);
+            break :blk .respond;
+        },
+    };
 }
 
 fn send(
@@ -982,22 +1092,32 @@ test "call accessors, window creation, and routes" {
     defer invalid_app.deinit();
     try std.testing.expectError(
         error.InvalidClientLimit,
-        invalid_app.createWindow(.{ .html = "invalid", .max_clients = 0 }),
+        invalid_app.createWindow(.{
+            .content = .{ .html = "invalid" },
+            .max_clients = 0,
+        }),
     );
     var invalid_pending_app = App.init(gpa, .{});
     defer invalid_pending_app.deinit();
     try std.testing.expectError(
         error.InvalidPendingEvalLimit,
         invalid_pending_app.createWindow(.{
-            .html = "invalid",
+            .content = .{ .html = "invalid" },
             .max_pending_evals = 0,
         }),
     );
 
     var app = App.init(gpa, .{});
     defer app.deinit();
-    const window = try app.createWindow(.{ .html = "hello" });
-    const second = try app.createWindow(.{ .html = "again" });
+    try std.testing.expectError(error.InvalidDirectory, app.createWindow(.{
+        .content = .{ .directory = "" },
+    }));
+    const window = try app.createWindow(.{
+        .content = .{ .html = "hello" },
+    });
+    const second = try app.createWindow(.{
+        .content = .{ .html = "again" },
+    });
     try std.testing.expect(window.state != second.state);
     @memcpy(
         &window.state.capability,
@@ -1036,6 +1156,16 @@ fn integrationHandler(call: *Call, user_data: ?*anyopaque) !void {
     try call.reply("Hello from Zig");
 }
 
+fn integrationResourceHandler(
+    path: []const u8,
+    request: *const Request,
+    response: *Response,
+    _: ?*anyopaque,
+) !void {
+    try response.setHeader("Content-Type", "text/plain; charset=utf-8");
+    try response.print("{s}?{s}", .{ path, request.query });
+}
+
 fn writeAll(stream: std.Io.net.Stream, io: std.Io, bytes: []const u8) !void {
     var buffer: [512]u8 = undefined;
     var writer = stream.writer(io, &buffer);
@@ -1068,6 +1198,29 @@ fn readUntil(
         len += count;
     }
     return buffer[0..len];
+}
+
+fn getTestPath(
+    address: std.Io.net.IpAddress,
+    io: std.Io,
+    target: []const u8,
+    terminator: []const u8,
+    response: []u8,
+) ![]u8 {
+    const client = try address.connect(io, .{ .mode = .stream });
+    defer client.close(io);
+    var request: [512]u8 = undefined;
+    try writeAll(
+        client,
+        io,
+        try std.fmt.bufPrint(
+            &request,
+            "GET {s} HTTP/1.1\r\nHost: localhost\r\n" ++
+                "Connection: close\r\n\r\n",
+            .{target},
+        ),
+    );
+    return readUntil(client, io, response, terminator);
 }
 
 fn sendClientFrame(
@@ -1156,10 +1309,40 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     defer threaded.deinit();
     const io = threaded.io();
 
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "public");
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "public/index.html",
+        .data = "<h1>directory page</h1>",
+    });
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "secret.txt",
+        .data = "not public",
+    });
+    const directory_path = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}/public",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(directory_path);
+
     var app = App.init(gpa, .{});
     defer app.deinit();
-    const window = try app.createWindow(.{ .html = "test page" });
-    const second_window = try app.createWindow(.{ .html = "second page" });
+    const window = try app.createWindow(.{
+        .content = .{ .html = "test page" },
+    });
+    const second_window = try app.createWindow(.{
+        .content = .{ .html = "second page" },
+    });
+    const directory_window = try app.createWindow(.{
+        .content = .{ .directory = directory_path },
+    });
+    const custom_window = try app.createWindow(.{
+        .content = .{ .custom = .{
+            .handler = integrationResourceHandler,
+        } },
+    });
     var called_client_id: std.atomic.Value(u64) = .init(0);
     try window.bind("greet", integrationHandler, &called_client_id);
     var running = try app.start(io);
@@ -1178,22 +1361,91 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         .{ .window = second_window, .content = "second page" },
     };
     for (pages) |page| {
-        const client = try running.inner.address.connect(io, .{ .mode = .stream });
-        defer client.close(io);
-        var request: [128]u8 = undefined;
-        try writeAll(
-            client,
-            io,
-            try std.fmt.bufPrint(
-                &request,
-                "GET /{s}/ HTTP/1.1\r\nHost: localhost\r\n" ++
-                    "Connection: close\r\n\r\n",
-                .{page.window.state.capability},
-            ),
-        );
+        var target: [capability_len + 2]u8 = undefined;
         var response: [512]u8 = undefined;
-        const bytes = try readUntil(client, io, &response, page.content);
+        const bytes = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/", .{
+                page.window.state.capability,
+            }),
+            page.content,
+            &response,
+        );
         try std.testing.expect(std.mem.indexOf(u8, bytes, "HTTP/1.1 200 OK") != null);
+    }
+    {
+        var target: [capability_len + 2]u8 = undefined;
+        var response: [1024]u8 = undefined;
+        const bytes = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/", .{
+                directory_window.state.capability,
+            }),
+            "directory page",
+            &response,
+        );
+        try std.testing.expect(std.mem.indexOf(
+            u8,
+            bytes,
+            "Content-Type: text/html; charset=utf-8",
+        ) != null);
+    }
+    {
+        var target: [capability_len + 20]u8 = undefined;
+        var response: [512]u8 = undefined;
+        const bytes = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/%2e%2e/secret.txt", .{
+                directory_window.state.capability,
+            }),
+            "\r\n\r\n",
+            &response,
+        );
+        try std.testing.expect(std.mem.indexOf(
+            u8,
+            bytes,
+            "HTTP/1.1 404 Not Found",
+        ) != null);
+        try std.testing.expect(std.mem.indexOf(u8, bytes, "not public") == null);
+    }
+    {
+        var target: [capability_len + 17]u8 = undefined;
+        var response: [512]u8 = undefined;
+        const bytes = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/hello?name=zig", .{
+                custom_window.state.capability,
+            }),
+            "hello?name=zig",
+            &response,
+        );
+        try std.testing.expect(std.mem.indexOf(
+            u8,
+            bytes,
+            "Content-Type: text/plain; charset=utf-8",
+        ) != null);
+    }
+    {
+        var target: [capability_len + 13]u8 = undefined;
+        var response: [512]u8 = undefined;
+        const bytes = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/index.html", .{
+                window.state.capability,
+            }),
+            "\r\n\r\n",
+            &response,
+        );
+        try std.testing.expect(std.mem.indexOf(
+            u8,
+            bytes,
+            "HTTP/1.1 404 Not Found",
+        ) != null);
     }
     const first_url = try window.url(&running, gpa);
     defer gpa.free(first_url);
@@ -1441,7 +1693,7 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
     var app = App.init(gpa, .{});
     defer app.deinit();
     const window = try app.createWindow(.{
-        .html = "multi-client test",
+        .content = .{ .html = "multi-client test" },
         .max_clients = 2,
         .max_pending_evals = 2,
     });

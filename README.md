@@ -9,7 +9,8 @@ The current phase provides:
 
 - Zig 0.16;
 - one `App`, multiple isolated windows, and automatic port selection;
-- embedded HTML and a built-in JavaScript bridge;
+- embedded HTML, static directories, custom resources, and a built-in
+  JavaScript bridge;
 - JavaScript calls to Zig bindings with return values;
 - window and targeted `Call.client` calls to JavaScript with results, errors,
   timeouts, and stale-client detection;
@@ -38,10 +39,12 @@ pub fn main() !void {
     var app = webui.App.init(gpa, .{});
     defer app.deinit();
     const window = try app.createWindow(.{
-        .html =
-        \\<button onclick="webui.call('hello').then(alert)">Call Zig</button>
-        \\<script src="webui.js"></script>
-        ,
+        .content = .{
+            .html =
+            \\<button onclick="webui.call('hello').then(alert)">Call Zig</button>
+            \\<script src="webui.js"></script>
+            ,
+        },
     });
     try window.bind("hello", hello, null);
 
@@ -75,7 +78,12 @@ Building and using the library does not require Node or npm. `Window.evalAll`
 returns owned results; call `deinit` on them after consuming every per-client
 outcome.
 
-Directory content belongs to a later phase. See the
+Serve a directory by setting
+`.content = .{ .directory = "path/to/public" }`. The path is opened when the
+app starts and closed when it stops. Custom resources receive `webui.Request`
+and `webui.Response` directly.
+
+See the
 [pure Zig refactor plan](docs/PURE_ZIG_REFACTOR.md) for the complete scope and
 implementation order.
 

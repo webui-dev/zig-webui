@@ -32,7 +32,9 @@ pub fn main() !void {
 
     var app = webui.App.init(gpa, .{});
     defer app.deinit();
-    const window = try app.createWindow(.{ .html = html });
+    const window = try app.createWindow(.{
+        .content = .{ .html = html },
+    });
     try window.bind("hello", hello, null);
 
     var running = try app.start(io);

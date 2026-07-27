@@ -211,9 +211,10 @@ immediately receives Zig-initiated messages. Complete.
 
 ### 3. Resources and multiple clients (in progress)
 
-- Add `.html`, `.directory`, and `.external_url` content.
-- Pass Linsang `Request` and `Response` to custom resource handlers instead of
-  accepting assembled HTTP strings.
+- Implemented `.html` and `.directory` content.
+- Implemented buffered custom resource handlers using Linsang `Request` and
+  `Response` directly.
+- Defer `.external_url` until its capability bridge contract is defined.
 - Implemented multiple windows with isolated capability-based routes.
 - Implemented a bounded collection of stable `Client` handles; one client is
   the default and `WindowOptions.max_clients` explicitly enables more.
@@ -306,4 +307,5 @@ zig build -Dtarget=aarch64-macos
 
 Begin phase 3:
 
-1. Add directory, external URL, and custom resource content.
+1. Decide whether `.external_url` belongs in the core API.
+2. Begin browser and security completion.
