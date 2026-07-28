@@ -1,6 +1,7 @@
 (() => {
     const signature = 0xdd;
     const commandJs = 0xfe;
+    const commandJsQuick = 0xfd;
     const commandClick = 0xfc;
     const commandNavigation = 0xfb;
     const commandClose = 0xfa;
@@ -14,8 +15,11 @@
     let nextId = 1;
     let connected = false;
 
+    const bridgeSource = document.currentScript?.src
+        ? new URL(document.currentScript.src)
+        : new URL(location.href, `${location.protocol}//${location.host}`);
     const socket = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/${globalThis.__zigWebuiCapability}/_webui_ws_connect`,
+        `${bridgeSource.protocol === "https:" ? "wss" : "ws"}://${bridgeSource.host}/${globalThis.__zigWebuiCapability}/_webui_ws_connect`,
     );
     socket.binaryType = "arraybuffer";
 
@@ -75,7 +79,7 @@
             connected = bytes.length > 8 && bytes[8] === 1;
             return;
         }
-        if (bytes[7] === commandJs) {
+        if (bytes[7] === commandJs || bytes[7] === commandJsQuick) {
             let failed = 0;
             let value;
             try {
@@ -90,6 +94,7 @@
                     error instanceof Error ? error.message : String(error),
                 );
             }
+            if (bytes[7] === commandJsQuick) return;
             const response = new Uint8Array(value.length + 2);
             response[0] = failed;
             response.set(value, 1);

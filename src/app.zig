@@ -49,6 +49,8 @@ pub const Content = union(enum) {
     directory: []const u8,
     /// Buffered resource handler. The bridge and WebSocket paths stay reserved.
     custom: CustomResource,
+    /// HTTP(S) page opened directly. The page must load `Window.bridgeUrl`.
+    external_url: []const u8,
 };
 
 const Binding = struct {
@@ -94,6 +96,25 @@ fn validateUrl(url: []const u8) !void {
     if (url.len == 0 or std.mem.indexOfScalar(u8, url, 0) != null)
         return error.InvalidUrl;
     if (!std.unicode.utf8ValidateSlice(url)) return error.InvalidUtf8;
+}
+
+fn validateExternalUrl(url: []const u8) !void {
+    validateUrl(url) catch |err| return switch (err) {
+        error.InvalidUtf8 => error.InvalidUtf8,
+        else => error.InvalidExternalUrl,
+    };
+    const parsed = std.Uri.parse(url) catch return error.InvalidExternalUrl;
+    if (parsed.host == null or
+        !(std.ascii.eqlIgnoreCase(parsed.scheme, "http") or
+            std.ascii.eqlIgnoreCase(parsed.scheme, "https")))
+    {
+        return error.InvalidExternalUrl;
+    }
+}
+
+fn validateRunScript(script: []const u8) !void {
+    if (script.len == 0) return error.InvalidScript;
+    if (!std.unicode.utf8ValidateSlice(script)) return error.InvalidUtf8;
 }
 
 fn appendRawPayload(
@@ -142,6 +163,7 @@ const StoredContent = union(enum) {
     html: []u8,
     directory: DirectoryContent,
     custom: CustomResource,
+    external_url: []u8,
 
     fn init(gpa: std.mem.Allocator, content: Content) !StoredContent {
         return switch (content) {
@@ -153,6 +175,10 @@ const StoredContent = union(enum) {
                 } };
             },
             .custom => |custom| .{ .custom = custom },
+            .external_url => |url| blk: {
+                try validateExternalUrl(url);
+                break :blk .{ .external_url = try gpa.dupe(u8, url) };
+            },
         };
     }
 
@@ -164,6 +190,7 @@ const StoredContent = union(enum) {
                 gpa.free(directory.path);
             },
             .custom => {},
+            .external_url => |url| gpa.free(url),
         }
         self.* = undefined;
     }
@@ -609,6 +636,12 @@ pub const Client = struct {
         );
     }
 
+    /// Execute JavaScript without waiting for a result or browser error.
+    pub fn run(self: Client, io: std.Io, script: []const u8) !void {
+        try validateRunScript(script);
+        try self.send(io, .js_quick, script);
+    }
+
     pub fn navigate(self: Client, io: std.Io, url: []const u8) !void {
         try validateUrl(url);
         try self.send(io, .navigation, url);
@@ -703,7 +736,26 @@ pub const Window = struct {
     ) ![]u8 {
         if (running.stopped) return error.NotRunning;
         if (!running.app.hasWindow(self.state)) return error.UnknownWindow;
+        switch (self.state.content) {
+            .external_url => |external| return gpa.dupe(u8, external),
+            else => {},
+        }
         return std.fmt.allocPrint(gpa, "http://{s}:{d}/{s}/", .{
+            running.app.options.address,
+            running.inner.address.getPort(),
+            self.state.capability,
+        });
+    }
+
+    /// Return the capability-scoped bridge URL for this window.
+    pub fn bridgeUrl(
+        self: Window,
+        running: *const Running,
+        gpa: std.mem.Allocator,
+    ) ![]u8 {
+        if (running.stopped) return error.NotRunning;
+        if (!running.app.hasWindow(self.state)) return error.UnknownWindow;
+        return std.fmt.allocPrint(gpa, "http://{s}:{d}/{s}/webui.js", .{
             running.app.options.address,
             running.inner.address.getPort(),
             self.state.capability,
@@ -756,6 +808,12 @@ pub const Window = struct {
         }
         try group.await(io);
         return .{ .gpa = self.state.gpa, .storage = storage, .items = items };
+    }
+
+    /// Execute JavaScript on all clients without waiting for results.
+    pub fn run(self: Window, io: std.Io, script: []const u8) !usize {
+        try validateRunScript(script);
+        return self.state.broadcast(io, .js_quick, script);
     }
 
     pub fn navigate(self: Window, io: std.Io, target_url: []const u8) !usize {
@@ -1040,6 +1098,10 @@ fn onRequest(
             ) catch break :blk failResponse(response);
             break :blk .respond;
         },
+        .external_url => blk: {
+            response.status = .not_found;
+            break :blk .respond;
+        },
     };
 }
 
@@ -1198,6 +1260,9 @@ test "call accessors, window creation, and routes" {
     defer app.deinit();
     try std.testing.expectError(error.InvalidDirectory, app.createWindow(.{
         .content = .{ .directory = "" },
+    }));
+    try std.testing.expectError(error.InvalidExternalUrl, app.createWindow(.{
+        .content = .{ .external_url = "file:///tmp/index.html" },
     }));
     const window = try app.createWindow(.{
         .content = .{ .html = "hello" },
@@ -1460,6 +1525,10 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
             .handler = integrationResourceHandler,
         } },
     });
+    const external_url = "http://external.example/app";
+    const external_window = try app.createWindow(.{
+        .content = .{ .external_url = external_url },
+    });
     var primary_events: IntegrationEventState = .{
         .expected_click = "primary",
     };
@@ -1592,6 +1661,36 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     const second_url = try second_window.url(&running, gpa);
     defer gpa.free(second_url);
     try std.testing.expect(!std.mem.eql(u8, first_url, second_url));
+    const opened_external_url = try external_window.url(&running, gpa);
+    defer gpa.free(opened_external_url);
+    try std.testing.expectEqualStrings(external_url, opened_external_url);
+    const external_bridge_url = try external_window.bridgeUrl(&running, gpa);
+    defer gpa.free(external_bridge_url);
+    try std.testing.expect(std.mem.endsWith(
+        u8,
+        external_bridge_url,
+        "/webui.js",
+    ));
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        external_bridge_url,
+        &external_window.state.capability,
+    ) != null);
+    {
+        var target: [capability_len + 10]u8 = undefined;
+        var response: [8192]u8 = undefined;
+        const disabled = "globalThis.__zigWebuiEvents=false;";
+        const bytes = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/webui.js", .{
+                external_window.state.capability,
+            }),
+            disabled,
+            &response,
+        );
+        try std.testing.expect(std.mem.indexOf(u8, bytes, disabled) != null);
+    }
 
     {
         const unauthenticated = try connectTestWebSocket(
@@ -1770,6 +1869,22 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         .value => return error.ExpectedJavaScriptError,
         .javascript_error => |message| try std.testing.expectEqualStrings("nope", message),
     }
+
+    try std.testing.expectError(
+        error.InvalidScript,
+        targeted_client.run(io, ""),
+    );
+    try targeted_client.run(io, "globalThis.quickResult = 42");
+    const quick = try protocol.decode(try readServerFrame(
+        client,
+        io,
+        &response_payload,
+    ));
+    try std.testing.expectEqual(protocol.Command.js_quick, quick.header.command);
+    try std.testing.expectEqualStrings(
+        "globalThis.quickResult = 42",
+        quick.payload,
+    );
 
     try std.testing.expectError(
         error.InvalidUrl,
@@ -1963,6 +2078,25 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
         &eval_buffer,
         .fromSeconds(1),
     ));
+
+    try std.testing.expectError(error.InvalidScript, window.run(io, ""));
+    try std.testing.expectEqual(
+        @as(usize, 2),
+        try window.run(io, "globalThis.broadcastQuick = true"),
+    );
+    const first_quick = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    const second_quick = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqual(protocol.Command.js_quick, first_quick.header.command);
+    try std.testing.expectEqual(protocol.Command.js_quick, second_quick.header.command);
+    try std.testing.expectEqualStrings(first_quick.payload, second_quick.payload);
 
     try first.navigate(io, "/first");
     const raw_data = [_]u8{ 2, 3, 5 };

@@ -9,8 +9,8 @@ The current phase provides:
 
 - Zig 0.16;
 - one `App`, multiple isolated windows, and automatic port selection;
-- embedded HTML, static directories, custom resources, and a built-in
-  JavaScript bridge;
+- embedded HTML, static directories, custom resources, external URLs, and a
+  built-in JavaScript bridge;
 - JavaScript calls to Zig bindings with return values;
 - window and targeted `Call.client` calls to JavaScript with results, errors,
   timeouts, and stale-client detection;
@@ -20,6 +20,8 @@ The current phase provides:
   `WindowOptions.max_pending_evals`;
 - window navigation, close, raw-data, and JavaScript broadcasts with
   per-client results;
+- targeted and broadcast fire-and-forget JavaScript through `Client.run` and
+  `Window.run`;
 - connected, disconnected, click, and intercepted navigation events through
   `Window.onEvent`;
 - default-browser launching and deterministic shutdown.
@@ -90,6 +92,17 @@ navigation events. `Event.data` contains the element ID for clicks, the target
 URL for navigation, and is empty for connected or disconnected events.
 Navigation attempts are intercepted while an event handler is installed; call
 `Event.client.navigate` from the handler to continue them.
+
+Use `Client.run` or `Window.run` when JavaScript results and errors are not
+needed. These methods use the protocol's `JS_QUICK` command and do not consume
+pending evaluation slots.
+
+External pages use `.content = .{ .external_url = "http://..." }`.
+`Window.url` returns the external page, while `Window.bridgeUrl` returns the
+capability-scoped script URL that the caller-owned page must load. The bridge
+connects its WebSocket to the script's origin instead of the page's origin.
+HTTPS external pages require HTTPS bridge serving, which is part of the TLS
+work.
 
 See the
 [pure Zig refactor plan](docs/PURE_ZIG_REFACTOR.md) for the complete scope and

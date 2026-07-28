@@ -202,6 +202,8 @@ and clean shutdown; `zig build test` passes; the build graph contains no C.
 
 - Implemented single-client `Window.eval` with request IDs.
 - Implemented results, JavaScript errors, timeouts, and disconnect cleanup.
+- Implemented `Client.run` and broadcast `Window.run` with `JS_QUICK` for
+  fire-and-forget JavaScript.
 - Implemented stable `Client` handles and targeted `Client.eval`.
 - Implemented targeted navigation, close, and raw binary operations.
 - Implemented broadcast `Window.evalAll` in the multi-client work.
@@ -214,7 +216,8 @@ immediately receives Zig-initiated messages. Complete.
 - Implemented `.html` and `.directory` content.
 - Implemented buffered custom resource handlers using Linsang `Request` and
   `Response` directly.
-- Defer `.external_url` until its capability bridge contract is defined.
+- Implemented `.external_url`; `Window.bridgeUrl` gives caller-owned pages the
+  capability-scoped bridge, which connects back to the script's origin.
 - Implemented multiple windows with isolated capability-based routes.
 - Implemented a bounded collection of stable `Client` handles; one client is
   the default and `WindowOptions.max_clients` explicitly enables more.
@@ -224,8 +227,8 @@ immediately receives Zig-initiated messages. Complete.
   and intercepted navigation events.
 
 Acceptance: integration tests cover isolated resources, multiple windows,
-multiple clients, lifecycle events, click and navigation events, and
-disconnect cleanup. Complete.
+multiple clients, external bridge routing, lifecycle events, click and
+navigation events, and disconnect cleanup. Complete.
 
 ### 4. Browser and security completion
 
@@ -313,5 +316,3 @@ Begin phase 4:
 
 1. Validate WebSocket origins and add explicit protocol size limits.
 2. Add caller-provided TLS configuration before enabling public listening.
-3. Keep `.external_url` deferred until its capability bridge contract is
-   defined.

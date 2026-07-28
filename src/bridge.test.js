@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-test("bridge handles targeted navigation, raw data, and close", async () => {
+test("bridge handles commands and external script origins", async () => {
     class WebSocketMock {
         static instance;
 
@@ -9,6 +9,7 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
             this.url = url;
             this.closed = false;
             this.sent = undefined;
+            this.sendCount = 0;
             WebSocketMock.instance = this;
         }
 
@@ -18,6 +19,7 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
 
         send(data) {
             this.sent = data;
+            this.sendCount += 1;
         }
     }
 
@@ -69,6 +71,15 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
         await socket.onmessage({
             data: frame(0xf5, Uint8Array.of(1)),
         });
+        const sendsBeforeQuick = socket.sendCount;
+        await socket.onmessage({
+            data: frame(
+                0xfd,
+                encoder.encode("globalThis.quickResult = 42"),
+            ),
+        });
+        assert.equal(globalThis.quickResult, 42);
+        assert.equal(socket.sendCount, sendsBeforeQuick);
 
         const button = { id: "run" };
         clickListener({
@@ -127,10 +138,17 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
                 if (type === "navigate") navigationListener = listener;
             },
         };
+        globalThis.document.currentScript = {
+            src: "https://bridge.example:9443/capability/webui.js",
+        };
         delete globalThis.webui;
         delete require.cache[require.resolve("./bridge.js")];
         require("./bridge.js");
         const navigationSocket = WebSocketMock.instance;
+        assert.equal(
+            navigationSocket.url,
+            "wss://bridge.example:9443/0123456789abcdef0123456789abcdef/_webui_ws_connect",
+        );
         navigationSocket.onopen();
         await navigationSocket.onmessage({
             data: frame(0xf5, Uint8Array.of(1)),
@@ -157,6 +175,7 @@ test("bridge handles targeted navigation, raw data, and close", async () => {
         delete globalThis.navigation;
         delete globalThis.close;
         delete globalThis.receiveRaw;
+        delete globalThis.quickResult;
         delete globalThis.webui;
         delete globalThis.__zigWebuiCapability;
         delete globalThis.__zigWebuiEvents;
