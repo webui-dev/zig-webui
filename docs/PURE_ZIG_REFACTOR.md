@@ -295,7 +295,6 @@ implementations.
 
 | Upstream API | Current gap |
 |---|---|
-| `webui_show_client()` | `Client` cannot replace the content of only one connected browser. |
 | `webui_is_shown()` | There is no window-level connected/shown query. |
 | `webui_set_config(folder_monitor)` | Directory change monitoring and automatic browser reload are not implemented. |
 | `webui_set_default_root_folder()` | There is no application-wide default directory content setting. |
@@ -331,6 +330,7 @@ not implementation gaps:
 |---|---|
 | `webui_new_window()`, `webui_new_window_id()`, `webui_get_new_window_id()` | `App.createWindow()` and application-owned IDs. |
 | `webui_show()`, `webui_start_server()`, `webui_get_url()` | Initial `Content`, runtime `Window.setContent()`, `App.start()`, `Window.open()`, and `Window.url()`. |
+| `webui_show_client()` | `Client.show()` replaces the window content and navigates only the selected client. |
 | `webui_wait()`, `webui_wait_async()` | `Running.wait()` used directly or through `std.Io` concurrency. |
 | `webui_close()`, `webui_destroy()`, `webui_exit()`, `webui_clean()` | `Window.close()`, `Running.stop()`, and `App.deinit()`. |
 | `webui_set_context()`, `webui_get_context()` | Binding and event-handler `user_data`. |
@@ -389,7 +389,6 @@ connection waiting, and caller-provided logging.
 
 ### Dynamic content and client state
 
-- Add targeted `Client.show()` behavior.
 - Add a window connected/shown query.
 - Add an application default directory.
 - Add inline and file-backed window icons.
@@ -485,6 +484,5 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add targeted `Client.show()`.
-2. Add a window connected/shown query.
-3. Add an application default directory and window icons.
+1. Add a window connected/shown query.
+2. Add an application default directory and window icons.

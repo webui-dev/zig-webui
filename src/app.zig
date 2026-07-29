@@ -1092,23 +1092,22 @@ pub const Client = struct {
     state: *WindowState,
     client_id: u64,
 
-    fn sendPacket(
+    fn retainPeer(self: Client, io: std.Io) !Linsang.WebSocketPeer {
+        self.state.mutex.lockUncancelable(io);
+        defer self.state.mutex.unlock(io);
+        const index = self.state.clientIndexById(self.client_id) orelse
+            return error.ConnectionClosed;
+        return self.state.clients.items[index].peer.clone();
+    }
+
+    fn sendPacketToPeer(
         self: Client,
-        io: std.Io,
+        peer: Linsang.WebSocketPeer,
         header: protocol.Header,
         payload: []const u8,
     ) !void {
         if (payload.len > self.state.limits.max_ws_message_size - protocol.header_len)
             return error.MessageTooLarge;
-        self.state.mutex.lockUncancelable(io);
-        const index = self.state.clientIndexById(self.client_id) orelse {
-            self.state.mutex.unlock(io);
-            return error.ConnectionClosed;
-        };
-        var peer = self.state.clients.items[index].peer.clone();
-        self.state.mutex.unlock(io);
-        defer peer.deinit();
-
         var packet: std.ArrayList(u8) = .empty;
         defer packet.deinit(self.state.gpa);
         try protocol.append(&packet, self.state.gpa, header, payload);
@@ -1116,6 +1115,17 @@ pub const Client = struct {
             error.Closed => return error.ConnectionClosed,
             else => return err,
         };
+    }
+
+    fn sendPacket(
+        self: Client,
+        io: std.Io,
+        header: protocol.Header,
+        payload: []const u8,
+    ) !void {
+        var peer = try self.retainPeer(io);
+        defer peer.deinit();
+        try self.sendPacketToPeer(peer, header, payload);
     }
 
     fn send(
@@ -1138,6 +1148,31 @@ pub const Client = struct {
         self.state.mutex.lockUncancelable(io);
         defer self.state.mutex.unlock(io);
         return self.state.clientIndexById(self.client_id) != null;
+    }
+
+    /// Replace the window content and navigate only this client to it.
+    /// If navigation fails, the replacement remains installed.
+    pub fn show(
+        self: Client,
+        running: *const Running,
+        content: Content,
+    ) !void {
+        if (running.stopped or !running.app.started)
+            return error.NotRunning;
+        if (!running.app.hasWindow(self.state)) return error.UnknownWindow;
+        var peer = try self.retainPeer(running.inner.io);
+        defer peer.deinit();
+
+        try self.state.replaceContent(running.inner.io, content);
+        const target_url = try (Window{ .state = self.state }).url(
+            running,
+            self.state.gpa,
+        );
+        defer self.state.gpa.free(target_url);
+        try self.sendPacketToPeer(peer, .{
+            .token = self.state.token,
+            .command = .navigation,
+        }, target_url);
     }
 
     pub fn eval(
@@ -3734,6 +3769,59 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
     try std.testing.expectEqual(protocol.Command.js_quick, second_quick.header.command);
     try std.testing.expectEqualStrings(first_quick.payload, second_quick.payload);
 
+    try std.testing.expectError(
+        error.InvalidExternalUrl,
+        first.show(&running, .{ .external_url = "file:///invalid" }),
+    );
+    try first.run(io, "globalThis.failedShowDidNotNavigate = true");
+    const failed_show_marker = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.js_quick,
+        failed_show_marker.header.command,
+    );
+
+    try first.show(&running, .{ .html = "targeted client page" });
+    const targeted_show = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &first_response,
+    ));
+    const targeted_url = try window.url(&running, gpa);
+    defer gpa.free(targeted_url);
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        targeted_show.header.command,
+    );
+    try std.testing.expectEqualStrings(targeted_url, targeted_show.payload);
+
+    try second.run(io, "globalThis.otherClientWasNotNavigated = true");
+    const second_after_show = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &second_response,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.js_quick,
+        second_after_show.header.command,
+    );
+    {
+        var target: [capability_len + 2]u8 = undefined;
+        var response: [512]u8 = undefined;
+        _ = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/", .{
+                window.state.capability,
+            }),
+            "targeted client page",
+            &response,
+        );
+    }
+
     try first.navigate(io, "/first");
     const raw_data = [_]u8{ 2, 3, 5 };
     try second.sendRaw(io, "receiveRaw", &raw_data);
@@ -3988,6 +4076,23 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
     try std.testing.expect(second.isConnected(io));
     try std.testing.expect(!app.closed.load(.acquire));
     try std.testing.expectError(error.ConnectionClosed, first_eval.await(io));
+    try std.testing.expectError(
+        error.ConnectionClosed,
+        first.show(&running, .{ .html = "stale client page" }),
+    );
+    {
+        var target: [capability_len + 2]u8 = undefined;
+        var response: [512]u8 = undefined;
+        _ = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/", .{
+                window.state.capability,
+            }),
+            "targeted client page",
+            &response,
+        );
+    }
 
     packet.clearRetainingCapacity();
     try protocol.append(&packet, gpa, .{

@@ -13,6 +13,7 @@ The current phase provides:
   built-in JavaScript bridge;
 - runtime content and resource-handler replacement through
   `Window.setContent()`;
+- targeted runtime content replacement through `Client.show()`;
 - explicit browser connection waiting and timeout through
   `Window.waitForConnection()`;
 - JavaScript calls to Zig bindings with return values;
@@ -115,6 +116,11 @@ and `webui.Response` directly.
 navigates every connected client to it and returns the number notified. An
 invalid replacement leaves the current content unchanged. If client
 notification fails, the prepared replacement remains installed.
+
+`Client.show(&running, content)` installs the same window-wide content but
+navigates only the selected client, matching upstream `webui_show_client()`.
+Other connected pages are not reloaded; later resource requests use the new
+window content.
 
 `Window.onEvent` installs one handler for browser lifecycle, click, and
 navigation events. `Event.data` contains the element ID for clicks, the target
