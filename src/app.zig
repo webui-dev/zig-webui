@@ -1318,6 +1318,11 @@ pub const Window = struct {
         try browser.open(self.state.gpa, io, page_url);
     }
 
+    /// Return whether at least one browser client is connected.
+    pub fn isShown(self: Window, io: std.Io) bool {
+        return self.state.hasClients(io);
+    }
+
     /// Wait for at least one browser connection and return the first client.
     pub fn waitForConnection(
         self: Window,
@@ -2790,6 +2795,7 @@ test "window connection waiting observes clients and timeouts" {
     const window = try app.createWindow(.{
         .content = .{ .html = "connection wait test" },
     });
+    try std.testing.expect(!window.isShown(io));
     var running = try app.start(io);
     defer running.stop() catch {};
 
@@ -2821,6 +2827,7 @@ test "window connection waiting observes clients and timeouts" {
     ));
 
     const delayed = try waiting.await(io);
+    try std.testing.expect(window.isShown(io));
     try std.testing.expect(delayed.isConnected(io));
     const immediate = try window.waitForConnection(io, .zero);
     try std.testing.expectEqual(delayed.id(), immediate.id());
@@ -2831,6 +2838,7 @@ test "window connection waiting observes clients and timeouts" {
         try std.Io.sleep(io, .fromMilliseconds(1), .awake);
     }
     try std.testing.expect(!delayed.isConnected(io));
+    try std.testing.expect(!window.isShown(io));
     try std.testing.expectError(
         error.Timeout,
         window.waitForConnection(io, .fromMilliseconds(5)),
@@ -3654,6 +3662,7 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
     try window.bind("greet", integrationHandler, &called_client_id);
     var running = try app.start(io);
     defer running.stop() catch {};
+    try std.testing.expect(!window.isShown(io));
 
     const first_stream = try connectTestWebSocket(
         running.inner.address,
@@ -3670,6 +3679,7 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
         &window.state.capability,
         &first_response,
     ));
+    try std.testing.expect(window.isShown(io));
 
     var packet: std.ArrayList(u8) = .empty;
     defer packet.deinit(gpa);
@@ -3705,6 +3715,7 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
         &window.state.capability,
         &second_response,
     ));
+    try std.testing.expect(window.isShown(io));
     packet.clearRetainingCapacity();
     try protocol.append(&packet, gpa, .{
         .token = window.state.token,
@@ -4074,6 +4085,7 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
     }
     try std.testing.expect(first_disconnected);
     try std.testing.expect(second.isConnected(io));
+    try std.testing.expect(window.isShown(io));
     try std.testing.expect(!app.closed.load(.acquire));
     try std.testing.expectError(error.ConnectionClosed, first_eval.await(io));
     try std.testing.expectError(
@@ -4115,4 +4127,5 @@ test "multi-client limits, targeting, and disconnect lifecycle" {
     try std.testing.expectEqual(protocol.Command.close, second_close.header.command);
     try second_stream.shutdown(io, .both);
     try running.wait();
+    try std.testing.expect(!window.isShown(io));
 }

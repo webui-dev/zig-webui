@@ -16,6 +16,7 @@ The current phase provides:
 - targeted runtime content replacement through `Client.show()`;
 - explicit browser connection waiting and timeout through
   `Window.waitForConnection()`;
+- window connected/shown state through `Window.isShown()`;
 - JavaScript calls to Zig bindings with return values;
 - typed integer, float, and boolean call arguments and replies;
 - owned one-shot delayed binding replies through `Call.deferReply()`;
