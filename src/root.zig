@@ -1,6 +1,8 @@
 //! Pure Zig WebUI.
 
 pub const App = @import("app.zig").App;
+pub const Tls = @import("app.zig").Tls;
+pub const Limits = @import("app.zig").Limits;
 pub const Window = @import("app.zig").Window;
 pub const Client = @import("app.zig").Client;
 pub const Running = @import("app.zig").Running;

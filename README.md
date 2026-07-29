@@ -18,12 +18,18 @@ The current phase provides:
 - bounded multi-client windows through `WindowOptions.max_clients`;
 - bounded concurrent evaluations through
   `WindowOptions.max_pending_evals`;
+- explicit connection, WebSocket message, call, argument, binding, event, and
+  script limits through `App.Options.limits`;
 - window navigation, close, raw-data, and JavaScript broadcasts with
   per-client results;
 - targeted and broadcast fire-and-forget JavaScript through `Client.run` and
   `Window.run`;
 - connected, disconnected, click, and intercepted navigation events through
   `Window.onEvent`;
+- same-origin WebSocket validation for hosted content and external-page Origin
+  validation for `.external_url`;
+- loopback-only listening by default and caller-provided TLS for explicit
+  public listening;
 - default-browser launching and deterministic shutdown.
 
 ```zig
@@ -100,9 +106,29 @@ pending evaluation slots.
 External pages use `.content = .{ .external_url = "http://..." }`.
 `Window.url` returns the external page, while `Window.bridgeUrl` returns the
 capability-scoped script URL that the caller-owned page must load. The bridge
-connects its WebSocket to the script's origin instead of the page's origin.
-HTTPS external pages require HTTPS bridge serving, which is part of the TLS
-work.
+connects its WebSocket to the script's origin instead of the page's origin,
+and the server accepts the external page's Origin for that window.
+
+Non-loopback listening requires both explicit public mode and TLS:
+
+```zig
+var app = webui.App.init(gpa, .{
+    .address = "0.0.0.0",
+    .public = true,
+    .tls = .{
+        .certificate_pem = @embedFile("certificate.pem"),
+        .private_key_pem = @embedFile("private-key.pem"),
+    },
+    .limits = .{
+        .max_connections = 128,
+        .max_unauthenticated_connections = 16,
+        .max_ws_message_size = 1 << 20,
+    },
+});
+```
+
+The certificate and private key are parsed by `App.start()` and released by
+`Running.stop()`. zig-webui never generates a self-signed certificate.
 
 See the
 [pure Zig refactor plan](docs/PURE_ZIG_REFACTOR.md) for the complete scope and

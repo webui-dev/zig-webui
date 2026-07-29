@@ -36,6 +36,15 @@ races, and synchronous access to the actual `port = 0` address through
 
 ## Product Boundaries
 
+### Complete capability parity target
+
+- Cover every user-visible capability in upstream WebUI `2.5.0-beta.4` at
+  commit `337a183cea0a9c5daee16acb77eed2d5443bbbb0`.
+- Use Zig-native ownership, errors, names, and types instead of copying C
+  signatures.
+- Treat the API coverage ledger as the completion contract. Every entry must
+  end as implemented or as an explicit Zig standard-library replacement.
+
 ### Required for the first release
 
 - One application managing multiple windows.
@@ -54,16 +63,17 @@ races, and synchronous access to the actual `port = 0` address through
 
 - A C API, `src/c.zig`, extern struct ABI, or interface compatibility APIs.
 - Zig 0.14 or 0.15 compatibility. Zig 0.16 is the baseline.
+- Automatic self-signed certificate generation.
 
-### Explicit first-release non-goals
+### Deferred capability parity
 
 - WebView2, GTK/WebKit, or WKWebView.
 - Deno, Node, or Bun server-side runtimes.
 - Automatic reload, proxies, or browser profile management.
-- Automatic self-signed certificate generation.
-- Complete compatibility with every upstream browser and command-line flag.
+- Browser selection, managed processes, and window-control flags.
 
-Add these only after the core release and only when real use requires them.
+These do not block the external-browser core, but they are required before
+declaring complete upstream capability parity.
 
 ## Do Not Translate `webui.c` Line by Line
 
@@ -274,9 +284,9 @@ protocol input never panics.
 
 ## Upstream WebUI API Coverage Ledger
 
-This ledger tracks upstream WebUI `2.5.0-beta.4` capabilities independently
-of the implementation phases. Upstream C names are identifiers for
-traceability, not a commitment to reproduce the C API shape in Zig.
+This ledger tracks upstream WebUI `2.5.0-beta.4` at commit
+`337a183cea0a9c5daee16acb77eed2d5443bbbb0`. Upstream C names are identifiers
+for traceability, not a commitment to reproduce the C API shape in Zig.
 Coverage is determined only from `src/root.zig` and its reachable pure Zig
 modules. Deleted legacy wrapper, test, and example files do not count as
 implementations.
@@ -309,8 +319,6 @@ implementations.
 | `webui_set_profile()`, `webui_delete_profile()`, `webui_delete_all_profiles()` | Managed browser profiles are not implemented. |
 | `webui_set_proxy()` | Browser proxy configuration is not implemented. |
 | `webui_get_parent_process_id()`, `webui_get_child_process_id()` | Browser process tracking is not implemented. |
-| `webui_set_public()` | A guarded public-listening option with Origin validation and explicit limits is not implemented. |
-| `webui_set_tls_certificate()` | Caller-provided TLS certificate and private-key configuration is not implemented. |
 | `webui_set_runtime()` | Deno, Node.js, and Bun execution for served files is not implemented. |
 | `webui_show_wv()`, `webui_set_close_handler_wv()`, `webui_get_hwnd()`, `webui_win32_get_hwnd()` | Native WebView hosting and native window handles are outside the pure Zig browser core. |
 
@@ -350,12 +358,113 @@ not implementation gaps:
 | `webui_close_client()`, `webui_navigate_client()`, `webui_send_raw_client()` | `Client.close()`, `Client.navigate()`, and `Client.sendRaw()`. |
 | `webui_navigate()`, `webui_send_raw()` | `Window.navigate()` and `Window.sendRaw()`. |
 | `webui_set_config(multi_client)` | `WindowOptions.max_clients`. |
+| `webui_set_public()` | `App.Options.public` permits non-loopback listening only with TLS; Origin and explicit connection and protocol limits are enforced. |
+| `webui_set_tls_certificate()` | `App.Options.tls` accepts caller-provided PEM certificate and private-key bytes. |
 | `webui_set_port()`, `webui_get_port()`, `webui_get_free_port()` | `App.Options.port`, including `0` for automatic selection, and the running window URL. |
 | `webui_set_root_folder()`, `webui_set_file_handler()`, `webui_set_file_handler_window()`, `webui_return_http()` | Initial `.directory` or `.custom` content and `Response`. Runtime replacement remains listed above. |
 | `webui_get_mime_type()` | Linsang resource handling. |
 | `webui_encode()`, `webui_decode()`, `webui_malloc()`, `webui_free()`, `webui_memcpy()` | Zig standard library and allocators. |
 | `webui_get_last_error_number()`, `webui_get_last_error_message()` | Zig error unions. |
 | `webui_interface_*()` | Permanently omitted with the C ABI compatibility layer. |
+
+## Capability Parity Implementation Order
+
+Each work package must add its focused unit or integration checks and update
+the coverage ledger in the same commit.
+
+### Network trust boundary
+
+- Add explicit loopback and public listening modes.
+- Implement caller-provided TLS certificate and private-key configuration.
+- Validate WebSocket Origin values.
+- Add connection, unauthenticated connection, WebSocket message, binding
+  name, call payload, argument, script, and pending-call limits.
+- Implement optional cookie authorization without weakening capability URLs.
+
+This completes the behavior represented by `webui_set_public()`,
+`webui_set_tls_certificate()`, and `webui_set_config(use_cookies)`.
+
+### Calls, bindings, and browser bridge
+
+- Add `Call.float()`, `Call.replyFloat()`, and `Call.replyBool()`.
+- Make element-name bindings dispatch the same binding for DOM events while
+  preserving explicit `webui.call()` support.
+- Implement bridge `setLogging()`, `encode()`, `decode()`,
+  `setEventCallback()`, `event`, `isHighContrast()`, and
+  `allowNavigation()`.
+- Preserve string, number, boolean, and `Uint8Array` call arguments.
+
+This completes `webui_bind()`, the remaining typed argument and return
+methods, and the public browser bridge surface.
+
+### Handler and event lifecycle
+
+- Add an owned delayed-response handle for asynchronous binding responses.
+- Add per-window serialized or concurrent event execution.
+- Add optional wait-for-connection behavior and a connection timeout.
+- Add a caller-provided logger.
+- Expose only stable event metadata that has no C ABI dependency.
+
+This completes the remaining `webui_set_config()` behavior,
+`webui_set_event_blocking()`, `webui_set_timeout()`, and
+`webui_set_logger()`.
+
+### Dynamic content and client state
+
+- Allow window content and resource handlers to be replaced safely.
+- Add targeted `Client.show()` behavior.
+- Add a window connected/shown query.
+- Add an application default directory.
+- Add inline and file-backed window icons.
+
+This completes `webui_show()`, `webui_show_client()`, `webui_is_shown()`,
+the dynamic root and file-handler methods, `webui_set_default_root_folder()`,
+`webui_set_icon()`, and `webui_set_icon_file()`.
+
+### Managed browsers and window controls
+
+- Discover supported browsers and select the best or an explicit browser.
+- Support a custom browser executable directory and caller-provided argv.
+- Expose a general URL opener.
+- Launch and retain managed browser processes and expose their process IDs.
+- Implement kiosk, focus, minimize, maximize, hidden, resizable, geometry,
+  frameless, transparent, and high-contrast controls where the selected
+  browser and platform support them.
+- Implement managed profiles and proxy configuration.
+
+This completes the browser selection, browser process, window control,
+profile, and proxy methods in the ledger.
+
+### File monitoring and server-side runtimes
+
+- Monitor directory content and reload connected clients on changes.
+- Run served JavaScript and TypeScript through explicitly selected Deno,
+  Node.js, or Bun executables.
+- Keep runtime execution disabled by default and pass commands as argv.
+
+This completes `webui_set_config(folder_monitor)` and
+`webui_set_runtime()`.
+
+### Native WebViews
+
+- Keep WebView support in an optional module so the browser core remains pure
+  Zig and has no bundled C, C++, or Objective-C implementation.
+- Implement WebView2, GTK/WebKit, and WKWebView adapters using system
+  frameworks.
+- Add close interception and native window-handle access.
+
+This completes `webui_show_wv()`, `webui_set_close_handler_wv()`,
+`webui_get_hwnd()`, and `webui_win32_get_hwnd()`. Platform ABI declarations
+inside the optional module require a separate design review; the public
+zig-webui API remains Zig-native.
+
+### Parity closure
+
+- Give every ledger row an implemented or replacement status.
+- Add retained examples for bindings, dynamic content, public TLS, managed
+  browsers, runtimes, and WebViews.
+- Run protocol fuzzing, browser end-to-end tests, leak checks, and all target
+  builds before publishing the breaking release.
 
 ## Tests and Completion Criteria
 
@@ -397,7 +506,8 @@ zig build -Dtarget=aarch64-macos
 
 ## Next Implementation Work
 
-Begin phase 4:
+Continue capability parity:
 
-1. Validate WebSocket origins and add explicit protocol size limits.
-2. Add caller-provided TLS configuration before enabling public listening.
+1. Add optional cookie authorization.
+2. Add `Call.float()`, `Call.replyFloat()`, and `Call.replyBool()`.
+3. Complete the public browser bridge API.

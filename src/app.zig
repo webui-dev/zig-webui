@@ -7,6 +7,43 @@ const bridge = @embedFile("bridge.js");
 const default_max_pending_evals = 64;
 const capability_len = 32;
 
+pub const Tls = struct {
+    certificate_pem: []const u8,
+    private_key_pem: []const u8,
+};
+
+pub const Limits = struct {
+    max_connections: usize = 128,
+    max_unauthenticated_connections: usize = 16,
+    max_ws_message_size: usize = 1 << 20,
+    max_call_payload_size: usize = 64 << 10,
+    max_argument_size: usize = 64 << 10,
+    max_binding_name_size: usize = 256,
+    max_event_size: usize = 8 << 10,
+    max_script_size: usize = 256 << 10,
+
+    fn validate(self: Limits) !void {
+        const max_payload = self.max_ws_message_size -| protocol.header_len;
+        if (self.max_connections == 0 or
+            self.max_unauthenticated_connections == 0 or
+            self.max_unauthenticated_connections > self.max_connections or
+            self.max_ws_message_size <= protocol.header_len or
+            self.max_call_payload_size == 0 or
+            self.max_call_payload_size > max_payload or
+            self.max_argument_size == 0 or
+            self.max_argument_size > self.max_call_payload_size or
+            self.max_binding_name_size == 0 or
+            self.max_binding_name_size > self.max_call_payload_size or
+            self.max_event_size == 0 or
+            self.max_event_size > max_payload or
+            self.max_script_size == 0 or
+            self.max_script_size > max_payload)
+        {
+            return error.InvalidLimits;
+        }
+    }
+};
+
 pub const Handler = *const fn (*Call, ?*anyopaque) anyerror!void;
 pub const EventHandler = *const fn (
     *const Event,
@@ -92,6 +129,22 @@ pub const BroadcastEvalResults = struct {
     }
 };
 
+fn isLoopbackAddress(address: std.Io.net.IpAddress) bool {
+    return switch (address) {
+        .ip4 => |ip4| ip4.bytes[0] == 127,
+        .ip6 => |ip6| if (std.Io.net.Ip4Address.fromIp6(ip6)) |ip4|
+            ip4.bytes[0] == 127
+        else blk: {
+            const loopback = std.Io.net.Ip6Address.loopback(0);
+            break :blk std.mem.eql(
+                u8,
+                &ip6.bytes,
+                &loopback.bytes,
+            );
+        },
+    };
+}
+
 fn validateUrl(url: []const u8) !void {
     if (url.len == 0 or std.mem.indexOfScalar(u8, url, 0) != null)
         return error.InvalidUrl;
@@ -112,8 +165,9 @@ fn validateExternalUrl(url: []const u8) !void {
     }
 }
 
-fn validateRunScript(script: []const u8) !void {
+fn validateRunScript(script: []const u8, max_size: usize) !void {
     if (script.len == 0) return error.InvalidScript;
+    if (script.len > max_size) return error.ScriptTooLarge;
     if (!std.unicode.utf8ValidateSlice(script)) return error.InvalidUtf8;
 }
 
@@ -122,13 +176,28 @@ fn appendRawPayload(
     gpa: std.mem.Allocator,
     function: []const u8,
     data: []const u8,
+    max_size: usize,
 ) !void {
     if (function.len == 0 or std.mem.indexOfScalar(u8, function, 0) != null)
         return error.InvalidFunctionName;
     if (!std.unicode.utf8ValidateSlice(function)) return error.InvalidUtf8;
+    const name_size = std.math.add(usize, function.len, 1) catch
+        return error.MessageTooLarge;
+    const size = std.math.add(usize, name_size, data.len) catch
+        return error.MessageTooLarge;
+    if (size > max_size) return error.MessageTooLarge;
     try payload.appendSlice(gpa, function);
     try payload.append(gpa, 0);
     try payload.appendSlice(gpa, data);
+}
+
+fn validateCallLimits(call: *const protocol.CallPayload, limits: Limits) !void {
+    if (call.name.len > limits.max_binding_name_size)
+        return error.BindingNameTooLarge;
+    if (!std.unicode.utf8ValidateSlice(call.name)) return error.InvalidUtf8;
+    for (call.slice()) |argument|
+        if (argument.len > limits.max_argument_size)
+            return error.ArgumentTooLarge;
 }
 
 const EvalStatus = enum {
@@ -199,6 +268,7 @@ const StoredContent = union(enum) {
 const WindowState = struct {
     gpa: std.mem.Allocator,
     content: StoredContent,
+    limits: Limits,
     max_clients: usize,
     max_pending_evals: usize,
     capability: [capability_len]u8 = @splat(0),
@@ -410,6 +480,8 @@ const WindowState = struct {
         command: protocol.Command,
         payload: []const u8,
     ) !usize {
+        if (payload.len > self.limits.max_ws_message_size - protocol.header_len)
+            return error.MessageTooLarge;
         self.mutex.lockUncancelable(io);
         const peers = self.gpa.alloc(
             Linsang.WebSocketPeer,
@@ -452,7 +524,7 @@ const WindowState = struct {
         result_buffer: []u8,
         timeout: std.Io.Duration,
     ) !EvalResult {
-        if (!std.unicode.utf8ValidateSlice(script)) return error.InvalidUtf8;
+        try validateRunScript(script, self.limits.max_script_size);
 
         const deadline = std.Io.Clock.Timestamp.fromNow(io, .{
             .clock = .awake,
@@ -569,6 +641,8 @@ pub const Call = struct {
     }
 
     pub fn reply(self: *Call, value: []const u8) !void {
+        if (value.len > self.client.state.limits.max_ws_message_size - protocol.header_len)
+            return error.ResponseTooLarge;
         self.response.clearRetainingCapacity();
         try self.response.appendSlice(self.gpa, value);
     }
@@ -589,6 +663,8 @@ pub const Client = struct {
         command: protocol.Command,
         payload: []const u8,
     ) !void {
+        if (payload.len > self.state.limits.max_ws_message_size - protocol.header_len)
+            return error.MessageTooLarge;
         self.state.mutex.lockUncancelable(io);
         const index = self.state.clientIndexById(self.client_id) orelse {
             self.state.mutex.unlock(io);
@@ -638,7 +714,7 @@ pub const Client = struct {
 
     /// Execute JavaScript without waiting for a result or browser error.
     pub fn run(self: Client, io: std.Io, script: []const u8) !void {
-        try validateRunScript(script);
+        try validateRunScript(script, self.state.limits.max_script_size);
         try self.send(io, .js_quick, script);
     }
 
@@ -659,7 +735,13 @@ pub const Client = struct {
     ) !void {
         var payload: std.ArrayList(u8) = .empty;
         defer payload.deinit(self.state.gpa);
-        try appendRawPayload(&payload, self.state.gpa, function, data);
+        try appendRawPayload(
+            &payload,
+            self.state.gpa,
+            function,
+            data,
+            self.state.limits.max_ws_message_size - protocol.header_len,
+        );
         try self.send(io, .raw, payload.items);
     }
 };
@@ -709,6 +791,9 @@ pub const Window = struct {
     ) !void {
         if (name.len == 0 or std.mem.indexOfScalar(u8, name, 0) != null)
             return error.InvalidBindingName;
+        if (name.len > self.state.limits.max_binding_name_size)
+            return error.BindingNameTooLarge;
+        if (!std.unicode.utf8ValidateSlice(name)) return error.InvalidUtf8;
         for (self.state.bindings.items) |*binding| {
             if (std.mem.eql(u8, binding.name, name)) {
                 binding.handler = handler;
@@ -740,11 +825,25 @@ pub const Window = struct {
             .external_url => |external| return gpa.dupe(u8, external),
             else => {},
         }
-        return std.fmt.allocPrint(gpa, "http://{s}:{d}/{s}/", .{
+        const scheme = if (running.app.options.tls == null) "http" else "https";
+        return if (std.mem.indexOfScalar(
+            u8,
             running.app.options.address,
-            running.inner.address.getPort(),
-            self.state.capability,
-        });
+            ':',
+        ) == null)
+            std.fmt.allocPrint(gpa, "{s}://{s}:{d}/{s}/", .{
+                scheme,
+                running.app.options.address,
+                running.inner.address.getPort(),
+                self.state.capability,
+            })
+        else
+            std.fmt.allocPrint(gpa, "{s}://[{s}]:{d}/{s}/", .{
+                scheme,
+                running.app.options.address,
+                running.inner.address.getPort(),
+                self.state.capability,
+            });
     }
 
     /// Return the capability-scoped bridge URL for this window.
@@ -755,11 +854,25 @@ pub const Window = struct {
     ) ![]u8 {
         if (running.stopped) return error.NotRunning;
         if (!running.app.hasWindow(self.state)) return error.UnknownWindow;
-        return std.fmt.allocPrint(gpa, "http://{s}:{d}/{s}/webui.js", .{
+        const scheme = if (running.app.options.tls == null) "http" else "https";
+        return if (std.mem.indexOfScalar(
+            u8,
             running.app.options.address,
-            running.inner.address.getPort(),
-            self.state.capability,
-        });
+            ':',
+        ) == null)
+            std.fmt.allocPrint(gpa, "{s}://{s}:{d}/{s}/webui.js", .{
+                scheme,
+                running.app.options.address,
+                running.inner.address.getPort(),
+                self.state.capability,
+            })
+        else
+            std.fmt.allocPrint(gpa, "{s}://[{s}]:{d}/{s}/webui.js", .{
+                scheme,
+                running.app.options.address,
+                running.inner.address.getPort(),
+                self.state.capability,
+            });
     }
 
     pub fn eval(
@@ -779,7 +892,7 @@ pub const Window = struct {
         result_buffer_size: usize,
         timeout: std.Io.Duration,
     ) !BroadcastEvalResults {
-        if (!std.unicode.utf8ValidateSlice(script)) return error.InvalidUtf8;
+        try validateRunScript(script, self.state.limits.max_script_size);
 
         const clients = try self.state.snapshotClients(io);
         defer self.state.gpa.free(clients);
@@ -812,7 +925,7 @@ pub const Window = struct {
 
     /// Execute JavaScript on all clients without waiting for results.
     pub fn run(self: Window, io: std.Io, script: []const u8) !usize {
-        try validateRunScript(script);
+        try validateRunScript(script, self.state.limits.max_script_size);
         return self.state.broadcast(io, .js_quick, script);
     }
 
@@ -833,7 +946,13 @@ pub const Window = struct {
     ) !usize {
         var payload: std.ArrayList(u8) = .empty;
         defer payload.deinit(self.state.gpa);
-        try appendRawPayload(&payload, self.state.gpa, function, data);
+        try appendRawPayload(
+            &payload,
+            self.state.gpa,
+            function,
+            data,
+            self.state.limits.max_ws_message_size - protocol.header_len,
+        );
         return self.state.broadcast(io, .raw, payload.items);
     }
 };
@@ -843,12 +962,17 @@ pub const App = struct {
     options: Options,
     windows: std.ArrayList(*WindowState) = .empty,
     server: ?Linsang.Server = null,
+    tls_auth: ?Linsang.tls.CertKeyPair = null,
     started: bool = false,
     closed: std.atomic.Value(bool) = .init(false),
+    unauthenticated_connections: std.atomic.Value(usize) = .init(0),
 
     pub const Options = struct {
         address: []const u8 = "127.0.0.1",
         port: u16 = 0,
+        public: bool = false,
+        tls: ?Tls = null,
+        limits: Limits = .{},
     };
 
     pub const WindowOptions = struct {
@@ -866,6 +990,7 @@ pub const App = struct {
 
     pub fn deinit(self: *App) void {
         std.debug.assert(!self.started);
+        std.debug.assert(self.tls_auth == null);
         for (self.windows.items) |window| window.deinit();
         self.windows.deinit(self.gpa);
         self.* = undefined;
@@ -873,6 +998,7 @@ pub const App = struct {
 
     pub fn createWindow(self: *App, options: WindowOptions) !Window {
         if (self.started) return error.AlreadyStarted;
+        try self.options.limits.validate();
         if (options.max_clients == 0) return error.InvalidClientLimit;
         if (options.max_pending_evals == 0 or
             options.max_pending_evals > std.math.maxInt(u16))
@@ -886,6 +1012,7 @@ pub const App = struct {
         state.* = .{
             .gpa = self.gpa,
             .content = content,
+            .limits = self.options.limits,
             .max_clients = options.max_clients,
             .max_pending_evals = options.max_pending_evals,
         };
@@ -896,8 +1023,24 @@ pub const App = struct {
     pub fn start(self: *App, io: std.Io) !Running {
         if (self.started) return error.AlreadyStarted;
         if (self.windows.items.len == 0) return error.NoWindow;
+        try self.validateNetworkOptions();
+        for (self.windows.items) |window| {
+            window.limits = self.options.limits;
+            for (window.bindings.items) |binding|
+                if (binding.name.len > window.limits.max_binding_name_size)
+                    return error.BindingNameTooLarge;
+        }
         errdefer self.closeDirectories(io);
         try self.openDirectories(io);
+        if (self.options.tls) |tls| {
+            self.tls_auth = try Linsang.tls.CertKeyPair.fromSlice(
+                self.gpa,
+                io,
+                tls.certificate_pem,
+                tls.private_key_pem,
+            );
+        }
+        errdefer self.deinitTls();
         for (self.windows.items, 0..) |window, index| {
             while (true) {
                 var random: [20]u8 = undefined;
@@ -915,11 +1058,16 @@ pub const App = struct {
             }
         }
         self.closed.store(false, .release);
+        self.unauthenticated_connections.store(0, .release);
         self.server = Linsang.Server.init(self.gpa, .{
             .address = self.options.address,
             .port = self.options.port,
+            .max_connections = self.options.limits.max_connections,
+            .max_ws_message_size = self.options.limits.max_ws_message_size,
             .ws_idle_timeout = null,
+            .tls = if (self.tls_auth) |*auth| .{ .auth = auth } else null,
             .on_request = onRequest,
+            .on_ws_open = onOpen,
             .on_ws_message = onMessage,
             .on_ws_close = onClose,
             .user_data = self,
@@ -928,6 +1076,27 @@ pub const App = struct {
         const inner = try self.server.?.start(io);
         self.started = true;
         return .{ .app = self, .inner = inner };
+    }
+
+    fn validateNetworkOptions(self: *const App) !void {
+        try self.options.limits.validate();
+        const address = std.Io.net.IpAddress.parse(
+            self.options.address,
+            self.options.port,
+        ) catch return error.InvalidAddress;
+        if (!isLoopbackAddress(address)) {
+            if (!self.options.public) return error.PublicListeningNotEnabled;
+            if (self.options.tls == null) return error.TlsRequired;
+        }
+        if (self.options.tls) |tls| {
+            if (tls.certificate_pem.len == 0 or tls.private_key_pem.len == 0)
+                return error.InvalidTlsConfiguration;
+        }
+    }
+
+    fn deinitTls(self: *App) void {
+        if (self.tls_auth) |*auth| auth.deinit(self.gpa);
+        self.tls_auth = null;
     }
 
     fn openDirectories(self: *App, io: std.Io) !void {
@@ -996,13 +1165,15 @@ pub const Running = struct {
 
     pub fn stop(self: *Running) !void {
         if (self.stopped) return;
-        defer {
-            self.app.closeDirectories(self.inner.io);
-            self.stopped = true;
-            self.app.started = false;
-            self.app.server = null;
-        }
         try self.inner.stop();
+        self.app.closeDirectories(self.inner.io);
+        self.app.deinitTls();
+        self.stopped = true;
+        self.app.started = false;
+        self.app.server = null;
+        std.debug.assert(
+            self.app.unauthenticated_connections.load(.acquire) == 0,
+        );
     }
 
     pub fn wait(self: *Running) !void {
@@ -1029,6 +1200,55 @@ const Route = struct {
     resource: []const u8,
 };
 
+fn effectivePort(uri: std.Uri) ?u16 {
+    if (uri.port) |port| return port;
+    if (std.ascii.eqlIgnoreCase(uri.scheme, "http")) return 80;
+    if (std.ascii.eqlIgnoreCase(uri.scheme, "https")) return 443;
+    return null;
+}
+
+fn sameOrigin(origin_text: []const u8, target_text: []const u8) bool {
+    const origin = std.Uri.parse(origin_text) catch return false;
+    const target = std.Uri.parse(target_text) catch return false;
+    if (origin.user != null or
+        origin.password != null or
+        !origin.path.isEmpty() or
+        origin.query != null or
+        origin.fragment != null or
+        !std.ascii.eqlIgnoreCase(origin.scheme, target.scheme) or
+        effectivePort(origin) != effectivePort(target))
+    {
+        return false;
+    }
+
+    var origin_host_buffer: [std.Io.net.HostName.max_len]u8 = undefined;
+    var target_host_buffer: [std.Io.net.HostName.max_len]u8 = undefined;
+    const origin_host = origin.getHost(&origin_host_buffer) catch return false;
+    const target_host = target.getHost(&target_host_buffer) catch return false;
+    return std.ascii.eqlIgnoreCase(origin_host.bytes, target_host.bytes);
+}
+
+fn originAllowed(
+    app: *const App,
+    window: *const WindowState,
+    request: *const Linsang.Request,
+) bool {
+    const origin = request.header("origin") orelse return false;
+    return switch (window.content) {
+        .external_url => |external| sameOrigin(origin, external),
+        else => blk: {
+            const host = request.header("host") orelse break :blk false;
+            var target_buffer: [std.Io.net.HostName.max_len + 32]u8 = undefined;
+            const target = std.fmt.bufPrint(
+                &target_buffer,
+                "{s}://{s}",
+                .{ if (app.options.tls == null) "http" else "https", host },
+            ) catch break :blk false;
+            break :blk sameOrigin(origin, target);
+        },
+    };
+}
+
 fn route(app: *const App, path: []const u8) ?Route {
     if (path.len < capability_len + 2 or
         path[0] != '/' or
@@ -1054,8 +1274,13 @@ fn onRequest(
         return .respond;
     };
     const window = resolved.window;
-    if (std.mem.eql(u8, resolved.resource, "_webui_ws_connect"))
+    if (std.mem.eql(u8, resolved.resource, "_webui_ws_connect")) {
+        if (!originAllowed(app, window, request)) {
+            response.status = .forbidden;
+            return .respond;
+        }
         return .upgrade;
+    }
     if (std.mem.eql(u8, resolved.resource, "webui.js")) {
         response.setHeader("Content-Type", "text/javascript; charset=utf-8") catch
             return failResponse(response);
@@ -1117,6 +1342,13 @@ fn send(
     try connection.sendBinary(bytes.items);
 }
 
+fn onOpen(connection: *Linsang.Connection, user_data: ?*anyopaque) void {
+    const app = appFrom(user_data);
+    const previous = app.unauthenticated_connections.fetchAdd(1, .acq_rel);
+    if (previous >= app.options.limits.max_unauthenticated_connections)
+        connection.wsClose(.policy_violation, "");
+}
+
 fn onMessage(
     connection: *Linsang.Connection,
     message: Linsang.websocket.Message,
@@ -1152,10 +1384,17 @@ fn onMessage(
             return;
         };
         send(connection, app.gpa, packet.header, &.{1}) catch {};
-        if (new_client) |client| window.dispatch(.{
-            .kind = .connected,
-            .client = client,
-        });
+        if (new_client) |client| {
+            const previous = app.unauthenticated_connections.fetchSub(
+                1,
+                .acq_rel,
+            );
+            std.debug.assert(previous > 0);
+            window.dispatch(.{
+                .kind = .connected,
+                .client = client,
+            });
+        }
         return;
     }
     const window = authenticated orelse {
@@ -1174,12 +1413,26 @@ fn onMessage(
             packet.payload,
         ) catch connection.wsClose(.protocol_error, ""),
         .call => {
+            if (packet.payload.len > window.limits.max_call_payload_size) {
+                connection.wsClose(.message_too_big, "");
+                return;
+            }
             const client = window.client(connection) orelse {
                 connection.wsClose(.policy_violation, "");
                 return;
             };
             const decoded = protocol.decodeCall(packet.payload) catch {
                 connection.wsClose(.protocol_error, "");
+                return;
+            };
+            validateCallLimits(&decoded, window.limits) catch |err| {
+                connection.wsClose(
+                    if (err == error.InvalidUtf8)
+                        .protocol_error
+                    else
+                        .message_too_big,
+                    "",
+                );
                 return;
             };
             const binding = window.binding(decoded.name) orelse {
@@ -1198,6 +1451,10 @@ fn onMessage(
             send(connection, app.gpa, packet.header, call.response.items) catch {};
         },
         .click, .navigation => {
+            if (packet.payload.len > window.limits.max_event_size) {
+                connection.wsClose(.message_too_big, "");
+                return;
+            }
             const client = window.client(connection) orelse {
                 connection.wsClose(.policy_violation, "");
                 return;
@@ -1221,18 +1478,117 @@ fn onMessage(
 
 fn onClose(connection: *Linsang.Connection, user_data: ?*anyopaque) void {
     const app = appFrom(user_data);
-    var disconnected = false;
+    var authenticated = false;
     for (app.windows.items) |window| {
         if (window.disconnected(connection)) |client| {
             window.dispatch(.{
                 .kind = .disconnected,
                 .client = client,
             });
-            disconnected = true;
+            authenticated = true;
         }
     }
-    if (disconnected and !app.hasClients(connection.io))
+    if (!authenticated) {
+        const previous = app.unauthenticated_connections.fetchSub(1, .acq_rel);
+        std.debug.assert(previous > 0);
+    }
+    if (authenticated and !app.hasClients(connection.io))
         app.closed.store(true, .release);
+}
+
+test "network options, origins, and protocol limits" {
+    const gpa = std.testing.allocator;
+    try (Limits{}).validate();
+    try std.testing.expectError(
+        error.InvalidLimits,
+        (Limits{ .max_ws_message_size = protocol.header_len }).validate(),
+    );
+    try std.testing.expect(isLoopbackAddress(
+        try std.Io.net.IpAddress.parse("127.42.0.1", 0),
+    ));
+    try std.testing.expect(isLoopbackAddress(
+        try std.Io.net.IpAddress.parse("::1", 0),
+    ));
+    try std.testing.expect(!isLoopbackAddress(
+        try std.Io.net.IpAddress.parse("0.0.0.0", 0),
+    ));
+    try std.testing.expect(sameOrigin(
+        "https://EXAMPLE.com",
+        "https://example.com:443/app",
+    ));
+    try std.testing.expect(!sameOrigin(
+        "https://example.com/path",
+        "https://example.com",
+    ));
+    try std.testing.expect(!sameOrigin(
+        "https://example.com",
+        "https://example.com:444",
+    ));
+    const oversized_call = try protocol.decodeCall("x\x004\x001234\x00");
+    try std.testing.expectError(
+        error.ArgumentTooLarge,
+        validateCallLimits(
+            &oversized_call,
+            .{ .max_argument_size = 3 },
+        ),
+    );
+    const invalid_name = try protocol.decodeCall("\xff\x00\x00");
+    try std.testing.expectError(
+        error.InvalidUtf8,
+        validateCallLimits(&invalid_name, .{}),
+    );
+
+    var private_app = App.init(gpa, .{ .address = "0.0.0.0" });
+    defer private_app.deinit();
+    try std.testing.expectError(
+        error.PublicListeningNotEnabled,
+        private_app.validateNetworkOptions(),
+    );
+
+    var insecure_public_app = App.init(gpa, .{
+        .address = "0.0.0.0",
+        .public = true,
+    });
+    defer insecure_public_app.deinit();
+    try std.testing.expectError(
+        error.TlsRequired,
+        insecure_public_app.validateNetworkOptions(),
+    );
+
+    var public_app = App.init(gpa, .{
+        .address = "0.0.0.0",
+        .public = true,
+        .tls = .{
+            .certificate_pem = "certificate",
+            .private_key_pem = "key",
+        },
+        .limits = .{ .max_binding_name_size = 3 },
+    });
+    defer public_app.deinit();
+    try public_app.validateNetworkOptions();
+    const window = try public_app.createWindow(.{
+        .content = .{ .html = "limits" },
+    });
+    try std.testing.expectError(
+        error.BindingNameTooLarge,
+        window.bind("long", integrationHandler, null),
+    );
+    try std.testing.expectError(error.ScriptTooLarge, validateRunScript("1234", 3));
+
+    var invalid_tls_app = App.init(gpa, .{
+        .tls = .{
+            .certificate_pem = "certificate",
+            .private_key_pem = "key",
+        },
+    });
+    defer invalid_tls_app.deinit();
+    _ = try invalid_tls_app.createWindow(.{
+        .content = .{ .html = "tls" },
+    });
+    try std.testing.expectError(
+        error.MissingEndMarker,
+        invalid_tls_app.start(std.testing.io),
+    );
 }
 
 test "call accessors, window creation, and routes" {
@@ -1433,14 +1789,15 @@ fn readServerFrame(
     return buffer[0..header[1]];
 }
 
-fn connectTestWebSocket(
+fn connectTestWebSocketOrigin(
     address: std.Io.net.IpAddress,
     io: std.Io,
     capability: []const u8,
+    origin: []const u8,
 ) !std.Io.net.Stream {
     const stream = try address.connect(io, .{ .mode = .stream });
     errdefer stream.close(io);
-    var request: [256]u8 = undefined;
+    var request: [512]u8 = undefined;
     try writeAll(
         stream,
         io,
@@ -1449,9 +1806,10 @@ fn connectTestWebSocket(
             "GET /{s}/_webui_ws_connect HTTP/1.1\r\n" ++
                 "Host: localhost\r\nUpgrade: websocket\r\n" ++
                 "Connection: Upgrade\r\n" ++
+                "Origin: {s}\r\n" ++
                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" ++
                 "Sec-WebSocket-Version: 13\r\n\r\n",
-            .{capability},
+            .{ capability, origin },
         ),
     );
     var handshake: [512]u8 = undefined;
@@ -1459,6 +1817,19 @@ fn connectTestWebSocket(
     if (!std.mem.startsWith(u8, accepted, "HTTP/1.1 101"))
         return error.WebSocketUpgradeFailed;
     return stream;
+}
+
+fn connectTestWebSocket(
+    address: std.Io.net.IpAddress,
+    io: std.Io,
+    capability: []const u8,
+) !std.Io.net.Stream {
+    return connectTestWebSocketOrigin(
+        address,
+        io,
+        capability,
+        "http://localhost",
+    );
 }
 
 fn authenticateTestClient(
@@ -1690,6 +2061,27 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
             &response,
         );
         try std.testing.expect(std.mem.indexOf(u8, bytes, disabled) != null);
+    }
+
+    try std.testing.expectError(
+        error.WebSocketUpgradeFailed,
+        connectTestWebSocketOrigin(
+            running.inner.address,
+            io,
+            &window.state.capability,
+            "https://attacker.example",
+        ),
+    );
+    {
+        const external_client = try connectTestWebSocketOrigin(
+            running.inner.address,
+            io,
+            &external_window.state.capability,
+            "http://external.example",
+        );
+        defer external_client.close(io);
+        try external_client.shutdown(io, .both);
+        try std.Io.sleep(io, .fromMilliseconds(20), .awake);
     }
 
     {
