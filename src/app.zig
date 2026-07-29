@@ -243,24 +243,76 @@ const SelectedClient = struct {
 };
 
 const DirectoryContent = struct {
+    gpa: std.mem.Allocator,
     path: []u8,
     dir: ?std.Io.Dir = null,
+    io: ?std.Io = null,
+    references: std.atomic.Value(usize) = .init(1),
+
+    fn init(
+        gpa: std.mem.Allocator,
+        path: []const u8,
+    ) !*DirectoryContent {
+        if (path.len == 0) return error.InvalidDirectory;
+        const content = try gpa.create(DirectoryContent);
+        errdefer gpa.destroy(content);
+        content.* = .{
+            .gpa = gpa,
+            .path = try gpa.dupe(u8, path),
+        };
+        return content;
+    }
+
+    fn retain(self: *DirectoryContent) void {
+        const previous = self.references.fetchAdd(1, .monotonic);
+        std.debug.assert(previous > 0 and previous < std.math.maxInt(usize));
+    }
+
+    fn release(self: *DirectoryContent) void {
+        const previous = self.references.fetchSub(1, .release);
+        std.debug.assert(previous > 0);
+        if (previous != 1) return;
+        _ = self.references.load(.acquire);
+        self.close();
+        self.gpa.free(self.path);
+        self.gpa.destroy(self);
+    }
+
+    fn open(self: *DirectoryContent, io: std.Io) !void {
+        std.debug.assert(self.dir == null and self.io == null);
+        self.dir = if (std.fs.path.isAbsolute(self.path))
+            try std.Io.Dir.openDirAbsolute(io, self.path, .{
+                .follow_symlinks = false,
+            })
+        else
+            try std.Io.Dir.cwd().openDir(io, self.path, .{
+                .follow_symlinks = false,
+            });
+        self.io = io;
+    }
+
+    fn close(self: *DirectoryContent) void {
+        if (self.dir) |dir| {
+            dir.close(self.io.?);
+            self.dir = null;
+            self.io = null;
+        } else {
+            std.debug.assert(self.io == null);
+        }
+    }
 };
 
 const StoredContent = union(enum) {
     html: []u8,
-    directory: DirectoryContent,
+    directory: *DirectoryContent,
     custom: CustomResource,
     external_url: []u8,
 
     fn init(gpa: std.mem.Allocator, content: Content) !StoredContent {
         return switch (content) {
             .html => |html| .{ .html = try gpa.dupe(u8, html) },
-            .directory => |path| blk: {
-                if (path.len == 0) return error.InvalidDirectory;
-                break :blk .{ .directory = .{
-                    .path = try gpa.dupe(u8, path),
-                } };
+            .directory => |path| .{
+                .directory = try DirectoryContent.init(gpa, path),
             },
             .custom => |custom| .{ .custom = custom },
             .external_url => |url| blk: {
@@ -273,10 +325,7 @@ const StoredContent = union(enum) {
     fn deinit(self: *StoredContent, gpa: std.mem.Allocator) void {
         switch (self.*) {
             .html => |html| gpa.free(html),
-            .directory => |directory| {
-                std.debug.assert(directory.dir == null);
-                gpa.free(directory.path);
-            },
+            .directory => |directory| directory.release(),
             .custom => {},
             .external_url => |url| gpa.free(url),
         }
@@ -285,27 +334,14 @@ const StoredContent = union(enum) {
 
     fn openDirectory(self: *StoredContent, io: std.Io) !void {
         switch (self.*) {
-            .directory => |*directory| {
-                std.debug.assert(directory.dir == null);
-                directory.dir = if (std.fs.path.isAbsolute(directory.path))
-                    try std.Io.Dir.openDirAbsolute(io, directory.path, .{
-                        .follow_symlinks = false,
-                    })
-                else
-                    try std.Io.Dir.cwd().openDir(io, directory.path, .{
-                        .follow_symlinks = false,
-                    });
-            },
+            .directory => |directory| try directory.open(io),
             else => {},
         }
     }
 
-    fn closeDirectory(self: *StoredContent, io: std.Io) void {
+    fn closeDirectory(self: *StoredContent) void {
         switch (self.*) {
-            .directory => |*directory| if (directory.dir) |dir| {
-                dir.close(io);
-                directory.dir = null;
-            },
+            .directory => |directory| directory.close(),
             else => {},
         }
     }
@@ -315,7 +351,6 @@ const WindowState = struct {
     gpa: std.mem.Allocator,
     content: StoredContent,
     content_mutex: std.Io.RwLock = .init,
-    retired_directories: std.ArrayList(StoredContent) = .empty,
     limits: Limits,
     max_clients: usize,
     max_pending_evals: usize,
@@ -349,8 +384,6 @@ const WindowState = struct {
         self.clients.deinit(self.gpa);
         for (self.bindings.items) |item| self.gpa.free(item.name);
         self.bindings.deinit(self.gpa);
-        std.debug.assert(self.retired_directories.items.len == 0);
-        self.retired_directories.deinit(self.gpa);
         self.content.deinit(self.gpa);
         self.gpa.destroy(self);
     }
@@ -363,35 +396,14 @@ const WindowState = struct {
         var replacement = try StoredContent.init(self.gpa, content);
         errdefer replacement.deinit(self.gpa);
         try replacement.openDirectory(io);
-        errdefer replacement.closeDirectory(io);
+        errdefer replacement.closeDirectory();
 
         self.content_mutex.lockUncancelable(io);
         defer self.content_mutex.unlock(io);
-        const retire_directory = switch (self.content) {
-            .directory => true,
-            else => false,
-        };
-        if (retire_directory)
-            try self.retired_directories.ensureUnusedCapacity(self.gpa, 1);
 
         var previous = self.content;
         self.content = replacement;
-        if (retire_directory) {
-            // ponytail: Linsang finishes a static-file action after the request
-            // callback returns. Retire handles until stop unless it gains a
-            // response-completion callback.
-            self.retired_directories.appendAssumeCapacity(previous);
-        } else {
-            previous.deinit(self.gpa);
-        }
-    }
-
-    fn releaseRetiredDirectories(self: *WindowState, io: std.Io) void {
-        for (self.retired_directories.items) |*content| {
-            content.closeDirectory(io);
-            content.deinit(self.gpa);
-        }
-        self.retired_directories.clearRetainingCapacity();
+        previous.deinit(self.gpa);
     }
 
     fn binding(self: *WindowState, name: []const u8) ?Binding {
@@ -1534,7 +1546,7 @@ pub const App = struct {
                 if (binding.name.len > window.limits.max_binding_name_size)
                     return error.BindingNameTooLarge;
         }
-        errdefer self.closeDirectories(io);
+        errdefer self.closeDirectories();
         try self.openDirectories(io);
         if (self.options.tls) |tls| {
             self.tls_auth = try Linsang.tls.CertKeyPair.fromSlice(
@@ -1611,9 +1623,8 @@ pub const App = struct {
             try window.content.openDirectory(io);
     }
 
-    fn closeDirectories(self: *App, io: std.Io) void {
-        for (self.windows.items) |window|
-            window.content.closeDirectory(io);
+    fn closeDirectories(self: *App) void {
+        for (self.windows.items) |window| window.content.closeDirectory();
     }
 
     fn hasWindow(self: *const App, state: *WindowState) bool {
@@ -1658,9 +1669,7 @@ pub const Running = struct {
         try self.inner.stop();
         for (self.app.windows.items) |window|
             window.cancelEvents(self.inner.io);
-        self.app.closeDirectories(self.inner.io);
-        for (self.app.windows.items) |window|
-            window.releaseRetiredDirectories(self.inner.io);
+        self.app.closeDirectories();
         self.app.deinitTls();
         self.stopped = true;
         self.app.started = false;
@@ -1682,6 +1691,12 @@ pub const Running = struct {
 
 fn appFrom(user_data: ?*anyopaque) *App {
     return @ptrCast(@alignCast(user_data.?));
+}
+
+fn releaseStaticDirectory(user_data: ?*anyopaque) void {
+    const directory: *DirectoryContent =
+        @ptrCast(@alignCast(user_data.?));
+    directory.release();
 }
 
 fn failResponse(response: *Linsang.Response) Linsang.Action {
@@ -1870,7 +1885,12 @@ fn onRequest(
             // ponytail: Linsang StaticFiles has no mount prefix yet. Rewrite
             // only the validated path slice; use strip_prefix when available.
             @constCast(request).path = request.path[capability_len + 1 ..];
-            break :blk .{ .files = .{ .dir = dir } };
+            directory.retain();
+            break :blk .{ .files = .{
+                .dir = dir,
+                .on_complete = releaseStaticDirectory,
+                .user_data = directory,
+            } };
         },
         .custom => |custom| blk: {
             custom.handler(

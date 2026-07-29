@@ -473,15 +473,11 @@ zig build -Dtarget=aarch64-macos
 
 1. **Linsang peer lifecycle:** The required primitive exists. zig-webui must
    pair `clone` and `deinit` and must not retain `*Connection`.
-2. **Linsang static-response lifecycle:** Replaced directory handles remain
-   open until shutdown so in-flight responses stay valid. Linsang
-   [issue #2](https://github.com/jinzhongjia/Linsang/issues/2) tracks a
-   completion callback for earlier release.
-3. **Strict bridge protocol lengths:** The Zig parser must treat WebSocket data
+2. **Strict bridge protocol lengths:** The Zig parser must treat WebSocket data
    as untrusted and must not copy C's NUL-scanning behavior.
-4. **Cross-platform browser behavior:** Guarantee URL opening first, then add
+3. **Cross-platform browser behavior:** Guarantee URL opening first, then add
    platform-specific app-window flags.
-5. **WebView is outside the core rewrite:** If required later, separately
+4. **WebView is outside the core rewrite:** If required later, separately
    decide whether system framework or C ABI linking is acceptable. It must not
    block the pure Zig browser version.
 
