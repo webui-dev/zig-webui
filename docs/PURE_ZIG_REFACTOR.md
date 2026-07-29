@@ -247,9 +247,9 @@ protocol input never panics.
 
 ### 5. Delete the old implementation and publish a breaking release
 
-- Delete `src/c.zig`, compatibility tuple files, and all C ABI tests.
-- Migrate retained examples and delete duplicate examples that only demonstrate
-  the old API.
+- Deleted `src/c.zig`, `src/webui.zig`, `src/tests.zig`, both compatibility
+  tuple files, and the legacy examples.
+- Retain the pure Zig minimal example.
 - Document only the new API and lifecycle in the README.
 - Publish a new major or alpha release. Naming can be decided then and does not
   block implementation.
@@ -271,6 +271,91 @@ protocol input never panics.
 | `malloc/free/memcpy/encode/decode` | Zig allocators and standard library |
 | `interface*` | Delete |
 | `newWindowWithId()` | Delete; `App` owns IDs |
+
+## Upstream WebUI API Coverage Ledger
+
+This ledger tracks upstream WebUI `2.5.0-beta.4` capabilities independently
+of the implementation phases. Upstream C names are identifiers for
+traceability, not a commitment to reproduce the C API shape in Zig.
+Coverage is determined only from `src/root.zig` and its reachable pure Zig
+modules. Deleted legacy wrapper, test, and example files do not count as
+implementations.
+
+### Missing or Partial Backend Capabilities
+
+| Upstream API | Current gap |
+|---|---|
+| `webui_bind()` | `Window.bind` supports explicit `webui.call()` calls, but the bridge does not automatically dispatch DOM events from an element with the same ID to that binding. |
+| `webui_get_float()`, `webui_get_float_at()` | `Call.float()` is not implemented. |
+| `webui_return_float()`, `webui_return_bool()` | `Call.reply()` can encode these values as text, but typed `replyFloat()` and `replyBool()` helpers are not implemented. |
+| `webui_show()`, `webui_set_root_folder()`, `webui_set_file_handler()`, `webui_set_file_handler_window()` | Content and resource handling can only be selected when creating a window; replacing them at runtime is not implemented. |
+| `webui_show_client()` | `Client` cannot replace the content of only one connected browser. |
+| `webui_is_shown()` | There is no window-level connected/shown query. |
+| `webui_set_config(asynchronous_response)` | A `Call` response must be completed during the binding handler lifetime. |
+| `webui_set_config(show_wait_connection)`, `webui_set_timeout()` | `Window.open()` does not optionally wait for a browser connection. |
+| `webui_set_config(ui_event_blocking)`, `webui_set_event_blocking()` | Per-window event scheduling control is not exposed. |
+| `webui_set_config(folder_monitor)` | Directory change monitoring and automatic browser reload are not implemented. |
+| `webui_set_config(use_cookies)` | Client authorization uses capability URLs; optional cookie-based authorization is not implemented. |
+| `webui_set_default_root_folder()` | There is no application-wide default directory content setting. |
+| `webui_set_logger()` | There is no caller-provided logging callback. |
+| `webui_set_icon()`, `webui_set_icon_file()` | Window icon configuration is not implemented. |
+| `webui_open_url()` | The internal OS URL opener is not exposed as a general public API. |
+| `webui_get_best_browser()`, `webui_browser_exist()`, `webui_show_browser()`, `webui_set_browser_folder()` | Browser discovery, selection, and custom executable locations are not implemented. |
+| `webui_set_custom_parameters()` | Custom browser command-line arguments are not implemented. |
+| `webui_set_kiosk()`, `webui_focus()`, `webui_minimize()`, `webui_maximize()`, `webui_set_hide()` | Browser window mode and lifecycle controls are not implemented. |
+| `webui_set_resizable()`, `webui_set_size()`, `webui_set_minimum_size()`, `webui_set_position()`, `webui_set_center()` | Browser window geometry controls are not implemented. |
+| `webui_set_frameless()`, `webui_set_transparent()` | Frameless and transparent browser window modes are not implemented. |
+| `webui_set_high_contrast()`, `webui_is_high_contrast()` | High-contrast mode control and detection are not implemented. |
+| `webui_set_profile()`, `webui_delete_profile()`, `webui_delete_all_profiles()` | Managed browser profiles are not implemented. |
+| `webui_set_proxy()` | Browser proxy configuration is not implemented. |
+| `webui_get_parent_process_id()`, `webui_get_child_process_id()` | Browser process tracking is not implemented. |
+| `webui_set_public()` | A guarded public-listening option with Origin validation and explicit limits is not implemented. |
+| `webui_set_tls_certificate()` | Caller-provided TLS certificate and private-key configuration is not implemented. |
+| `webui_set_runtime()` | Deno, Node.js, and Bun execution for served files is not implemented. |
+| `webui_show_wv()`, `webui_set_close_handler_wv()`, `webui_get_hwnd()`, `webui_win32_get_hwnd()` | Native WebView hosting and native window handles are outside the pure Zig browser core. |
+
+### Missing Browser Bridge APIs
+
+The current browser object implements `webui.call()` and
+`webui.isConnected()`. These upstream bridge APIs are not implemented:
+
+| Upstream bridge API | Current gap |
+|---|---|
+| `webui.setLogging()` | Runtime bridge logging control is not exposed. |
+| `webui.setEventCallback()` and `webui.event` | Browser-side connected and disconnected callbacks are not exposed. |
+| `webui.isHighContrast()` | Browser-side high-contrast detection is not exposed. |
+| `webui.allowNavigation()` | Navigation interception cannot be changed by browser JavaScript at runtime. |
+
+`webui.encode()` and `webui.decode()` are intentionally replaced by the
+browser's `btoa()` and `atob()` functions. The upstream bridge's
+`callCore()` method remains an internal implementation detail.
+
+### Intentional Zig Replacements
+
+The following upstream methods are covered by the current Zig design and are
+not implementation gaps:
+
+| Upstream API | Zig replacement |
+|---|---|
+| `webui_new_window()`, `webui_new_window_id()`, `webui_get_new_window_id()` | `App.createWindow()` and application-owned IDs. |
+| `webui_show()`, `webui_start_server()`, `webui_get_url()` | Initial `Content`, `App.start()`, `Window.open()`, and `Window.url()`. Runtime content replacement remains listed above. |
+| `webui_wait()`, `webui_wait_async()` | `Running.wait()` used directly or through `std.Io` concurrency. |
+| `webui_close()`, `webui_destroy()`, `webui_exit()`, `webui_clean()` | `Window.close()`, `Running.stop()`, and `App.deinit()`. |
+| `webui_set_context()`, `webui_get_context()` | Binding and event-handler `user_data`. |
+| `webui_get_count()`, `webui_get_size()`, `webui_get_size_at()` | `Call.arguments.len` and `Call.bytes(index).len`. |
+| `webui_get_string()`, `webui_get_string_at()`, `webui_get_int()`, `webui_get_int_at()`, `webui_get_bool()`, `webui_get_bool_at()` | `Call.string()`, `Call.int()`, and `Call.boolean()`. |
+| `webui_return_string()`, `webui_return_int()` | `Call.reply()` and `Call.replyInt()`. |
+| `webui_run()`, `webui_script()` | `Window.run()` and `Window.eval()`. |
+| `webui_run_client()`, `webui_script_client()` | `Client.run()` and `Client.eval()`. |
+| `webui_close_client()`, `webui_navigate_client()`, `webui_send_raw_client()` | `Client.close()`, `Client.navigate()`, and `Client.sendRaw()`. |
+| `webui_navigate()`, `webui_send_raw()` | `Window.navigate()` and `Window.sendRaw()`. |
+| `webui_set_config(multi_client)` | `WindowOptions.max_clients`. |
+| `webui_set_port()`, `webui_get_port()`, `webui_get_free_port()` | `App.Options.port`, including `0` for automatic selection, and the running window URL. |
+| `webui_set_root_folder()`, `webui_set_file_handler()`, `webui_set_file_handler_window()`, `webui_return_http()` | Initial `.directory` or `.custom` content and `Response`. Runtime replacement remains listed above. |
+| `webui_get_mime_type()` | Linsang resource handling. |
+| `webui_encode()`, `webui_decode()`, `webui_malloc()`, `webui_free()`, `webui_memcpy()` | Zig standard library and allocators. |
+| `webui_get_last_error_number()`, `webui_get_last_error_message()` | Zig error unions. |
+| `webui_interface_*()` | Permanently omitted with the C ABI compatibility layer. |
 
 ## Tests and Completion Criteria
 
