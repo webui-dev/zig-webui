@@ -7,9 +7,11 @@ const bridge = @embedFile("bridge.js");
 const default_max_pending_evals = 64;
 const default_max_pending_replies = 64;
 const default_max_pending_events = 64;
+const max_icon_size = 8 << 20;
 const capability_len = 32;
 const cookie_len = 32;
 const cookie_name = "webui_auth";
+const favicon_link = "<link rel=\"icon\" href=\"favicon.ico\">";
 
 pub const Tls = struct {
     certificate_pem: []const u8,
@@ -177,6 +179,23 @@ fn validateExternalUrl(url: []const u8) !void {
     {
         return error.InvalidExternalUrl;
     }
+}
+
+fn iconMimeType(path: []const u8) ?[]const u8 {
+    const extension = std.fs.path.extension(path);
+    const types = .{
+        .{ ".svg", "image/svg+xml" },
+        .{ ".png", "image/png" },
+        .{ ".ico", "image/x-icon" },
+        .{ ".jpg", "image/jpeg" },
+        .{ ".jpeg", "image/jpeg" },
+        .{ ".gif", "image/gif" },
+        .{ ".webp", "image/webp" },
+        .{ ".avif", "image/avif" },
+    };
+    inline for (types) |entry|
+        if (std.ascii.eqlIgnoreCase(extension, entry[0])) return entry[1];
+    return null;
 }
 
 fn validateRunScript(script: []const u8, max_size: usize) !void {
@@ -347,9 +366,44 @@ const StoredContent = union(enum) {
     }
 };
 
+const StoredIcon = struct {
+    data: []u8,
+    mime_type: []u8,
+
+    fn init(
+        gpa: std.mem.Allocator,
+        data: []const u8,
+        mime_type: []const u8,
+    ) !StoredIcon {
+        if (data.len == 0) return error.InvalidIcon;
+        if (data.len > max_icon_size) return error.IconTooLarge;
+        if (mime_type.len == 0) return error.InvalidIconMimeType;
+        var validation = Response.init(gpa);
+        defer validation.deinit();
+        validation.setHeader("Content-Type", mime_type) catch |err|
+            return switch (err) {
+                error.InvalidHeader => error.InvalidIconMimeType,
+                else => err,
+            };
+        const owned_data = try gpa.dupe(u8, data);
+        errdefer gpa.free(owned_data);
+        return .{
+            .data = owned_data,
+            .mime_type = try gpa.dupe(u8, mime_type),
+        };
+    }
+
+    fn deinit(self: *StoredIcon, gpa: std.mem.Allocator) void {
+        gpa.free(self.data);
+        gpa.free(self.mime_type);
+        self.* = undefined;
+    }
+};
+
 const WindowState = struct {
     gpa: std.mem.Allocator,
     content: StoredContent,
+    icon: ?StoredIcon = null,
     content_mutex: std.Io.RwLock = .init,
     limits: Limits,
     max_clients: usize,
@@ -384,6 +438,7 @@ const WindowState = struct {
         self.clients.deinit(self.gpa);
         for (self.bindings.items) |item| self.gpa.free(item.name);
         self.bindings.deinit(self.gpa);
+        if (self.icon) |*icon| icon.deinit(self.gpa);
         self.content.deinit(self.gpa);
         self.gpa.destroy(self);
     }
@@ -404,6 +459,23 @@ const WindowState = struct {
         var previous = self.content;
         self.content = replacement;
         previous.deinit(self.gpa);
+    }
+
+    fn replaceIcon(
+        self: *WindowState,
+        io: std.Io,
+        data: []const u8,
+        mime_type: []const u8,
+    ) !void {
+        var replacement = try StoredIcon.init(self.gpa, data, mime_type);
+        errdefer replacement.deinit(self.gpa);
+
+        self.content_mutex.lockUncancelable(io);
+        defer self.content_mutex.unlock(io);
+
+        var previous = self.icon;
+        self.icon = replacement;
+        if (previous) |*icon| icon.deinit(self.gpa);
     }
 
     fn binding(self: *WindowState, name: []const u8) ?Binding {
@@ -1312,6 +1384,38 @@ pub const Window = struct {
         return self.navigate(running.inner.io, target_url);
     }
 
+    /// Copy favicon data and its HTTP content type into this window.
+    pub fn setIcon(
+        self: Window,
+        io: std.Io,
+        data: []const u8,
+        mime_type: []const u8,
+    ) !void {
+        try self.state.replaceIcon(io, data, mime_type);
+    }
+
+    /// Load favicon data from a supported image file.
+    pub fn setIconFile(
+        self: Window,
+        io: std.Io,
+        path: []const u8,
+    ) !void {
+        if (path.len == 0) return error.InvalidIconPath;
+        const mime_type = iconMimeType(path) orelse
+            return error.UnsupportedIconFormat;
+        const data = std.Io.Dir.cwd().readFileAlloc(
+            io,
+            path,
+            self.state.gpa,
+            .limited(max_icon_size),
+        ) catch |err| switch (err) {
+            error.StreamTooLong => return error.IconTooLarge,
+            else => return err,
+        };
+        defer self.state.gpa.free(data);
+        try self.state.replaceIcon(io, data, mime_type);
+    }
+
     pub fn open(self: Window, io: std.Io, running: *const Running) !void {
         const page_url = try self.url(running, self.state.gpa);
         defer self.state.gpa.free(page_url);
@@ -1872,6 +1976,20 @@ fn route(app: *const App, path: []const u8) ?Route {
     };
 }
 
+fn writeHtml(
+    response: *Response,
+    html: []const u8,
+    include_icon: bool,
+) !void {
+    if (!include_icon) return response.write(html);
+    const insert_at = std.ascii.indexOfIgnoreCase(html, "</head>") orelse
+        std.ascii.indexOfIgnoreCase(html, "<body") orelse
+        html.len;
+    try response.write(html[0..insert_at]);
+    try response.write(favicon_link);
+    try response.write(html[insert_at..]);
+}
+
 fn onRequest(
     request: *const Linsang.Request,
     response: *Linsang.Response,
@@ -1896,6 +2014,18 @@ fn onRequest(
         return .upgrade;
     }
     setCookie(app, window, response) catch return failResponse(response);
+    if (std.mem.eql(u8, resolved.resource, "favicon.ico") or
+        std.mem.eql(u8, resolved.resource, "favicon.svg"))
+    {
+        if (window.icon) |icon| {
+            response.setHeader("Content-Type", icon.mime_type) catch
+                return failResponse(response);
+            response.setHeader("X-Content-Type-Options", "nosniff") catch
+                return failResponse(response);
+            response.write(icon.data) catch return failResponse(response);
+            return .respond;
+        }
+    }
     if (std.mem.eql(u8, resolved.resource, "webui.js")) {
         response.setHeader("Content-Type", "text/javascript; charset=utf-8") catch
             return failResponse(response);
@@ -1920,7 +2050,8 @@ fn onRequest(
         .html => |html| if (resolved.resource.len == 0) blk: {
             response.setHeader("Content-Type", "text/html; charset=utf-8") catch
                 break :blk failResponse(response);
-            response.write(html) catch break :blk failResponse(response);
+            writeHtml(response, html, window.icon != null) catch
+                break :blk failResponse(response);
             break :blk .respond;
         } else blk: {
             response.status = .not_found;
@@ -2346,6 +2477,42 @@ test "call accessors, window creation, and routes" {
     const second = try app.createWindow(.{
         .content = .{ .html = "again" },
     });
+    try std.testing.expectEqualStrings(
+        "image/png",
+        iconMimeType("icon.PNG").?,
+    );
+    try std.testing.expect(iconMimeType("icon.txt") == null);
+    try std.testing.expectError(
+        error.InvalidIcon,
+        window.setIcon(std.testing.io, "", "image/svg+xml"),
+    );
+    try std.testing.expectError(
+        error.InvalidIconMimeType,
+        window.setIcon(std.testing.io, "<svg/>", ""),
+    );
+    try std.testing.expectError(
+        error.InvalidIconMimeType,
+        window.setIcon(std.testing.io, "<svg/>", "image/svg+xml\r\nbad"),
+    );
+    try std.testing.expectError(
+        error.InvalidIconPath,
+        window.setIconFile(std.testing.io, ""),
+    );
+    try std.testing.expectError(
+        error.UnsupportedIconFormat,
+        window.setIconFile(std.testing.io, "icon.txt"),
+    );
+    var html_response = Response.init(gpa);
+    defer html_response.deinit();
+    try writeHtml(
+        &html_response,
+        "<html><head></head><body>page</body></html>",
+        true,
+    );
+    try std.testing.expectEqualStrings(
+        "<html><head>" ++ favicon_link ++ "</head><body>page</body></html>",
+        html_response.body_buf.items,
+    );
     try std.testing.expect(window.state != second.state);
     @memcpy(
         &window.state.capability,
@@ -3050,12 +3217,23 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         .sub_path = "secret.txt",
         .data = "not public",
     });
+    const file_icon = "file png icon";
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "public/window-icon.png",
+        .data = file_icon,
+    });
     const directory_path = try std.fmt.allocPrint(
         gpa,
         ".zig-cache/tmp/{s}/public",
         .{tmp.sub_path},
     );
     defer gpa.free(directory_path);
+    const file_icon_path = try std.fmt.allocPrint(
+        gpa,
+        "{s}/window-icon.png",
+        .{directory_path},
+    );
+    defer gpa.free(file_icon_path);
 
     var app = App.init(gpa, .{ .default_directory = directory_path });
     defer app.deinit();
@@ -3075,6 +3253,13 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     const external_window = try app.createWindow(.{
         .content = .{ .external_url = external_url },
     });
+    const inline_icon = "<svg>inline icon</svg>";
+    try window.setIcon(io, inline_icon, "image/svg+xml");
+    try std.testing.expectError(
+        error.InvalidIconMimeType,
+        window.setIcon(io, "replacement", "image/svg+xml\r\nbad"),
+    );
+    try second_window.setIconFile(io, file_icon_path);
     var primary_events: IntegrationEventState = .{
         .expected_click = "primary",
     };
@@ -3119,6 +3304,54 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
             &response,
         );
         try std.testing.expect(std.mem.indexOf(u8, bytes, "HTTP/1.1 200 OK") != null);
+        try std.testing.expect(std.mem.indexOf(u8, bytes, favicon_link) != null);
+    }
+    const icons = [_]struct {
+        window: Window,
+        mime_type: []const u8,
+        data: []const u8,
+        other_data: []const u8,
+    }{
+        .{
+            .window = window,
+            .mime_type = "image/svg+xml",
+            .data = inline_icon,
+            .other_data = file_icon,
+        },
+        .{
+            .window = second_window,
+            .mime_type = "image/png",
+            .data = file_icon,
+            .other_data = inline_icon,
+        },
+    };
+    for (icons) |icon| {
+        var target: [capability_len + 13]u8 = undefined;
+        var response: [512]u8 = undefined;
+        const bytes = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/favicon.ico", .{
+                icon.window.state.capability,
+            }),
+            icon.data,
+            &response,
+        );
+        var content_type: [64]u8 = undefined;
+        try std.testing.expect(std.mem.indexOf(
+            u8,
+            bytes,
+            try std.fmt.bufPrint(
+                &content_type,
+                "Content-Type: {s}\r\n",
+                .{icon.mime_type},
+            ),
+        ) != null);
+        try std.testing.expect(std.mem.indexOf(
+            u8,
+            bytes,
+            icon.other_data,
+        ) == null);
     }
     {
         var target: [capability_len + 10]u8 = undefined;

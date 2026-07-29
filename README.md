@@ -12,6 +12,7 @@ The current phase provides:
 - embedded HTML, static directories, custom resources, external URLs, and a
   built-in JavaScript bridge;
 - application-wide default static directories for windows without content;
+- inline and file-backed per-window favicons;
 - runtime content and resource-handler replacement through
   `Window.setContent()`;
 - targeted runtime content replacement through `Client.show()`;
@@ -117,6 +118,12 @@ and `webui.Response` directly.
 Set `App.Options.default_directory` to let windows created without `.content`
 inherit one static directory. Explicit window content takes precedence. A
 window without either setting returns `error.MissingContent`.
+
+Use `Window.setIcon(io, data, mime_type)` for in-memory favicon data or
+`Window.setIconFile(io, path)` for SVG, PNG, ICO, JPEG, GIF, WebP, or AVIF
+files. Embedded HTML receives a relative favicon link automatically.
+Directory and custom pages can reference `favicon.ico` relative to the window
+capability root.
 
 `Window.setContent(&running, content)` prepares and installs new content, then
 navigates every connected client to it and returns the number notified. An
