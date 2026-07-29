@@ -1543,7 +1543,7 @@ pub const Window = struct {
     pub fn open(self: Window, io: std.Io, running: *const Running) !void {
         const page_url = try self.url(running, self.state.gpa);
         defer self.state.gpa.free(page_url);
-        try browser.open(self.state.gpa, io, page_url);
+        try browser.openUrl(self.state.gpa, io, page_url);
     }
 
     /// Return whether at least one browser client is connected.

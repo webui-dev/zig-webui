@@ -23,9 +23,14 @@ pub const Response = @import("app.zig").Response;
 pub const BroadcastEvalOutcome = @import("app.zig").BroadcastEvalOutcome;
 pub const BroadcastEval = @import("app.zig").BroadcastEval;
 pub const BroadcastEvalResults = @import("app.zig").BroadcastEvalResults;
+pub const Browser = @import("browser.zig").Browser;
+pub const openUrl = @import("browser.zig").openUrl;
+pub const browserExists = @import("browser.zig").browserExists;
+pub const bestBrowser = @import("browser.zig").bestBrowser;
 pub const protocol = @import("protocol.zig");
 
 test {
     _ = @import("app.zig");
+    _ = @import("browser.zig");
     _ = protocol;
 }

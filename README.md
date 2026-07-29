@@ -48,6 +48,7 @@ The current phase provides:
   `App.Options.use_cookies`;
 - loopback-only listening by default and caller-provided TLS for explicit
   public listening;
+- general OS URL opening and installed-browser discovery;
 - default-browser launching and deterministic shutdown.
 
 ```zig
@@ -110,6 +111,13 @@ outcome.
 `Window.waitForConnection(io, timeout)` when startup must wait for a browser;
 it returns the first connected `Client`. `Window.eval()` uses the same total
 timeout for connection waiting and JavaScript execution.
+
+Call `openUrl(gpa, io, url)` to open any non-empty URL with the OS default
+handler. `browserExists(gpa, io, browser)` checks an explicit `Browser`, while
+`bestBrowser(gpa, io)` returns the first installed browser in the preferred
+platform order or `null`. Discovery probes registered applications on
+Windows and macOS and executable candidates on other platforms without
+opening the selected browser.
 
 Serve a directory by setting
 `.content = .{ .directory = "path/to/public" }`. The path is opened when the

@@ -297,8 +297,7 @@ implementations.
 
 | Upstream API | Current gap |
 |---|---|
-| `webui_open_url()` | The internal OS URL opener is not exposed as a general public API. |
-| `webui_get_best_browser()`, `webui_browser_exist()`, `webui_show_browser()`, `webui_set_browser_folder()` | Browser discovery, selection, and custom executable locations are not implemented. |
+| `webui_show_browser()`, `webui_set_browser_folder()` | Explicit browser selection and custom executable locations are not implemented. |
 | `webui_set_custom_parameters()` | Custom browser command-line arguments are not implemented. |
 | `webui_set_kiosk()`, `webui_focus()`, `webui_minimize()`, `webui_maximize()`, `webui_set_hide()` | Browser window mode and lifecycle controls are not implemented. |
 | `webui_set_resizable()`, `webui_set_size()`, `webui_set_minimum_size()`, `webui_set_position()`, `webui_set_center()` | Browser window geometry controls are not implemented. |
@@ -330,6 +329,8 @@ not implementation gaps:
 | `webui_show()`, `webui_start_server()`, `webui_get_url()` | Initial `Content`, runtime `Window.setContent()`, `App.start()`, `Window.open()`, and `Window.url()`. |
 | `webui_show_client()` | `Client.show()` replaces the window content and navigates only the selected client. |
 | `webui_is_shown()` | `Window.isShown()` reports whether the window has at least one connected browser client. |
+| `webui_open_url()` | `openUrl()` safely passes a non-empty URL as one argument to the platform default opener. |
+| `webui_get_best_browser()`, `webui_browser_exist()` | `bestBrowser()` and `browserExists()` discover registered or executable browser candidates through the public `Browser` enum. |
 | `webui_set_default_root_folder()` | `App.Options.default_directory` supplies directory content to windows created without explicit content. |
 | `webui_set_config(folder_monitor)` | `App.Options.folder_monitor_interval` enables portable recursive directory polling and reloads the affected window's connected clients. |
 | `webui_set_icon()`, `webui_set_icon_file()` | `Window.setIcon()` copies inline data and MIME type; `Window.setIconFile()` loads a supported image file as the window favicon. |
@@ -487,6 +488,6 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Expose a general OS URL opener and browser discovery queries.
-2. Add explicit browser selection, custom executable locations, and custom
+1. Add explicit browser selection, custom executable locations, and custom
    browser arguments.
+2. Launch and retain selected browser processes and expose their process IDs.
