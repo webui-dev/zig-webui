@@ -49,6 +49,11 @@ pub const Limits = struct {
 };
 
 pub const Handler = *const fn (*Call, ?*anyopaque) anyerror!void;
+pub const Logger = *const fn (
+    level: std.log.Level,
+    message: []const u8,
+    user_data: ?*anyopaque,
+) void;
 pub const EventHandler = *const fn (
     *const Event,
     ?*anyopaque,
@@ -292,6 +297,8 @@ const WindowState = struct {
     token: u32 = 0,
     bindings: std.ArrayList(Binding) = .empty,
     event_binding: ?EventBinding = null,
+    logger: ?Logger,
+    logger_user_data: ?*anyopaque,
     mutex: std.Io.Mutex = .init,
     event_mutex: std.Io.Mutex = .init,
     event_mode: std.atomic.Value(EventMode),
@@ -322,6 +329,29 @@ const WindowState = struct {
         for (self.bindings.items) |item|
             if (std.mem.eql(u8, item.name, name)) return item;
         return null;
+    }
+
+    fn log(
+        self: *const WindowState,
+        comptime level: std.log.Level,
+        comptime format: []const u8,
+        args: anytype,
+    ) void {
+        if (self.logger) |logger| {
+            // ponytail: internal messages are short; allocate only if
+            // caller-provided log text is added later.
+            var buffer: [512]u8 = undefined;
+            const message = std.fmt.bufPrint(&buffer, format, args) catch
+                "WebUI log message exceeded 512 bytes";
+            logger(level, message, self.logger_user_data);
+            return;
+        }
+        switch (level) {
+            .err => std.log.err(format, args),
+            .warn => std.log.warn(format, args),
+            .info => std.log.info(format, args),
+            .debug => std.log.debug(format, args),
+        }
     }
 
     fn clientIndexById(self: *WindowState, id: u64) ?usize {
@@ -547,7 +577,7 @@ const WindowState = struct {
                 event_binding_value.user_data,
             ) catch |err| {
                 if (err != error.Canceled)
-                    std.log.err("WebUI event handler failed: {}", .{err});
+                    self.log(.err, "WebUI event handler failed: {}", .{err});
             };
     }
 
@@ -1330,6 +1360,8 @@ pub const App = struct {
         public: bool = false,
         tls: ?Tls = null,
         use_cookies: bool = false,
+        logger: ?Logger = null,
+        logger_user_data: ?*anyopaque = null,
         limits: Limits = .{},
     };
 
@@ -1393,6 +1425,8 @@ pub const App = struct {
             .max_pending_replies = options.max_pending_replies,
             .max_pending_events = options.max_pending_events,
             .event_mode = .init(options.event_mode),
+            .logger = self.options.logger,
+            .logger_user_data = self.options.logger_user_data,
         };
         try self.windows.append(self.gpa, state);
         return .{ .state = state };
@@ -1404,6 +1438,8 @@ pub const App = struct {
         try self.validateNetworkOptions();
         for (self.windows.items) |window| {
             window.limits = self.options.limits;
+            window.logger = self.options.logger;
+            window.logger_user_data = self.options.logger_user_data;
             for (window.bindings.items) |binding|
                 if (binding.name.len > window.limits.max_binding_name_size)
                     return error.BindingNameTooLarge;
@@ -1835,7 +1871,7 @@ fn onMessage(
                 .kind = .connected,
                 .client = client,
             }) catch |err|
-                std.log.err("WebUI event dispatch failed: {}", .{err});
+                window.log(.err, "WebUI event dispatch failed: {}", .{err});
         }
         return;
     }
@@ -1913,7 +1949,7 @@ fn onMessage(
                 .client = client,
                 .data = data,
             }) catch |err|
-                std.log.err("WebUI event dispatch failed: {}", .{err});
+                window.log(.err, "WebUI event dispatch failed: {}", .{err});
         },
         else => connection.wsClose(.unsupported_data, ""),
     }
@@ -1928,7 +1964,7 @@ fn onClose(connection: *Linsang.Connection, user_data: ?*anyopaque) void {
                 .kind = .disconnected,
                 .client = client,
             }) catch |err|
-                std.log.err("WebUI event dispatch failed: {}", .{err});
+                window.log(.err, "WebUI event dispatch failed: {}", .{err});
             authenticated = true;
         }
     }
@@ -1938,6 +1974,63 @@ fn onClose(connection: *Linsang.Connection, user_data: ?*anyopaque) void {
     }
     if (authenticated and !app.hasClients(connection.io))
         app.closed.store(true, .release);
+}
+
+const LoggerCapture = struct {
+    calls: usize = 0,
+    level: std.log.Level = .debug,
+    message: [128]u8 = undefined,
+    message_len: usize = 0,
+};
+
+fn captureLogger(
+    level: std.log.Level,
+    message: []const u8,
+    user_data: ?*anyopaque,
+) void {
+    const capture: *LoggerCapture = @ptrCast(@alignCast(user_data.?));
+    capture.calls += 1;
+    capture.level = level;
+    capture.message_len = @min(message.len, capture.message.len);
+    @memcpy(capture.message[0..capture.message_len], message[0..capture.message_len]);
+}
+
+fn failingEventHandler(_: *const Event, _: ?*anyopaque) !void {
+    return error.ExpectedLoggerFailure;
+}
+
+test "application logger receives level, message, and user data" {
+    const gpa = std.testing.allocator;
+    var capture: LoggerCapture = .{};
+    var app = App.init(gpa, .{
+        .logger = captureLogger,
+        .logger_user_data = &capture,
+    });
+    defer app.deinit();
+    const window = try app.createWindow(.{
+        .content = .{ .html = "logger test" },
+    });
+
+    window.state.log(.warn, "logger value {d}", .{42});
+    try std.testing.expectEqual(@as(usize, 1), capture.calls);
+    try std.testing.expectEqual(std.log.Level.warn, capture.level);
+    try std.testing.expectEqualStrings(
+        "logger value 42",
+        capture.message[0..capture.message_len],
+    );
+
+    window.onEvent(failingEventHandler, null);
+    window.state.invokeEvent(.{
+        .kind = .connected,
+        .client = .{ .state = window.state, .client_id = 1 },
+    }, null, window.state.event_binding);
+    try std.testing.expectEqual(@as(usize, 2), capture.calls);
+    try std.testing.expectEqual(std.log.Level.err, capture.level);
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        capture.message[0..capture.message_len],
+        "ExpectedLoggerFailure",
+    ) != null);
 }
 
 test "network options, origins, and protocol limits" {

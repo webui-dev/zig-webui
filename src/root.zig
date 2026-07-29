@@ -9,6 +9,7 @@ pub const Running = @import("app.zig").Running;
 pub const Call = @import("app.zig").Call;
 pub const PendingReply = @import("app.zig").PendingReply;
 pub const Handler = @import("app.zig").Handler;
+pub const Logger = @import("app.zig").Logger;
 pub const Event = @import("app.zig").Event;
 pub const EventKind = @import("app.zig").EventKind;
 pub const EventMode = @import("app.zig").EventMode;

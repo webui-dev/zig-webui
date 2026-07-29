@@ -34,6 +34,7 @@ The current phase provides:
 - per-window serial or concurrent binding and event execution through
   `Window.setEventMode()`;
 - bounded concurrent handlers through `WindowOptions.max_pending_events`;
+- caller-provided internal logging through `App.Options.logger`;
 - same-origin WebSocket validation for hosted content and external-page Origin
   validation for `.external_url`;
 - optional path-scoped `HttpOnly` cookie authorization through
@@ -119,6 +120,11 @@ changes newly received binding calls and browser events to independent tasks.
 Concurrent tasks own their event data, are bounded by
 `WindowOptions.max_pending_events`, and are canceled and joined by
 `Running.stop()`.
+
+Set `App.Options.logger` and optional `logger_user_data` to receive formatted
+internal messages with a `std.log.Level`. The message slice is valid only
+during the callback. The callback must be thread-safe when concurrent event
+handling is enabled. Without a callback, messages use `std.log`.
 
 `Window.bind("button", ...)` also dispatches clicks from elements with
 `id="button"`, including elements added after the bridge loads. DOM click

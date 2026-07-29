@@ -300,7 +300,6 @@ implementations.
 | `webui_is_shown()` | There is no window-level connected/shown query. |
 | `webui_set_config(folder_monitor)` | Directory change monitoring and automatic browser reload are not implemented. |
 | `webui_set_default_root_folder()` | There is no application-wide default directory content setting. |
-| `webui_set_logger()` | There is no caller-provided logging callback. |
 | `webui_set_icon()`, `webui_set_icon_file()` | Window icon configuration is not implemented. |
 | `webui_open_url()` | The internal OS URL opener is not exposed as a general public API. |
 | `webui_get_best_browser()`, `webui_browser_exist()`, `webui_show_browser()`, `webui_set_browser_folder()` | Browser discovery, selection, and custom executable locations are not implemented. |
@@ -349,6 +348,7 @@ not implementation gaps:
 | `webui_navigate()`, `webui_send_raw()` | `Window.navigate()` and `Window.sendRaw()`. |
 | `webui_set_config(multi_client)` | `WindowOptions.max_clients`. |
 | `webui_set_config(use_cookies)` | `App.Options.use_cookies` adds a per-window, path-scoped `HttpOnly` authorization cookie while retaining capability URLs and protocol authentication. |
+| `webui_set_logger()` | `App.Options.logger` and `logger_user_data`; messages use `std.log.Level` and fall back to `std.log` when no callback is set. |
 | `webui_set_public()` | `App.Options.public` permits non-loopback listening only with TLS; Origin and explicit connection and protocol limits are enforced. |
 | `webui_set_tls_certificate()` | `App.Options.tls` accepts caller-provided PEM certificate and private-key bytes. |
 | `webui_set_port()`, `webui_get_port()`, `webui_get_free_port()` | `App.Options.port`, including `0` for automatic selection, and the running window URL. |
@@ -383,11 +383,10 @@ This completes the behavior represented by `webui_set_public()`,
 This completes `webui_bind()`, the remaining typed argument and return
 methods, and the public browser bridge surface.
 
-### Handler and event lifecycle
+### Handler and event lifecycle (complete)
 
-- Add a caller-provided logger.
-
-This completes `webui_set_logger()`.
+Implements asynchronous replies, per-window event scheduling, explicit
+connection waiting, and caller-provided logging.
 
 ### Dynamic content and client state
 
@@ -488,4 +487,7 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add a caller-provided logger.
+1. Allow runtime window content and resource handler replacement.
+2. Add targeted `Client.show()`.
+3. Add a window connected/shown query.
+4. Add an application default directory and window icons.
