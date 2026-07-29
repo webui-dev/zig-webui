@@ -299,7 +299,6 @@ implementations.
 | `webui_show_client()` | `Client` cannot replace the content of only one connected browser. |
 | `webui_is_shown()` | There is no window-level connected/shown query. |
 | `webui_set_config(show_wait_connection)`, `webui_set_timeout()` | `Window.open()` does not optionally wait for a browser connection. |
-| `webui_set_config(ui_event_blocking)`, `webui_set_event_blocking()` | Per-window event scheduling control is not exposed. |
 | `webui_set_config(folder_monitor)` | Directory change monitoring and automatic browser reload are not implemented. |
 | `webui_set_default_root_folder()` | There is no application-wide default directory content setting. |
 | `webui_set_logger()` | There is no caller-provided logging callback. |
@@ -343,6 +342,7 @@ not implementation gaps:
 | `webui_get_string()`, `webui_get_string_at()`, `webui_get_int()`, `webui_get_int_at()`, `webui_get_float()`, `webui_get_float_at()`, `webui_get_bool()`, `webui_get_bool_at()` | `Call.string()`, `Call.int()`, `Call.float()`, and `Call.boolean()`. |
 | `webui_return_string()`, `webui_return_int()`, `webui_return_float()`, `webui_return_bool()` | `Call.reply()`, `Call.replyInt()`, `Call.replyFloat()`, and `Call.replyBool()`. |
 | `webui_set_config(asynchronous_response)` | `Call.deferReply()` transfers the response to a bounded, owned, one-shot `PendingReply`. |
+| `webui_set_config(ui_event_blocking)`, `webui_set_event_blocking()` | `WindowOptions.event_mode` and `Window.setEventMode()` select serial or bounded concurrent binding and event execution. |
 | `webui_run()`, `webui_script()` | `Window.run()` and `Window.eval()`. |
 | `webui_run_client()`, `webui_script_client()` | `Client.run()` and `Client.eval()`. |
 | `webui_close_client()`, `webui_navigate_client()`, `webui_send_raw_client()` | `Client.close()`, `Client.navigate()`, and `Client.sendRaw()`. |
@@ -385,14 +385,11 @@ methods, and the public browser bridge surface.
 
 ### Handler and event lifecycle
 
-- Add per-window serialized or concurrent event execution.
 - Add optional wait-for-connection behavior and a connection timeout.
 - Add a caller-provided logger.
-- Expose only stable event metadata that has no C ABI dependency.
 
-This completes the remaining `webui_set_config()` behavior,
-`webui_set_event_blocking()`, `webui_set_timeout()`, and
-`webui_set_logger()`.
+This completes `webui_set_config(show_wait_connection)`,
+`webui_set_timeout()`, and `webui_set_logger()`.
 
 ### Dynamic content and client state
 
@@ -493,6 +490,5 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add per-window event scheduling control.
-2. Add optional wait-for-connection behavior and a connection timeout.
-3. Add a caller-provided logger.
+1. Add optional wait-for-connection behavior and a connection timeout.
+2. Add a caller-provided logger.

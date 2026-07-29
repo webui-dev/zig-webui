@@ -6,6 +6,7 @@ const protocol = @import("protocol.zig");
 const bridge = @embedFile("bridge.js");
 const default_max_pending_evals = 64;
 const default_max_pending_replies = 64;
+const default_max_pending_events = 64;
 const capability_len = 32;
 const cookie_len = 32;
 const cookie_name = "webui_auth";
@@ -60,6 +61,11 @@ pub const EventKind = enum {
     disconnected,
     click,
     navigation,
+};
+
+pub const EventMode = enum(u8) {
+    serial,
+    concurrent,
 };
 
 pub const Event = struct {
@@ -275,21 +281,28 @@ const WindowState = struct {
     max_clients: usize,
     max_pending_evals: usize,
     max_pending_replies: usize,
+    max_pending_events: usize,
     capability: [capability_len]u8 = @splat(0),
     cookie: [cookie_len]u8 = @splat(0),
     token: u32 = 0,
     bindings: std.ArrayList(Binding) = .empty,
     event_binding: ?EventBinding = null,
     mutex: std.Io.Mutex = .init,
+    event_mutex: std.Io.Mutex = .init,
+    event_mode: std.atomic.Value(EventMode),
+    event_tasks: std.Io.Group = .init,
     clients: std.ArrayList(ConnectedClient) = .empty,
     pending_evals: std.ArrayList(*PendingEval) = .empty,
     pending_replies: usize = 0,
+    pending_events: usize = 0,
     next_client_id: u64 = 1,
     next_eval_id: u16 = 1,
 
     fn deinit(self: *WindowState) void {
         std.debug.assert(self.pending_evals.items.len == 0);
         std.debug.assert(self.pending_replies == 0);
+        std.debug.assert(self.pending_events == 0);
+        std.debug.assert(self.event_tasks.token.load(.acquire) == null);
         self.pending_evals.deinit(self.gpa);
         for (self.clients.items) |*connected| connected.peer.deinit();
         self.clients.deinit(self.gpa);
@@ -410,10 +423,186 @@ const WindowState = struct {
         self.pending_replies -= 1;
     }
 
-    fn dispatch(self: *WindowState, event: Event) void {
-        const registered = self.event_binding orelse return;
-        registered.handler(&event, registered.user_data) catch |err|
-            std.log.err("WebUI event handler failed: {}", .{err});
+    fn reserveEvent(self: *WindowState, io: std.Io) !void {
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+        if (self.pending_events >= self.max_pending_events)
+            return error.TooManyPendingEvents;
+        self.pending_events += 1;
+    }
+
+    fn releaseEvent(self: *WindowState, io: std.Io) void {
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+        std.debug.assert(self.pending_events > 0);
+        self.pending_events -= 1;
+    }
+
+    fn invokeCall(
+        self: *WindowState,
+        io: std.Io,
+        target: Client,
+        header: protocol.Header,
+        binding_value: Binding,
+        arguments: []const []const u8,
+    ) void {
+        var call: Call = .{
+            .gpa = self.gpa,
+            .client = target,
+            .arguments = arguments,
+            .io = io,
+            .reply_header = header,
+        };
+        defer call.deinit();
+        binding_value.handler(&call, binding_value.user_data) catch {
+            if (!call.deferred) call.reply("") catch {};
+        };
+        if (!call.deferred)
+            target.sendPacket(io, header, call.response.items) catch {};
+    }
+
+    fn runCall(
+        self: *WindowState,
+        io: std.Io,
+        target: Client,
+        header: protocol.Header,
+        binding_value: Binding,
+        payload: []u8,
+    ) std.Io.Cancelable!void {
+        defer {
+            self.gpa.free(payload);
+            self.releaseEvent(io);
+        }
+        const decoded = protocol.decodeCall(payload) catch return;
+        self.invokeCall(
+            io,
+            target,
+            header,
+            binding_value,
+            decoded.slice(),
+        );
+    }
+
+    fn dispatchCall(
+        self: *WindowState,
+        io: std.Io,
+        target: Client,
+        header: protocol.Header,
+        binding_value: Binding,
+        decoded: *const protocol.CallPayload,
+        payload: []const u8,
+    ) !void {
+        switch (self.event_mode.load(.acquire)) {
+            .serial => {
+                self.event_mutex.lockUncancelable(io);
+                defer self.event_mutex.unlock(io);
+                self.invokeCall(
+                    io,
+                    target,
+                    header,
+                    binding_value,
+                    decoded.slice(),
+                );
+            },
+            .concurrent => {
+                try self.reserveEvent(io);
+                errdefer self.releaseEvent(io);
+                const owned = try self.gpa.dupe(u8, payload);
+                errdefer self.gpa.free(owned);
+                try self.event_tasks.concurrent(io, runCall, .{
+                    self,
+                    io,
+                    target,
+                    header,
+                    binding_value,
+                    owned,
+                });
+            },
+        }
+    }
+
+    fn invokeEvent(
+        self: *WindowState,
+        event: Event,
+        click_binding: ?Binding,
+        registered: ?EventBinding,
+    ) void {
+        if (click_binding) |binding_value| {
+            var call: Call = .{
+                .gpa = self.gpa,
+                .client = event.client,
+                .arguments = &.{},
+            };
+            defer call.deinit();
+            binding_value.handler(&call, binding_value.user_data) catch {};
+        }
+        if (registered) |event_binding_value|
+            event_binding_value.handler(
+                &event,
+                event_binding_value.user_data,
+            ) catch |err| {
+                if (err != error.Canceled)
+                    std.log.err("WebUI event handler failed: {}", .{err});
+            };
+    }
+
+    fn runEvent(
+        self: *WindowState,
+        io: std.Io,
+        kind: EventKind,
+        target: Client,
+        data: []u8,
+        click_binding: ?Binding,
+        registered: ?EventBinding,
+    ) std.Io.Cancelable!void {
+        defer {
+            self.gpa.free(data);
+            self.releaseEvent(io);
+        }
+        self.invokeEvent(.{
+            .kind = kind,
+            .client = target,
+            .data = data,
+        }, click_binding, registered);
+    }
+
+    fn dispatchEvent(self: *WindowState, io: std.Io, event: Event) !void {
+        const click_binding = if (event.kind == .click)
+            self.binding(event.data)
+        else
+            null;
+        const registered = self.event_binding;
+        if (click_binding == null and registered == null) return;
+
+        switch (self.event_mode.load(.acquire)) {
+            .serial => {
+                self.event_mutex.lockUncancelable(io);
+                defer self.event_mutex.unlock(io);
+                self.invokeEvent(event, click_binding, registered);
+            },
+            .concurrent => {
+                try self.reserveEvent(io);
+                errdefer self.releaseEvent(io);
+                const data = try self.gpa.dupe(u8, event.data);
+                errdefer self.gpa.free(data);
+                try self.event_tasks.concurrent(io, runEvent, .{
+                    self,
+                    io,
+                    event.kind,
+                    event.client,
+                    data,
+                    click_binding,
+                    registered,
+                });
+            },
+        }
+    }
+
+    fn cancelEvents(self: *WindowState, io: std.Io) void {
+        self.event_tasks.cancel(io);
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+        std.debug.assert(self.pending_events == 0);
     }
 
     fn finishEval(
@@ -768,10 +957,10 @@ pub const Client = struct {
     state: *WindowState,
     client_id: u64,
 
-    fn send(
+    fn sendPacket(
         self: Client,
         io: std.Io,
-        command: protocol.Command,
+        header: protocol.Header,
         payload: []const u8,
     ) !void {
         if (payload.len > self.state.limits.max_ws_message_size - protocol.header_len)
@@ -787,14 +976,23 @@ pub const Client = struct {
 
         var packet: std.ArrayList(u8) = .empty;
         defer packet.deinit(self.state.gpa);
-        try protocol.append(&packet, self.state.gpa, .{
-            .token = self.state.token,
-            .command = command,
-        }, payload);
+        try protocol.append(&packet, self.state.gpa, header, payload);
         peer.sendBinary(packet.items) catch |err| switch (err) {
             error.Closed => return error.ConnectionClosed,
             else => return err,
         };
+    }
+
+    fn send(
+        self: Client,
+        io: std.Io,
+        command: protocol.Command,
+        payload: []const u8,
+    ) !void {
+        try self.sendPacket(io, .{
+            .token = self.state.token,
+            .command = command,
+        }, payload);
     }
 
     pub fn id(self: Client) u64 {
@@ -881,6 +1079,15 @@ fn evalBroadcastClient(
 
 pub const Window = struct {
     state: *WindowState,
+
+    /// Set how newly received binding calls and browser events are executed.
+    pub fn setEventMode(self: Window, mode: EventMode) void {
+        self.state.event_mode.store(mode, .release);
+    }
+
+    pub fn eventMode(self: Window) EventMode {
+        return self.state.event_mode.load(.acquire);
+    }
 
     /// Install the browser event handler before starting the application.
     pub fn onEvent(
@@ -1096,6 +1303,11 @@ pub const App = struct {
         max_pending_evals: usize = default_max_pending_evals,
         /// Maximum number of binding responses retained after their handler.
         max_pending_replies: usize = default_max_pending_replies,
+        /// Maximum number of handlers running or waiting in concurrent mode.
+        max_pending_events: usize = default_max_pending_events,
+        /// Serial preserves arrival order per connection and prevents handler
+        /// overlap across clients.
+        event_mode: EventMode = .serial,
     };
 
     pub fn init(gpa: std.mem.Allocator, options: Options) App {
@@ -1124,6 +1336,11 @@ pub const App = struct {
         {
             return error.InvalidPendingReplyLimit;
         }
+        if (options.max_pending_events == 0 or
+            options.max_pending_events > std.math.maxInt(u16))
+        {
+            return error.InvalidPendingEventLimit;
+        }
         const state = try self.gpa.create(WindowState);
         errdefer self.gpa.destroy(state);
         var content = try StoredContent.init(self.gpa, options.content);
@@ -1135,6 +1352,8 @@ pub const App = struct {
             .max_clients = options.max_clients,
             .max_pending_evals = options.max_pending_evals,
             .max_pending_replies = options.max_pending_replies,
+            .max_pending_events = options.max_pending_events,
+            .event_mode = .init(options.event_mode),
         };
         try self.windows.append(self.gpa, state);
         return .{ .state = state };
@@ -1287,6 +1506,8 @@ pub const Running = struct {
     pub fn stop(self: *Running) !void {
         if (self.stopped) return;
         try self.inner.stop();
+        for (self.app.windows.items) |window|
+            window.cancelEvents(self.inner.io);
         self.app.closeDirectories(self.inner.io);
         self.app.deinitTls();
         self.stopped = true;
@@ -1571,10 +1792,11 @@ fn onMessage(
                 .acq_rel,
             );
             std.debug.assert(previous > 0);
-            window.dispatch(.{
+            window.dispatchEvent(connection.io, .{
                 .kind = .connected,
                 .client = client,
-            });
+            }) catch |err|
+                std.log.err("WebUI event dispatch failed: {}", .{err});
         }
         return;
     }
@@ -1620,19 +1842,16 @@ fn onMessage(
                 send(connection, app.gpa, packet.header, "") catch {};
                 return;
             };
-            var call: Call = .{
-                .gpa = app.gpa,
-                .client = client,
-                .arguments = decoded.slice(),
-                .io = connection.io,
-                .reply_header = packet.header,
+            window.dispatchCall(
+                connection.io,
+                client,
+                packet.header,
+                binding,
+                &decoded,
+                packet.payload,
+            ) catch {
+                send(connection, app.gpa, packet.header, "") catch {};
             };
-            defer call.deinit();
-            binding.handler(&call, binding.user_data) catch {
-                if (!call.deferred) call.reply("") catch {};
-            };
-            if (!call.deferred)
-                send(connection, app.gpa, packet.header, call.response.items) catch {};
         },
         .click, .navigation => {
             if (packet.payload.len > window.limits.max_event_size) {
@@ -1647,25 +1866,15 @@ fn onMessage(
                 connection.wsClose(.protocol_error, "");
                 return;
             };
-            if (packet.header.command == .click) {
-                if (window.binding(data)) |binding| {
-                    var call: Call = .{
-                        .gpa = app.gpa,
-                        .client = client,
-                        .arguments = &.{},
-                    };
-                    defer call.deinit();
-                    binding.handler(&call, binding.user_data) catch {};
-                }
-            }
-            window.dispatch(.{
+            window.dispatchEvent(connection.io, .{
                 .kind = if (packet.header.command == .click)
                     .click
                 else
                     .navigation,
                 .client = client,
                 .data = data,
-            });
+            }) catch |err|
+                std.log.err("WebUI event dispatch failed: {}", .{err});
         },
         else => connection.wsClose(.unsupported_data, ""),
     }
@@ -1676,10 +1885,11 @@ fn onClose(connection: *Linsang.Connection, user_data: ?*anyopaque) void {
     var authenticated = false;
     for (app.windows.items) |window| {
         if (window.disconnected(connection)) |client| {
-            window.dispatch(.{
+            window.dispatchEvent(connection.io, .{
                 .kind = .disconnected,
                 .client = client,
-            });
+            }) catch |err|
+                std.log.err("WebUI event dispatch failed: {}", .{err});
             authenticated = true;
         }
     }
@@ -1826,6 +2036,15 @@ test "call accessors, window creation, and routes" {
             .max_pending_replies = 0,
         }),
     );
+    var invalid_event_app = App.init(gpa, .{});
+    defer invalid_event_app.deinit();
+    try std.testing.expectError(
+        error.InvalidPendingEventLimit,
+        invalid_event_app.createWindow(.{
+            .content = .{ .html = "invalid" },
+            .max_pending_events = 0,
+        }),
+    );
 
     var app = App.init(gpa, .{});
     defer app.deinit();
@@ -1913,6 +2132,140 @@ fn waitForFlag(io: std.Io, flag: *const std.atomic.Value(bool)) !void {
         try std.Io.sleep(io, .fromMilliseconds(1), .awake);
     }
     return error.Timeout;
+}
+
+const EventSchedulingCapture = struct {
+    io: std.Io,
+    delay_read: std.atomic.Value(bool) = .init(false),
+    read_gate: std.Io.Event = .is_set,
+    gate: std.Io.Event = .unset,
+    next: std.atomic.Value(usize) = .init(0),
+    entered: std.atomic.Value(usize) = .init(0),
+    active: std.atomic.Value(usize) = .init(0),
+    peak: std.atomic.Value(usize) = .init(0),
+    order: [2]u8 = undefined,
+
+    fn reset(self: *EventSchedulingCapture, delay_read: bool) void {
+        self.delay_read.store(delay_read, .release);
+        self.read_gate.reset();
+        if (!delay_read) self.read_gate = .is_set;
+        self.gate.reset();
+        self.next.store(0, .release);
+        self.entered.store(0, .release);
+        self.active.store(0, .release);
+        self.peak.store(0, .release);
+    }
+};
+
+fn schedulingEventHandler(
+    event: *const Event,
+    user_data: ?*anyopaque,
+) !void {
+    const capture: *EventSchedulingCapture =
+        @ptrCast(@alignCast(user_data.?));
+    if (capture.delay_read.load(.acquire))
+        try capture.read_gate.wait(capture.io);
+    const index = capture.next.fetchAdd(1, .acq_rel);
+    capture.order[index] = event.data[0];
+    const active = capture.active.fetchAdd(1, .acq_rel) + 1;
+    _ = capture.peak.fetchMax(active, .acq_rel);
+    _ = capture.entered.fetchAdd(1, .release);
+    defer _ = capture.active.fetchSub(1, .acq_rel);
+    try capture.gate.wait(capture.io);
+}
+
+fn waitForCount(
+    io: std.Io,
+    value: *const std.atomic.Value(usize),
+    expected: usize,
+) !void {
+    for (0..100) |_| {
+        if (value.load(.acquire) == expected) return;
+        try std.Io.sleep(io, .fromMilliseconds(1), .awake);
+    }
+    return error.Timeout;
+}
+
+test "event modes serialize, copy, bound, and cancel handlers" {
+    const gpa = std.testing.allocator;
+    var threaded = std.Io.Threaded.init(gpa, .{ .async_limit = .unlimited });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var app = App.init(gpa, .{});
+    defer app.deinit();
+    const window = try app.createWindow(.{
+        .content = .{ .html = "event scheduling test" },
+        .max_pending_events = 2,
+    });
+    var capture: EventSchedulingCapture = .{ .io = io };
+    window.onEvent(schedulingEventHandler, &capture);
+    const target: Client = .{ .state = window.state, .client_id = 1 };
+
+    try std.testing.expectEqual(EventMode.serial, window.eventMode());
+    var first = io.async(WindowState.dispatchEvent, .{
+        window.state,
+        io,
+        Event{ .kind = .click, .client = target, .data = "1" },
+    });
+    try waitForCount(io, &capture.entered, 1);
+    var second = io.async(WindowState.dispatchEvent, .{
+        window.state,
+        io,
+        Event{ .kind = .click, .client = target, .data = "2" },
+    });
+    try std.Io.sleep(io, .fromMilliseconds(10), .awake);
+    try std.testing.expectEqual(@as(usize, 1), capture.entered.load(.acquire));
+    try std.testing.expectEqual(@as(usize, 1), capture.peak.load(.acquire));
+    capture.gate.set(io);
+    try first.await(io);
+    try second.await(io);
+    try std.testing.expectEqualStrings("12", &capture.order);
+
+    capture.reset(true);
+    window.setEventMode(.concurrent);
+    try std.testing.expectEqual(EventMode.concurrent, window.eventMode());
+    var first_data = [_]u8{'1'};
+    var second_data = [_]u8{'2'};
+    try window.state.dispatchEvent(io, .{
+        .kind = .click,
+        .client = target,
+        .data = &first_data,
+    });
+    try window.state.dispatchEvent(io, .{
+        .kind = .click,
+        .client = target,
+        .data = &second_data,
+    });
+    first_data[0] = 'x';
+    second_data[0] = 'y';
+    capture.read_gate.set(io);
+    try waitForCount(io, &capture.entered, 2);
+    try std.testing.expectEqual(@as(usize, 2), capture.peak.load(.acquire));
+    capture.gate.set(io);
+    try window.state.event_tasks.await(io);
+    std.mem.sort(u8, &capture.order, {}, std.sort.asc(u8));
+    try std.testing.expectEqualStrings("12", &capture.order);
+    try std.testing.expectEqual(@as(usize, 0), capture.active.load(.acquire));
+
+    capture.reset(false);
+    window.state.max_pending_events = 1;
+    try window.state.dispatchEvent(io, .{
+        .kind = .click,
+        .client = target,
+        .data = "1",
+    });
+    try waitForCount(io, &capture.entered, 1);
+    try std.testing.expectError(
+        error.TooManyPendingEvents,
+        window.state.dispatchEvent(io, .{
+            .kind = .click,
+            .client = target,
+            .data = "2",
+        }),
+    );
+    window.state.cancelEvents(io);
+    try std.testing.expectEqual(@as(usize, 0), capture.active.load(.acquire));
 }
 
 fn integrationDomBindingHandler(
@@ -2169,6 +2522,7 @@ test "binding replies can be deferred, bounded, and disconnected" {
     const window = try app.createWindow(.{
         .content = .{ .html = "deferred reply test" },
         .max_pending_replies = 1,
+        .event_mode = .concurrent,
     });
     var capture: DeferredReplyCapture = .{};
     defer if (capture.reply) |*reply| reply.deinit();

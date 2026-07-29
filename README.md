@@ -29,6 +29,9 @@ The current phase provides:
   `Window.run`;
 - connected, disconnected, click, and intercepted navigation events through
   `Window.onEvent`;
+- per-window serial or concurrent binding and event execution through
+  `Window.setEventMode()`;
+- bounded concurrent handlers through `WindowOptions.max_pending_events`;
 - same-origin WebSocket validation for hosted content and external-page Origin
   validation for `.external_url`;
 - optional path-scoped `HttpOnly` cookie authorization through
@@ -103,6 +106,12 @@ navigation events. `Event.data` contains the element ID for clicks, the target
 URL for navigation, and is empty for connected or disconnected events.
 Navigation attempts are intercepted while an event handler is installed; call
 `Event.client.navigate` from the handler to continue them.
+
+Handlers run in `.serial` mode by default. `Window.setEventMode(.concurrent)`
+changes newly received binding calls and browser events to independent tasks.
+Concurrent tasks own their event data, are bounded by
+`WindowOptions.max_pending_events`, and are canceled and joined by
+`Running.stop()`.
 
 `Window.bind("button", ...)` also dispatches clicks from elements with
 `id="button"`, including elements added after the bridge loads. DOM click
