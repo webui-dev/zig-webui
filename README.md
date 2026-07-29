@@ -12,6 +12,7 @@ The current phase provides:
 - embedded HTML, static directories, custom resources, external URLs, and a
   built-in JavaScript bridge;
 - JavaScript calls to Zig bindings with return values;
+- typed integer, float, and boolean call arguments and replies;
 - window and targeted `Call.client` calls to JavaScript with results, errors,
   timeouts, and stale-client detection;
 - targeted client navigation, close, and raw binary delivery;

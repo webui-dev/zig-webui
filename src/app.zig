@@ -636,6 +636,10 @@ pub const Call = struct {
         return std.fmt.parseInt(i64, try self.string(index), 10);
     }
 
+    pub fn float(self: *const Call, index: usize) !f64 {
+        return std.fmt.parseFloat(f64, try self.string(index));
+    }
+
     pub fn boolean(self: *const Call, index: usize) !bool {
         const value = try self.string(index);
         if (std.mem.eql(u8, value, "true")) return true;
@@ -653,6 +657,15 @@ pub const Call = struct {
     pub fn replyInt(self: *Call, value: anytype) !void {
         var buffer: [64]u8 = undefined;
         try self.reply(try std.fmt.bufPrint(&buffer, "{d}", .{value}));
+    }
+
+    pub fn replyFloat(self: *Call, value: f64) !void {
+        var buffer: [64]u8 = undefined;
+        try self.reply(try std.fmt.bufPrint(&buffer, "{d}", .{value}));
+    }
+
+    pub fn replyBool(self: *Call, value: bool) !void {
+        try self.reply(if (value) "true" else "false");
     }
 };
 
@@ -1718,13 +1731,22 @@ test "call accessors, window creation, and routes" {
     var call: Call = .{
         .gpa = gpa,
         .client = .{ .state = window.state, .client_id = 1 },
-        .arguments = &.{ "42", "true" },
+        .arguments = &.{ "42", "true", "1.25", "invalid" },
     };
     defer call.deinit();
     try std.testing.expectEqual(@as(i64, 42), try call.int(0));
     try std.testing.expect(try call.boolean(1));
+    try std.testing.expectEqual(@as(f64, 1.25), try call.float(2));
+    try std.testing.expectError(error.InvalidCharacter, call.float(3));
+    try std.testing.expectError(error.MissingArgument, call.float(4));
     try call.replyInt(84);
     try std.testing.expectEqualStrings("84", call.response.items);
+    try call.replyFloat(1.25);
+    try std.testing.expectEqualStrings("1.25", call.response.items);
+    try call.replyBool(true);
+    try std.testing.expectEqualStrings("true", call.response.items);
+    try call.replyBool(false);
+    try std.testing.expectEqualStrings("false", call.response.items);
 }
 
 fn integrationHandler(call: *Call, user_data: ?*anyopaque) !void {
