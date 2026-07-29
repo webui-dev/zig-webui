@@ -13,12 +13,14 @@ The current phase provides:
   built-in JavaScript bridge;
 - JavaScript calls to Zig bindings with return values;
 - typed integer, float, and boolean call arguments and replies;
+- owned one-shot delayed binding replies through `Call.deferReply()`;
 - window and targeted `Call.client` calls to JavaScript with results, errors,
   timeouts, and stale-client detection;
 - targeted client navigation, close, and raw binary delivery;
 - bounded multi-client windows through `WindowOptions.max_clients`;
 - bounded concurrent evaluations through
   `WindowOptions.max_pending_evals`;
+- bounded delayed replies through `WindowOptions.max_pending_replies`;
 - explicit connection, WebSocket message, call, argument, binding, event, and
   script limits through `App.Options.limits`;
 - window navigation, close, raw-data, and JavaScript broadcasts with
@@ -106,6 +108,12 @@ Navigation attempts are intercepted while an event handler is installed; call
 `id="button"`, including elements added after the bridge loads. DOM click
 handlers receive no arguments and their replies are ignored; explicit
 `webui.call("button", ...)` remains available.
+
+Binding handlers can transfer an explicit `webui.call()` response beyond the
+handler lifetime with `Call.deferReply()`. Complete the owned `PendingReply`
+once with `reply()`, `replyInt()`, `replyFloat()`, or `replyBool()`, or call
+`deinit()` to abandon it. All pending replies must be completed or abandoned
+before `App.deinit()`.
 
 The browser-side `webui` object also provides connection events, runtime
 logging, Base64 helpers, navigation control, and native high-contrast media

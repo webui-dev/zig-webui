@@ -5,6 +5,7 @@ const protocol = @import("protocol.zig");
 
 const bridge = @embedFile("bridge.js");
 const default_max_pending_evals = 64;
+const default_max_pending_replies = 64;
 const capability_len = 32;
 const cookie_len = 32;
 const cookie_name = "webui_auth";
@@ -273,6 +274,7 @@ const WindowState = struct {
     limits: Limits,
     max_clients: usize,
     max_pending_evals: usize,
+    max_pending_replies: usize,
     capability: [capability_len]u8 = @splat(0),
     cookie: [cookie_len]u8 = @splat(0),
     token: u32 = 0,
@@ -281,11 +283,13 @@ const WindowState = struct {
     mutex: std.Io.Mutex = .init,
     clients: std.ArrayList(ConnectedClient) = .empty,
     pending_evals: std.ArrayList(*PendingEval) = .empty,
+    pending_replies: usize = 0,
     next_client_id: u64 = 1,
     next_eval_id: u16 = 1,
 
     fn deinit(self: *WindowState) void {
         std.debug.assert(self.pending_evals.items.len == 0);
+        std.debug.assert(self.pending_replies == 0);
         self.pending_evals.deinit(self.gpa);
         for (self.clients.items) |*connected| connected.peer.deinit();
         self.clients.deinit(self.gpa);
@@ -382,6 +386,28 @@ const WindowState = struct {
             .state = self,
             .client_id = disconnected_client.id,
         };
+    }
+
+    fn retainReplyPeer(
+        self: *WindowState,
+        io: std.Io,
+        client_id: u64,
+    ) !Linsang.WebSocketPeer {
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+        const index = self.clientIndexById(client_id) orelse
+            return error.ConnectionClosed;
+        if (self.pending_replies >= self.max_pending_replies)
+            return error.TooManyPendingReplies;
+        self.pending_replies += 1;
+        return self.clients.items[index].peer.clone();
+    }
+
+    fn releaseReply(self: *WindowState, io: std.Io) void {
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+        std.debug.assert(self.pending_replies > 0);
+        self.pending_replies -= 1;
     }
 
     fn dispatch(self: *WindowState, event: Event) void {
@@ -611,11 +637,58 @@ const WindowState = struct {
     }
 };
 
+pub const PendingReply = struct {
+    state: *WindowState,
+    io: std.Io,
+    peer: ?Linsang.WebSocketPeer,
+    header: protocol.Header,
+
+    pub fn deinit(self: *PendingReply) void {
+        var peer = self.peer orelse return;
+        self.peer = null;
+        peer.deinit();
+        self.state.releaseReply(self.io);
+    }
+
+    pub fn reply(self: *PendingReply, value: []const u8) !void {
+        const peer = self.peer orelse return error.ReplyCompleted;
+        if (value.len > self.state.limits.max_ws_message_size - protocol.header_len)
+            return error.ResponseTooLarge;
+
+        var packet: std.ArrayList(u8) = .empty;
+        defer packet.deinit(self.state.gpa);
+        try protocol.append(&packet, self.state.gpa, self.header, value);
+        defer self.deinit();
+        peer.sendBinary(packet.items) catch |err| switch (err) {
+            error.Closed => return error.ConnectionClosed,
+            else => return err,
+        };
+    }
+
+    pub fn replyInt(self: *PendingReply, value: anytype) !void {
+        var buffer: [64]u8 = undefined;
+        try self.reply(try std.fmt.bufPrint(&buffer, "{d}", .{value}));
+    }
+
+    pub fn replyFloat(self: *PendingReply, value: f64) !void {
+        var buffer: [64]u8 = undefined;
+        try self.reply(try std.fmt.bufPrint(&buffer, "{d}", .{value}));
+    }
+
+    pub fn replyBool(self: *PendingReply, value: bool) !void {
+        try self.reply(if (value) "true" else "false");
+    }
+};
+
 pub const Call = struct {
     gpa: std.mem.Allocator,
     client: Client,
     arguments: []const []const u8,
     response: std.ArrayList(u8) = .empty,
+    io: ?std.Io = null,
+    reply_header: ?protocol.Header = null,
+    responded: bool = false,
+    deferred: bool = false,
 
     fn deinit(self: *Call) void {
         self.response.deinit(self.gpa);
@@ -648,10 +721,32 @@ pub const Call = struct {
     }
 
     pub fn reply(self: *Call, value: []const u8) !void {
+        if (self.deferred) return error.ReplyDeferred;
         if (value.len > self.client.state.limits.max_ws_message_size - protocol.header_len)
             return error.ResponseTooLarge;
         self.response.clearRetainingCapacity();
         try self.response.appendSlice(self.gpa, value);
+        self.responded = true;
+    }
+
+    /// Transfer this call's response to an owned, one-shot handle.
+    pub fn deferReply(self: *Call) !PendingReply {
+        if (self.deferred) return error.ReplyAlreadyDeferred;
+        if (self.responded) return error.ReplyAlreadySet;
+        const io = self.io orelse return error.DeferredReplyUnavailable;
+        const header = self.reply_header orelse
+            return error.DeferredReplyUnavailable;
+        const peer = try self.client.state.retainReplyPeer(
+            io,
+            self.client.client_id,
+        );
+        self.deferred = true;
+        return .{
+            .state = self.client.state,
+            .io = io,
+            .peer = peer,
+            .header = header,
+        };
     }
 
     pub fn replyInt(self: *Call, value: anytype) !void {
@@ -999,6 +1094,8 @@ pub const App = struct {
         max_clients: usize = 1,
         /// Maximum number of concurrent Zig-to-JavaScript calls.
         max_pending_evals: usize = default_max_pending_evals,
+        /// Maximum number of binding responses retained after their handler.
+        max_pending_replies: usize = default_max_pending_replies,
     };
 
     pub fn init(gpa: std.mem.Allocator, options: Options) App {
@@ -1022,6 +1119,11 @@ pub const App = struct {
         {
             return error.InvalidPendingEvalLimit;
         }
+        if (options.max_pending_replies == 0 or
+            options.max_pending_replies > std.math.maxInt(u16))
+        {
+            return error.InvalidPendingReplyLimit;
+        }
         const state = try self.gpa.create(WindowState);
         errdefer self.gpa.destroy(state);
         var content = try StoredContent.init(self.gpa, options.content);
@@ -1032,6 +1134,7 @@ pub const App = struct {
             .limits = self.options.limits,
             .max_clients = options.max_clients,
             .max_pending_evals = options.max_pending_evals,
+            .max_pending_replies = options.max_pending_replies,
         };
         try self.windows.append(self.gpa, state);
         return .{ .state = state };
@@ -1521,12 +1624,15 @@ fn onMessage(
                 .gpa = app.gpa,
                 .client = client,
                 .arguments = decoded.slice(),
+                .io = connection.io,
+                .reply_header = packet.header,
             };
             defer call.deinit();
             binding.handler(&call, binding.user_data) catch {
-                call.reply("") catch {};
+                if (!call.deferred) call.reply("") catch {};
             };
-            send(connection, app.gpa, packet.header, call.response.items) catch {};
+            if (!call.deferred)
+                send(connection, app.gpa, packet.header, call.response.items) catch {};
         },
         .click, .navigation => {
             if (packet.payload.len > window.limits.max_event_size) {
@@ -1711,6 +1817,15 @@ test "call accessors, window creation, and routes" {
             .max_pending_evals = 0,
         }),
     );
+    var invalid_reply_app = App.init(gpa, .{});
+    defer invalid_reply_app.deinit();
+    try std.testing.expectError(
+        error.InvalidPendingReplyLimit,
+        invalid_reply_app.createWindow(.{
+            .content = .{ .html = "invalid" },
+            .max_pending_replies = 0,
+        }),
+    );
 
     var app = App.init(gpa, .{});
     defer app.deinit();
@@ -1771,6 +1886,33 @@ fn integrationHandler(call: *Call, user_data: ?*anyopaque) !void {
         @ptrCast(@alignCast(user_data.?));
     client_id.store(call.client.id(), .release);
     try call.reply("Hello from Zig");
+}
+
+const DeferredReplyCapture = struct {
+    ready: std.atomic.Value(bool) = .init(false),
+    limit_hit: std.atomic.Value(bool) = .init(false),
+    client: ?Client = null,
+    reply: ?PendingReply = null,
+};
+
+fn deferredReplyHandler(call: *Call, user_data: ?*anyopaque) !void {
+    const capture: *DeferredReplyCapture =
+        @ptrCast(@alignCast(user_data.?));
+    capture.client = call.client;
+    capture.reply = call.deferReply() catch |err| {
+        if (err == error.TooManyPendingReplies)
+            capture.limit_hit.store(true, .release);
+        return err;
+    };
+    capture.ready.store(true, .release);
+}
+
+fn waitForFlag(io: std.Io, flag: *const std.atomic.Value(bool)) !void {
+    for (0..100) |_| {
+        if (flag.load(.acquire)) return;
+        try std.Io.sleep(io, .fromMilliseconds(1), .awake);
+    }
+    return error.Timeout;
 }
 
 fn integrationDomBindingHandler(
@@ -2013,6 +2155,106 @@ fn authenticateTestClient(
         response_buffer,
     ));
     return std.mem.eql(u8, response.payload, &.{1});
+}
+
+test "binding replies can be deferred, bounded, and disconnected" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    const gpa = std.testing.allocator;
+    var threaded = std.Io.Threaded.init(gpa, .{ .async_limit = .unlimited });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var app = App.init(gpa, .{});
+    defer app.deinit();
+    const window = try app.createWindow(.{
+        .content = .{ .html = "deferred reply test" },
+        .max_pending_replies = 1,
+    });
+    var capture: DeferredReplyCapture = .{};
+    defer if (capture.reply) |*reply| reply.deinit();
+    try window.bind("later", deferredReplyHandler, &capture);
+    var running = try app.start(io);
+    defer running.stop() catch {};
+
+    const client = try connectTestWebSocket(
+        running.inner.address,
+        io,
+        &window.state.capability,
+    );
+    defer client.close(io);
+    var response_buffer: [125]u8 = undefined;
+    try std.testing.expect(try authenticateTestClient(
+        client,
+        io,
+        gpa,
+        window.state.token,
+        &window.state.capability,
+        &response_buffer,
+    ));
+
+    var packet: std.ArrayList(u8) = .empty;
+    defer packet.deinit(gpa);
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .id = 11,
+        .command = .call,
+    }, "later\x00\x00");
+    try sendClientFrame(client, io, packet.items);
+    try waitForFlag(io, &capture.ready);
+
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .id = 12,
+        .command = .call,
+    }, "later\x00\x00");
+    try sendClientFrame(client, io, packet.items);
+    const limited = try protocol.decode(try readServerFrame(
+        client,
+        io,
+        &response_buffer,
+    ));
+    try std.testing.expectEqual(@as(u16, 12), limited.header.id);
+    try std.testing.expectEqual(@as(usize, 0), limited.payload.len);
+    try std.testing.expect(capture.limit_hit.load(.acquire));
+
+    try capture.reply.?.replyInt(42);
+    const completed = try protocol.decode(try readServerFrame(
+        client,
+        io,
+        &response_buffer,
+    ));
+    try std.testing.expectEqual(@as(u16, 11), completed.header.id);
+    try std.testing.expectEqualStrings("42", completed.payload);
+    try std.testing.expectError(
+        error.ReplyCompleted,
+        capture.reply.?.reply("again"),
+    );
+    try std.testing.expectError(
+        error.ReplyCompleted,
+        capture.reply.?.replyFloat(1.25),
+    );
+
+    capture.ready.store(false, .release);
+    capture.limit_hit.store(false, .release);
+    packet.clearRetainingCapacity();
+    try protocol.append(&packet, gpa, .{
+        .token = window.state.token,
+        .id = 13,
+        .command = .call,
+    }, "later\x00\x00");
+    try sendClientFrame(client, io, packet.items);
+    try waitForFlag(io, &capture.ready);
+    try client.shutdown(io, .both);
+    for (0..100) |_| {
+        if (!capture.client.?.isConnected(io)) break;
+        try std.Io.sleep(io, .fromMilliseconds(1), .awake);
+    }
+    try std.testing.expect(!capture.client.?.isConnected(io));
+    try std.testing.expectError(
+        error.ConnectionClosed,
+        capture.reply.?.replyBool(true),
+    );
 }
 
 test "cookie authorization guards WebSocket upgrades" {
