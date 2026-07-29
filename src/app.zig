@@ -96,7 +96,7 @@ pub const CustomResource = struct {
 pub const Content = union(enum) {
     /// HTML copied into the window and served at its capability root.
     html: []const u8,
-    /// Directory path opened by `App.start` and closed by `Running.stop`.
+    /// Directory path opened before publication and closed by `Running.stop`.
     directory: []const u8,
     /// Buffered resource handler. The bridge and WebSocket paths stay reserved.
     custom: CustomResource,
@@ -282,11 +282,40 @@ const StoredContent = union(enum) {
         }
         self.* = undefined;
     }
+
+    fn openDirectory(self: *StoredContent, io: std.Io) !void {
+        switch (self.*) {
+            .directory => |*directory| {
+                std.debug.assert(directory.dir == null);
+                directory.dir = if (std.fs.path.isAbsolute(directory.path))
+                    try std.Io.Dir.openDirAbsolute(io, directory.path, .{
+                        .follow_symlinks = false,
+                    })
+                else
+                    try std.Io.Dir.cwd().openDir(io, directory.path, .{
+                        .follow_symlinks = false,
+                    });
+            },
+            else => {},
+        }
+    }
+
+    fn closeDirectory(self: *StoredContent, io: std.Io) void {
+        switch (self.*) {
+            .directory => |*directory| if (directory.dir) |dir| {
+                dir.close(io);
+                directory.dir = null;
+            },
+            else => {},
+        }
+    }
 };
 
 const WindowState = struct {
     gpa: std.mem.Allocator,
     content: StoredContent,
+    content_mutex: std.Io.RwLock = .init,
+    retired_directories: std.ArrayList(StoredContent) = .empty,
     limits: Limits,
     max_clients: usize,
     max_pending_evals: usize,
@@ -320,8 +349,49 @@ const WindowState = struct {
         self.clients.deinit(self.gpa);
         for (self.bindings.items) |item| self.gpa.free(item.name);
         self.bindings.deinit(self.gpa);
+        std.debug.assert(self.retired_directories.items.len == 0);
+        self.retired_directories.deinit(self.gpa);
         self.content.deinit(self.gpa);
         self.gpa.destroy(self);
+    }
+
+    fn replaceContent(
+        self: *WindowState,
+        io: std.Io,
+        content: Content,
+    ) !void {
+        var replacement = try StoredContent.init(self.gpa, content);
+        errdefer replacement.deinit(self.gpa);
+        try replacement.openDirectory(io);
+        errdefer replacement.closeDirectory(io);
+
+        self.content_mutex.lockUncancelable(io);
+        defer self.content_mutex.unlock(io);
+        const retire_directory = switch (self.content) {
+            .directory => true,
+            else => false,
+        };
+        if (retire_directory)
+            try self.retired_directories.ensureUnusedCapacity(self.gpa, 1);
+
+        var previous = self.content;
+        self.content = replacement;
+        if (retire_directory) {
+            // ponytail: Linsang finishes a static-file action after the request
+            // callback returns. Retire handles until stop unless it gains a
+            // response-completion callback.
+            self.retired_directories.appendAssumeCapacity(previous);
+        } else {
+            previous.deinit(self.gpa);
+        }
+    }
+
+    fn releaseRetiredDirectories(self: *WindowState, io: std.Io) void {
+        for (self.retired_directories.items) |*content| {
+            content.closeDirectory(io);
+            content.deinit(self.gpa);
+        }
+        self.retired_directories.clearRetainingCapacity();
     }
 
     fn binding(self: *WindowState, name: []const u8) ?Binding {
@@ -1179,6 +1249,22 @@ pub const Window = struct {
         });
     }
 
+    /// Replace served content and navigate every connected client to it.
+    /// If navigation fails, the replacement remains installed.
+    pub fn setContent(
+        self: Window,
+        running: *const Running,
+        content: Content,
+    ) !usize {
+        if (running.stopped or !running.app.started)
+            return error.NotRunning;
+        if (!running.app.hasWindow(self.state)) return error.UnknownWindow;
+        try self.state.replaceContent(running.inner.io, content);
+        const target_url = try self.url(running, self.state.gpa);
+        defer self.state.gpa.free(target_url);
+        return self.navigate(running.inner.io, target_url);
+    }
+
     pub fn open(self: Window, io: std.Io, running: *const Running) !void {
         const page_url = try self.url(running, self.state.gpa);
         defer self.state.gpa.free(page_url);
@@ -1208,6 +1294,8 @@ pub const Window = struct {
     ) ![]u8 {
         if (running.stopped) return error.NotRunning;
         if (!running.app.hasWindow(self.state)) return error.UnknownWindow;
+        self.state.content_mutex.lockSharedUncancelable(running.inner.io);
+        defer self.state.content_mutex.unlockShared(running.inner.io);
         switch (self.state.content) {
             .external_url => |external| return gpa.dupe(u8, external),
             else => {},
@@ -1349,6 +1437,7 @@ pub const App = struct {
     options: Options,
     windows: std.ArrayList(*WindowState) = .empty,
     server: ?Linsang.Server = null,
+    server_io: ?std.Io = null,
     tls_auth: ?Linsang.tls.CertKeyPair = null,
     started: bool = false,
     closed: std.atomic.Value(bool) = .init(false),
@@ -1387,6 +1476,7 @@ pub const App = struct {
 
     pub fn deinit(self: *App) void {
         std.debug.assert(!self.started);
+        std.debug.assert(self.server_io == null);
         std.debug.assert(self.tls_auth == null);
         for (self.windows.items) |window| window.deinit();
         self.windows.deinit(self.gpa);
@@ -1488,6 +1578,8 @@ pub const App = struct {
             .user_data = self,
         });
         errdefer self.server = null;
+        self.server_io = io;
+        errdefer self.server_io = null;
         const inner = try self.server.?.start(io);
         self.started = true;
         return .{ .app = self, .inner = inner };
@@ -1515,30 +1607,13 @@ pub const App = struct {
     }
 
     fn openDirectories(self: *App, io: std.Io) !void {
-        for (self.windows.items) |window| switch (window.content) {
-            .directory => |*directory| {
-                std.debug.assert(directory.dir == null);
-                directory.dir = if (std.fs.path.isAbsolute(directory.path))
-                    try std.Io.Dir.openDirAbsolute(io, directory.path, .{
-                        .follow_symlinks = false,
-                    })
-                else
-                    try std.Io.Dir.cwd().openDir(io, directory.path, .{
-                        .follow_symlinks = false,
-                    });
-            },
-            else => {},
-        };
+        for (self.windows.items) |window|
+            try window.content.openDirectory(io);
     }
 
     fn closeDirectories(self: *App, io: std.Io) void {
-        for (self.windows.items) |window| switch (window.content) {
-            .directory => |*directory| if (directory.dir) |dir| {
-                dir.close(io);
-                directory.dir = null;
-            },
-            else => {},
-        };
+        for (self.windows.items) |window|
+            window.content.closeDirectory(io);
     }
 
     fn hasWindow(self: *const App, state: *WindowState) bool {
@@ -1584,10 +1659,13 @@ pub const Running = struct {
         for (self.app.windows.items) |window|
             window.cancelEvents(self.inner.io);
         self.app.closeDirectories(self.inner.io);
+        for (self.app.windows.items) |window|
+            window.releaseRetiredDirectories(self.inner.io);
         self.app.deinitTls();
         self.stopped = true;
         self.app.started = false;
         self.app.server = null;
+        self.app.server_io = null;
         std.debug.assert(
             self.app.unauthenticated_connections.load(.acquire) == 0,
         );
@@ -1744,6 +1822,9 @@ fn onRequest(
         return .respond;
     };
     const window = resolved.window;
+    const io = app.server_io orelse return failResponse(response);
+    window.content_mutex.lockSharedUncancelable(io);
+    defer window.content_mutex.unlockShared(io);
     if (std.mem.eql(u8, resolved.resource, "_webui_ws_connect")) {
         if (!originAllowed(app, window, request) or
             !cookieAllowed(app, window, request))
@@ -3324,6 +3405,118 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         navigation.header.command,
     );
     try std.testing.expectEqualStrings("/next", navigation.payload);
+
+    try std.testing.expectEqual(
+        @as(usize, 1),
+        try window.setContent(&running, .{ .html = "runtime page" }),
+    );
+    const html_reload = try protocol.decode(try readServerFrame(
+        client,
+        io,
+        &response_payload,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        html_reload.header.command,
+    );
+    try std.testing.expectEqualStrings(first_url, html_reload.payload);
+    {
+        var target: [capability_len + 2]u8 = undefined;
+        var response: [512]u8 = undefined;
+        _ = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/", .{
+                window.state.capability,
+            }),
+            "runtime page",
+            &response,
+        );
+    }
+
+    const missing_directory_path = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}/missing",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(missing_directory_path);
+    try std.testing.expectError(
+        error.FileNotFound,
+        window.setContent(&running, .{
+            .directory = missing_directory_path,
+        }),
+    );
+    {
+        var target: [capability_len + 2]u8 = undefined;
+        var response: [512]u8 = undefined;
+        _ = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/", .{
+                window.state.capability,
+            }),
+            "runtime page",
+            &response,
+        );
+    }
+
+    try std.testing.expectEqual(
+        @as(usize, 1),
+        try window.setContent(&running, .{ .directory = directory_path }),
+    );
+    const directory_reload = try protocol.decode(try readServerFrame(
+        client,
+        io,
+        &response_payload,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        directory_reload.header.command,
+    );
+    try std.testing.expectEqualStrings(first_url, directory_reload.payload);
+    {
+        var target: [capability_len + 2]u8 = undefined;
+        var response: [1024]u8 = undefined;
+        _ = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/", .{
+                window.state.capability,
+            }),
+            "directory page",
+            &response,
+        );
+    }
+
+    try std.testing.expectEqual(
+        @as(usize, 1),
+        try window.setContent(&running, .{ .custom = .{
+            .handler = integrationResourceHandler,
+        } }),
+    );
+    const custom_reload = try protocol.decode(try readServerFrame(
+        client,
+        io,
+        &response_payload,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        custom_reload.header.command,
+    );
+    try std.testing.expectEqualStrings(first_url, custom_reload.payload);
+    {
+        var target: [capability_len + 20]u8 = undefined;
+        var response: [512]u8 = undefined;
+        _ = try getTestPath(
+            running.inner.address,
+            io,
+            try std.fmt.bufPrint(&target, "/{s}/hello?name=runtime", .{
+                window.state.capability,
+            }),
+            "hello?name=runtime",
+            &response,
+        );
+    }
 
     try std.testing.expectError(
         error.InvalidFunctionName,

@@ -269,13 +269,13 @@ protocol input never panics.
 | Old API | New direction |
 |---|---|
 | `webui.newWindow()` | `app.createWindow(options)` |
-| `window.show(content)` | Set content at creation, then call `window.open()` |
+| `window.show(content)` | Set initial content and call `window.open()`; use `window.setContent()` while running. |
 | `window.bind()` / `binding()` | `window.bind(name, handler, user_data)` |
 | `Event.get*At()` | `Call.string/int/float/bool/bytes(index)` |
 | `Event.return*()` | `Call.reply*()` |
 | `window.run()` | `Window.eval()` |
 | `Event.runClient()` | `Call.client.eval()` |
-| `setRootFolder()` | `.content = .{ .directory = dir }` |
+| `setRootFolder()` | Initial `.directory` content or runtime `Window.setContent()`. |
 | Global `setConfig()` | `App.Options` or `Window.Options` |
 | `wait()` / `clean()` | `Running.wait()` / `App.deinit()` |
 | `malloc/free/memcpy/encode/decode` | Zig allocators and standard library |
@@ -295,7 +295,6 @@ implementations.
 
 | Upstream API | Current gap |
 |---|---|
-| `webui_show()`, `webui_set_root_folder()`, `webui_set_file_handler()`, `webui_set_file_handler_window()` | Content and resource handling can only be selected when creating a window; replacing them at runtime is not implemented. |
 | `webui_show_client()` | `Client` cannot replace the content of only one connected browser. |
 | `webui_is_shown()` | There is no window-level connected/shown query. |
 | `webui_set_config(folder_monitor)` | Directory change monitoring and automatic browser reload are not implemented. |
@@ -331,7 +330,7 @@ not implementation gaps:
 | Upstream API | Zig replacement |
 |---|---|
 | `webui_new_window()`, `webui_new_window_id()`, `webui_get_new_window_id()` | `App.createWindow()` and application-owned IDs. |
-| `webui_show()`, `webui_start_server()`, `webui_get_url()` | Initial `Content`, `App.start()`, `Window.open()`, and `Window.url()`. Runtime content replacement remains listed above. |
+| `webui_show()`, `webui_start_server()`, `webui_get_url()` | Initial `Content`, runtime `Window.setContent()`, `App.start()`, `Window.open()`, and `Window.url()`. |
 | `webui_wait()`, `webui_wait_async()` | `Running.wait()` used directly or through `std.Io` concurrency. |
 | `webui_close()`, `webui_destroy()`, `webui_exit()`, `webui_clean()` | `Window.close()`, `Running.stop()`, and `App.deinit()`. |
 | `webui_set_context()`, `webui_get_context()` | Binding and event-handler `user_data`. |
@@ -352,7 +351,7 @@ not implementation gaps:
 | `webui_set_public()` | `App.Options.public` permits non-loopback listening only with TLS; Origin and explicit connection and protocol limits are enforced. |
 | `webui_set_tls_certificate()` | `App.Options.tls` accepts caller-provided PEM certificate and private-key bytes. |
 | `webui_set_port()`, `webui_get_port()`, `webui_get_free_port()` | `App.Options.port`, including `0` for automatic selection, and the running window URL. |
-| `webui_set_root_folder()`, `webui_set_file_handler()`, `webui_set_file_handler_window()`, `webui_return_http()` | Initial `.directory` or `.custom` content and `Response`. Runtime replacement remains listed above. |
+| `webui_set_root_folder()`, `webui_set_file_handler()`, `webui_set_file_handler_window()`, `webui_return_http()` | Initial or runtime `.directory` and `.custom` content through `Content`, `Window.setContent()`, and `Response`. |
 | `webui_get_mime_type()` | Linsang resource handling. |
 | `webui_encode()`, `webui_decode()`, `webui_malloc()`, `webui_free()`, `webui_memcpy()` | Zig standard library and allocators. |
 | `webui_get_last_error_number()`, `webui_get_last_error_message()` | Zig error unions. |
@@ -390,7 +389,6 @@ connection waiting, and caller-provided logging.
 
 ### Dynamic content and client state
 
-- Allow window content and resource handlers to be replaced safely.
 - Add targeted `Client.show()` behavior.
 - Add a window connected/shown query.
 - Add an application default directory.
@@ -475,11 +473,15 @@ zig build -Dtarget=aarch64-macos
 
 1. **Linsang peer lifecycle:** The required primitive exists. zig-webui must
    pair `clone` and `deinit` and must not retain `*Connection`.
-2. **Strict bridge protocol lengths:** The Zig parser must treat WebSocket data
+2. **Linsang static-response lifecycle:** Replaced directory handles remain
+   open until shutdown so in-flight responses stay valid. Linsang
+   [issue #2](https://github.com/jinzhongjia/Linsang/issues/2) tracks a
+   completion callback for earlier release.
+3. **Strict bridge protocol lengths:** The Zig parser must treat WebSocket data
    as untrusted and must not copy C's NUL-scanning behavior.
-3. **Cross-platform browser behavior:** Guarantee URL opening first, then add
+4. **Cross-platform browser behavior:** Guarantee URL opening first, then add
    platform-specific app-window flags.
-4. **WebView is outside the core rewrite:** If required later, separately
+5. **WebView is outside the core rewrite:** If required later, separately
    decide whether system framework or C ABI linking is acceptable. It must not
    block the pure Zig browser version.
 
@@ -487,7 +489,6 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Allow runtime window content and resource handler replacement.
-2. Add targeted `Client.show()`.
-3. Add a window connected/shown query.
-4. Add an application default directory and window icons.
+1. Add targeted `Client.show()`.
+2. Add a window connected/shown query.
+3. Add an application default directory and window icons.

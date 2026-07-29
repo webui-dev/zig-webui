@@ -11,6 +11,8 @@ The current phase provides:
 - one `App`, multiple isolated windows, and automatic port selection;
 - embedded HTML, static directories, custom resources, external URLs, and a
   built-in JavaScript bridge;
+- runtime content and resource-handler replacement through
+  `Window.setContent()`;
 - explicit browser connection waiting and timeout through
   `Window.waitForConnection()`;
 - JavaScript calls to Zig bindings with return values;
@@ -108,6 +110,11 @@ Serve a directory by setting
 `.content = .{ .directory = "path/to/public" }`. The path is opened when the
 app starts and closed when it stops. Custom resources receive `webui.Request`
 and `webui.Response` directly.
+
+`Window.setContent(&running, content)` prepares and installs new content, then
+navigates every connected client to it and returns the number notified. An
+invalid replacement leaves the current content unchanged. If client
+notification fails, the prepared replacement remains installed.
 
 `Window.onEvent` installs one handler for browser lifecycle, click, and
 navigation events. `Event.data` contains the element ID for clicks, the target
