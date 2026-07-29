@@ -276,6 +276,7 @@ protocol input never panics.
 | `window.run()` | `Window.eval()` |
 | `Event.runClient()` | `Call.client.eval()` |
 | `setRootFolder()` | Initial `.directory` content or runtime `Window.setContent()`. |
+| `setDefaultRootFolder()` | `App.Options.default_directory` and an omitted window `content`. |
 | Global `setConfig()` | `App.Options` or `Window.Options` |
 | `wait()` / `clean()` | `Running.wait()` / `App.deinit()` |
 | `malloc/free/memcpy/encode/decode` | Zig allocators and standard library |
@@ -296,7 +297,6 @@ implementations.
 | Upstream API | Current gap |
 |---|---|
 | `webui_set_config(folder_monitor)` | Directory change monitoring and automatic browser reload are not implemented. |
-| `webui_set_default_root_folder()` | There is no application-wide default directory content setting. |
 | `webui_set_icon()`, `webui_set_icon_file()` | Window icon configuration is not implemented. |
 | `webui_open_url()` | The internal OS URL opener is not exposed as a general public API. |
 | `webui_get_best_browser()`, `webui_browser_exist()`, `webui_show_browser()`, `webui_set_browser_folder()` | Browser discovery, selection, and custom executable locations are not implemented. |
@@ -331,6 +331,7 @@ not implementation gaps:
 | `webui_show()`, `webui_start_server()`, `webui_get_url()` | Initial `Content`, runtime `Window.setContent()`, `App.start()`, `Window.open()`, and `Window.url()`. |
 | `webui_show_client()` | `Client.show()` replaces the window content and navigates only the selected client. |
 | `webui_is_shown()` | `Window.isShown()` reports whether the window has at least one connected browser client. |
+| `webui_set_default_root_folder()` | `App.Options.default_directory` supplies directory content to windows created without explicit content. |
 | `webui_wait()`, `webui_wait_async()` | `Running.wait()` used directly or through `std.Io` concurrency. |
 | `webui_close()`, `webui_destroy()`, `webui_exit()`, `webui_clean()` | `Window.close()`, `Running.stop()`, and `App.deinit()`. |
 | `webui_set_context()`, `webui_get_context()` | Binding and event-handler `user_data`. |
@@ -389,7 +390,6 @@ connection waiting, and caller-provided logging.
 
 ### Dynamic content and client state
 
-- Add an application default directory.
 - Add inline and file-backed window icons.
 
 This completes `webui_show()`, `webui_show_client()`, `webui_is_shown()`,
@@ -483,4 +483,4 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add an application default directory and window icons.
+1. Add inline and file-backed window icons.

@@ -11,6 +11,7 @@ The current phase provides:
 - one `App`, multiple isolated windows, and automatic port selection;
 - embedded HTML, static directories, custom resources, external URLs, and a
   built-in JavaScript bridge;
+- application-wide default static directories for windows without content;
 - runtime content and resource-handler replacement through
   `Window.setContent()`;
 - targeted runtime content replacement through `Client.show()`;
@@ -112,6 +113,10 @@ Serve a directory by setting
 `.content = .{ .directory = "path/to/public" }`. The path is opened when the
 app starts and closed when it stops. Custom resources receive `webui.Request`
 and `webui.Response` directly.
+
+Set `App.Options.default_directory` to let windows created without `.content`
+inherit one static directory. Explicit window content takes precedence. A
+window without either setting returns `error.MissingContent`.
 
 `Window.setContent(&running, content)` prepares and installs new content, then
 navigates every connected client to it and returns the number notified. An

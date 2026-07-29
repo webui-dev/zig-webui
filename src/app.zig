@@ -1501,13 +1501,14 @@ pub const App = struct {
         public: bool = false,
         tls: ?Tls = null,
         use_cookies: bool = false,
+        default_directory: ?[]const u8 = null,
         logger: ?Logger = null,
         logger_user_data: ?*anyopaque = null,
         limits: Limits = .{},
     };
 
     pub const WindowOptions = struct {
-        content: Content,
+        content: ?Content = null,
         /// One client by default; values above one explicitly enable
         /// bounded multi-client mode.
         max_clients: usize = 1,
@@ -1554,9 +1555,14 @@ pub const App = struct {
         {
             return error.InvalidPendingEventLimit;
         }
+        const selected_content: Content = options.content orelse
+            if (self.options.default_directory) |path|
+                .{ .directory = path }
+            else
+                return error.MissingContent;
         const state = try self.gpa.create(WindowState);
         errdefer self.gpa.destroy(state);
-        var content = try StoredContent.init(self.gpa, options.content);
+        var content = try StoredContent.init(self.gpa, selected_content);
         errdefer content.deinit(self.gpa);
         state.* = .{
             .gpa = self.gpa,
@@ -2321,6 +2327,13 @@ test "call accessors, window creation, and routes" {
 
     var app = App.init(gpa, .{});
     defer app.deinit();
+    try std.testing.expectError(error.MissingContent, app.createWindow(.{}));
+    var invalid_default_app = App.init(gpa, .{ .default_directory = "" });
+    defer invalid_default_app.deinit();
+    try std.testing.expectError(
+        error.InvalidDirectory,
+        invalid_default_app.createWindow(.{}),
+    );
     try std.testing.expectError(error.InvalidDirectory, app.createWindow(.{
         .content = .{ .directory = "" },
     }));
@@ -3044,16 +3057,14 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     );
     defer gpa.free(directory_path);
 
-    var app = App.init(gpa, .{});
+    var app = App.init(gpa, .{ .default_directory = directory_path });
     defer app.deinit();
+    const default_window = try app.createWindow(.{});
     const window = try app.createWindow(.{
         .content = .{ .html = "test page" },
     });
     const second_window = try app.createWindow(.{
         .content = .{ .html = "second page" },
-    });
-    const directory_window = try app.createWindow(.{
-        .content = .{ .directory = directory_path },
     });
     const custom_window = try app.createWindow(.{
         .content = .{ .custom = .{
@@ -3133,7 +3144,7 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
             running.inner.address,
             io,
             try std.fmt.bufPrint(&target, "/{s}/", .{
-                directory_window.state.capability,
+                default_window.state.capability,
             }),
             "directory page",
             &response,
@@ -3151,7 +3162,7 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
             running.inner.address,
             io,
             try std.fmt.bufPrint(&target, "/{s}/%2e%2e/secret.txt", .{
-                directory_window.state.capability,
+                default_window.state.capability,
             }),
             "\r\n\r\n",
             &response,
