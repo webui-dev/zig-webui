@@ -297,15 +297,13 @@ implementations.
 
 | Upstream API | Current gap |
 |---|---|
-| `webui_show_browser()`, `webui_set_browser_folder()` | Explicit browser selection and custom executable locations are not implemented. |
-| `webui_set_custom_parameters()` | Custom browser command-line arguments are not implemented. |
 | `webui_set_kiosk()`, `webui_focus()`, `webui_minimize()`, `webui_maximize()`, `webui_set_hide()` | Browser window mode and lifecycle controls are not implemented. |
 | `webui_set_resizable()`, `webui_set_size()`, `webui_set_minimum_size()`, `webui_set_position()`, `webui_set_center()` | Browser window geometry controls are not implemented. |
 | `webui_set_frameless()`, `webui_set_transparent()` | Frameless and transparent browser window modes are not implemented. |
 | `webui_set_high_contrast()`, `webui_is_high_contrast()` | High-contrast mode control and detection are not implemented. |
 | `webui_set_profile()`, `webui_delete_profile()`, `webui_delete_all_profiles()` | Managed browser profiles are not implemented. |
 | `webui_set_proxy()` | Browser proxy configuration is not implemented. |
-| `webui_get_parent_process_id()`, `webui_get_child_process_id()` | Browser process tracking is not implemented. |
+| `webui_get_parent_process_id()` | A portable parent-process numeric ID accessor is not implemented. |
 | `webui_set_runtime()` | Deno, Node.js, and Bun execution for served files is not implemented. |
 | `webui_show_wv()`, `webui_set_close_handler_wv()`, `webui_get_hwnd()`, `webui_win32_get_hwnd()` | Native WebView hosting and native window handles are outside the pure Zig browser core. |
 
@@ -331,6 +329,8 @@ not implementation gaps:
 | `webui_is_shown()` | `Window.isShown()` reports whether the window has at least one connected browser client. |
 | `webui_open_url()` | `openUrl()` safely passes a non-empty URL as one argument to the platform default opener. |
 | `webui_get_best_browser()`, `webui_browser_exist()` | `bestBrowser()` and `browserExists()` discover registered or executable browser candidates through the public `Browser` enum. |
+| `webui_show_browser()`, `webui_set_browser_folder()`, `webui_set_custom_parameters()` | `Window.openWithBrowser()` accepts a `BrowserLaunchOptions` value with an explicit browser, optional full executable path, and additional argv. |
+| `webui_get_child_process_id()` | `Window.openWithBrowser()` returns the retained direct child's `BrowserProcessId`; `Window.browserProcessId()` retrieves it later. |
 | `webui_set_default_root_folder()` | `App.Options.default_directory` supplies directory content to windows created without explicit content. |
 | `webui_set_config(folder_monitor)` | `App.Options.folder_monitor_interval` enables portable recursive directory polling and reloads the affected window's connected clients. |
 | `webui_set_icon()`, `webui_set_icon_file()` | `Window.setIcon()` copies inline data and MIME type; `Window.setIconFile()` loads a supported image file as the window favicon. |
@@ -396,19 +396,23 @@ This completes `webui_show()`, `webui_show_client()`, `webui_is_shown()`,
 the dynamic root and file-handler methods, `webui_set_default_root_folder()`,
 `webui_set_icon()`, and `webui_set_icon_file()`.
 
-### Managed browsers and window controls
+### Managed browser launch (complete)
 
-- Discover supported browsers and select the best or an explicit browser.
-- Support a custom browser executable directory and caller-provided argv.
-- Expose a general URL opener.
-- Launch and retain managed browser processes and expose their process IDs.
+Browser discovery, default URL opening, explicit browser selection, custom
+executable paths and argv, per-window direct child identifiers, replacement,
+and shutdown cleanup are implemented.
+
+This completes the browser discovery, selection, custom-parameter, and direct
+child tracking methods in the ledger.
+
+### Browser window controls
+
 - Implement kiosk, focus, minimize, maximize, hidden, resizable, geometry,
   frameless, transparent, and high-contrast controls where the selected
   browser and platform support them.
 - Implement managed profiles and proxy configuration.
 
-This completes the browser selection, browser process, window control,
-profile, and proxy methods in the ledger.
+This completes the window control, profile, and proxy methods in the ledger.
 
 ### File monitoring (complete)
 
@@ -488,6 +492,6 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add explicit browser selection, custom executable locations, and custom
-   browser arguments.
-2. Launch and retain selected browser processes and expose their process IDs.
+1. Add typed browser launch controls for kiosk, hidden, high-contrast,
+   resizable, size, and position behavior.
+2. Add managed browser profiles and proxy configuration.

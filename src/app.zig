@@ -63,6 +63,8 @@ pub const EventHandler = *const fn (
 ) anyerror!void;
 pub const Request = Linsang.Request;
 pub const Response = Linsang.Response;
+pub const BrowserLaunchOptions = browser.LaunchOptions;
+pub const BrowserProcessId = browser.ProcessId;
 
 pub const EventKind = enum {
     connected,
@@ -1546,6 +1548,41 @@ pub const Window = struct {
         try browser.openUrl(self.state.gpa, io, page_url);
     }
 
+    /// Launch and retain one explicitly selected browser process.
+    pub fn openWithBrowser(
+        self: Window,
+        running: *Running,
+        options: BrowserLaunchOptions,
+    ) !BrowserProcessId {
+        if (running.stopped or !running.app.started)
+            return error.NotRunning;
+        if (!running.app.hasWindow(self.state)) return error.UnknownWindow;
+        const page_url = try self.url(running, self.state.gpa);
+        defer self.state.gpa.free(page_url);
+        const child = try browser.launch(
+            self.state.gpa,
+            running.inner.io,
+            page_url,
+            options,
+        );
+        return running.app.manageBrowser(
+            running.inner.io,
+            self.state,
+            child,
+        );
+    }
+
+    /// Return the platform-native identifier of the retained browser child.
+    pub fn browserProcessId(
+        self: Window,
+        running: *const Running,
+    ) !?BrowserProcessId {
+        if (running.stopped or !running.app.started)
+            return error.NotRunning;
+        if (!running.app.hasWindow(self.state)) return error.UnknownWindow;
+        return running.app.browserId(running.inner.io, self.state);
+    }
+
     /// Return whether at least one browser client is connected.
     pub fn isShown(self: Window, io: std.Io) bool {
         return self.state.hasClients(io);
@@ -1712,6 +1749,13 @@ pub const Window = struct {
     }
 };
 
+const ManagedBrowser = struct {
+    // ponytail: exited launchers are reaped on replacement or stop; add wait
+    // tasks only if one bounded child per window becomes insufficient.
+    window: *WindowState,
+    child: std.process.Child,
+};
+
 pub const App = struct {
     gpa: std.mem.Allocator,
     options: Options,
@@ -1720,6 +1764,8 @@ pub const App = struct {
     server_io: ?std.Io = null,
     tls_auth: ?Linsang.tls.CertKeyPair = null,
     monitor_tasks: std.Io.Group = .init,
+    managed_browsers: std.ArrayList(ManagedBrowser) = .empty,
+    browser_mutex: std.Io.Mutex = .init,
     started: bool = false,
     closed: std.atomic.Value(bool) = .init(false),
     unauthenticated_connections: std.atomic.Value(usize) = .init(0),
@@ -1764,6 +1810,8 @@ pub const App = struct {
         std.debug.assert(self.server_io == null);
         std.debug.assert(self.tls_auth == null);
         std.debug.assert(self.monitor_tasks.token.load(.acquire) == null);
+        std.debug.assert(self.managed_browsers.items.len == 0);
+        self.managed_browsers.deinit(self.gpa);
         for (self.windows.items) |window| window.deinit();
         self.windows.deinit(self.gpa);
         self.* = undefined;
@@ -1917,6 +1965,51 @@ pub const App = struct {
         for (self.windows.items) |window| window.content.closeDirectory();
     }
 
+    fn manageBrowser(
+        self: *App,
+        io: std.Io,
+        window: *WindowState,
+        child: std.process.Child,
+    ) !BrowserProcessId {
+        var owned = child;
+        errdefer owned.kill(io);
+        const id = owned.id.?;
+
+        self.browser_mutex.lockUncancelable(io);
+        defer self.browser_mutex.unlock(io);
+        for (self.managed_browsers.items) |*managed| {
+            if (managed.window != window) continue;
+            managed.child.kill(io);
+            managed.child = owned;
+            return id;
+        }
+        try self.managed_browsers.append(self.gpa, .{
+            .window = window,
+            .child = owned,
+        });
+        return id;
+    }
+
+    fn browserId(
+        self: *App,
+        io: std.Io,
+        window: *WindowState,
+    ) ?BrowserProcessId {
+        self.browser_mutex.lockUncancelable(io);
+        defer self.browser_mutex.unlock(io);
+        for (self.managed_browsers.items) |*managed|
+            if (managed.window == window) return managed.child.id;
+        return null;
+    }
+
+    fn stopBrowsers(self: *App, io: std.Io) void {
+        self.browser_mutex.lockUncancelable(io);
+        defer self.browser_mutex.unlock(io);
+        for (self.managed_browsers.items) |*managed|
+            managed.child.kill(io);
+        self.managed_browsers.clearRetainingCapacity();
+    }
+
     fn hasWindow(self: *const App, state: *WindowState) bool {
         // ponytail: window counts are tiny; use a map if hundreds become normal.
         for (self.windows.items) |window|
@@ -1960,6 +2053,7 @@ pub const Running = struct {
         self.app.monitor_tasks.cancel(self.inner.io);
         for (self.app.windows.items) |window|
             window.cancelEvents(self.inner.io);
+        self.app.stopBrowsers(self.inner.io);
         self.app.closeDirectories();
         self.app.deinitTls();
         self.stopped = true;
@@ -3159,6 +3253,141 @@ fn authenticateTestClient(
         response_buffer,
     ));
     return std.mem.eql(u8, response.payload, &.{1});
+}
+
+fn readTestFileEventually(
+    dir: std.Io.Dir,
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    path: []const u8,
+) ![]u8 {
+    for (0..100) |_| {
+        const data = dir.readFileAlloc(
+            io,
+            path,
+            gpa,
+            .limited(4096),
+        ) catch |err| {
+            if (err != error.FileNotFound) return err;
+            try std.Io.sleep(io, .fromMilliseconds(1), .awake);
+            continue;
+        };
+        return data;
+    }
+    return error.Timeout;
+}
+
+test "selected browser launch owns argv process and shutdown" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    const gpa = std.testing.allocator;
+    var threaded = std.Io.Threaded.init(gpa, .{ .async_limit = .unlimited });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "fake-browser",
+        .data =
+        \\#!/bin/sh
+        \\output=$1
+        \\shift
+        \\printf '%s\n' "$@" > "$output"
+        \\exec sleep 30
+        ,
+        .flags = .{ .permissions = .executable_file },
+    });
+    const executable = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}/fake-browser",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(executable);
+    const first_capture = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}/first-argv",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(first_capture);
+    const second_capture = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}/second-argv",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(second_capture);
+
+    var app = App.init(gpa, .{});
+    defer app.deinit();
+    const window = try app.createWindow(.{
+        .content = .{ .html = "managed browser" },
+    });
+    var running = try app.start(io);
+    defer running.stop() catch {};
+    try std.testing.expectError(
+        error.InvalidBrowserExecutable,
+        window.openWithBrowser(&running, .{
+            .browser = .firefox,
+            .executable = "",
+        }),
+    );
+    const page_url = try window.url(&running, gpa);
+    defer gpa.free(page_url);
+
+    const first_id = try window.openWithBrowser(&running, .{
+        .browser = .firefox,
+        .executable = executable,
+        .arguments = &.{ first_capture, "--private-window" },
+    });
+    try std.testing.expectEqual(
+        first_id,
+        (try window.browserProcessId(&running)).?,
+    );
+    const first_argv = try readTestFileEventually(
+        tmp.dir,
+        io,
+        gpa,
+        "first-argv",
+    );
+    defer gpa.free(first_argv);
+    const expected_first = try std.fmt.allocPrint(
+        gpa,
+        "--private-window\n-new-window\n{s}\n",
+        .{page_url},
+    );
+    defer gpa.free(expected_first);
+    try std.testing.expectEqualStrings(expected_first, first_argv);
+
+    const second_id = try window.openWithBrowser(&running, .{
+        .browser = .chromium,
+        .executable = executable,
+        .arguments = &.{ second_capture, "--guest" },
+    });
+    try std.testing.expectEqual(
+        second_id,
+        (try window.browserProcessId(&running)).?,
+    );
+    try std.testing.expectEqual(@as(usize, 1), app.managed_browsers.items.len);
+    const second_argv = try readTestFileEventually(
+        tmp.dir,
+        io,
+        gpa,
+        "second-argv",
+    );
+    defer gpa.free(second_argv);
+    const expected_second = try std.fmt.allocPrint(
+        gpa,
+        "--guest\n--app={s}\n",
+        .{page_url},
+    );
+    defer gpa.free(expected_second);
+    try std.testing.expectEqualStrings(expected_second, second_argv);
+
+    try running.stop();
+    try std.testing.expectEqual(@as(usize, 0), app.managed_browsers.items.len);
+    try std.testing.expectError(
+        error.NotRunning,
+        window.browserProcessId(&running),
+    );
 }
 
 test "directory monitor reloads changed window only" {

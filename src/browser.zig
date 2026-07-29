@@ -15,6 +15,17 @@ pub const Browser = enum {
     yandex,
 };
 
+pub const LaunchOptions = struct {
+    browser: Browser,
+    /// Full path or PATH-resolvable executable name. Null uses discovery.
+    executable: ?[]const u8 = null,
+    /// Additional arguments inserted before the browser URL argument.
+    arguments: []const []const u8 = &.{},
+};
+
+/// PID on POSIX and a process handle on Windows.
+pub const ProcessId = std.process.Child.Id;
+
 /// Open a non-empty URL with the operating system's default handler.
 pub fn openUrl(
     gpa: std.mem.Allocator,
@@ -37,19 +48,10 @@ pub fn browserExists(
     io: std.Io,
     selected: Browser,
 ) !bool {
-    return switch (builtin.os.tag) {
-        .windows => windowsBrowserExists(gpa, io, selected),
-        .macos => commandSucceeds(gpa, io, &.{
-            "open",
-            "-R",
-            "-a",
-            macosApplication(selected),
-        }),
-        else => for (linuxExecutables(selected)) |executable| {
-            if (try commandSucceeds(gpa, io, &.{ executable, "--version" }))
-                break true;
-        } else false,
-    };
+    const executable = try resolveExecutable(gpa, io, selected) orelse
+        return false;
+    gpa.free(executable);
+    return true;
 }
 
 /// Return the first available browser in the platform preference order.
@@ -60,6 +62,50 @@ pub fn bestBrowser(
     for (preferredBrowsers()) |selected|
         if (try browserExists(gpa, io, selected)) return selected;
     return null;
+}
+
+pub fn launch(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    url: []const u8,
+    options: LaunchOptions,
+) !std.process.Child {
+    if (url.len == 0) return error.InvalidUrl;
+    if (options.executable) |executable|
+        if (executable.len == 0) return error.InvalidBrowserExecutable;
+
+    const discovered = if (options.executable == null)
+        try resolveExecutable(gpa, io, options.browser) orelse
+            return error.BrowserNotFound
+    else
+        null;
+    defer if (discovered) |executable| gpa.free(executable);
+    const executable = options.executable orelse discovered.?;
+
+    var argv: std.ArrayList([]const u8) = .empty;
+    defer argv.deinit(gpa);
+    try argv.append(gpa, executable);
+    try argv.appendSlice(gpa, options.arguments);
+    const app_url = switch (options.browser) {
+        .firefox, .safari => null,
+        else => try std.fmt.allocPrint(gpa, "--app={s}", .{url}),
+    };
+    defer if (app_url) |argument| gpa.free(argument);
+    switch (options.browser) {
+        .firefox => {
+            try argv.append(gpa, "-new-window");
+            try argv.append(gpa, url);
+        },
+        .safari => try argv.append(gpa, url),
+        else => try argv.append(gpa, app_url.?),
+    }
+
+    return std.process.spawn(io, .{
+        .argv = argv.items,
+        .stdin = .ignore,
+        .stdout = .ignore,
+        .stderr = .ignore,
+    });
 }
 
 fn commandSucceeds(
@@ -81,17 +127,31 @@ fn commandSucceeds(
     };
 }
 
-fn windowsBrowserExists(
+fn resolveExecutable(
     gpa: std.mem.Allocator,
     io: std.Io,
     selected: Browser,
-) !bool {
+) !?[]u8 {
+    return switch (builtin.os.tag) {
+        .windows => resolveWindowsExecutable(gpa, io, selected),
+        .macos => resolveMacosExecutable(gpa, io, selected),
+        else => for (linuxExecutables(selected)) |executable| {
+            if (try commandSucceeds(gpa, io, &.{ executable, "--version" }))
+                break try gpa.dupe(u8, executable);
+        } else null,
+    };
+}
+
+fn resolveWindowsExecutable(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    selected: Browser,
+) !?[]u8 {
     const executable = windowsExecutable(selected);
-    if (try commandSucceeds(gpa, io, &.{ "where.exe", executable }))
-        return true;
+    if (try commandValue(gpa, io, &.{ "where.exe", executable }, null)) |path| return path;
     // ponytail: Chrome and Chromium share chrome.exe on Windows; inspect
     // installation metadata if standalone Chromium detection becomes needed.
-    if (selected == .chromium) return false;
+    if (selected == .chromium) return null;
 
     var key_buffer: [160]u8 = undefined;
     for ([_][]const u8{ "HKCU", "HKLM" }) |root| {
@@ -101,14 +161,86 @@ fn windowsBrowserExists(
                 "App Paths\\{s}",
             .{ root, executable },
         );
-        if (try commandSucceeds(gpa, io, &.{
+        if (try commandValue(gpa, io, &.{
             "reg.exe",
             "query",
             key,
             "/ve",
-        })) return true;
+        }, "REG_SZ")) |path| return path;
     }
-    return false;
+    return null;
+}
+
+fn resolveMacosExecutable(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    selected: Browser,
+) !?[]u8 {
+    for ([_][]const u8{ "/Applications", "/System/Applications" }) |root| {
+        const path = try std.fmt.allocPrint(
+            gpa,
+            "{s}/{s}.app/Contents/MacOS/{s}",
+            .{
+                root,
+                macosApplication(selected),
+                macosExecutable(selected),
+            },
+        );
+        std.Io.Dir.accessAbsolute(io, path, .{ .execute = true }) catch |err| {
+            gpa.free(path);
+            switch (err) {
+                error.FileNotFound,
+                error.NotDir,
+                error.AccessDenied,
+                error.PermissionDenied,
+                => continue,
+                else => return err,
+            }
+        };
+        return path;
+    }
+    return null;
+}
+
+fn commandValue(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    argv: []const []const u8,
+    marker: ?[]const u8,
+) !?[]u8 {
+    const result = std.process.run(gpa, io, .{
+        .argv = argv,
+        .stdout_limit = .limited(64 << 10),
+        .stderr_limit = .limited(64 << 10),
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.AccessDenied, error.InvalidExe => return null,
+        else => return err,
+    };
+    defer gpa.free(result.stdout);
+    defer gpa.free(result.stderr);
+    switch (result.term) {
+        .exited => |code| if (code != 0) return null,
+        else => return null,
+    }
+    const value = parseCommandValue(result.stdout, marker) orelse return null;
+    return gpa.dupe(u8, value);
+}
+
+fn parseCommandValue(
+    output: []const u8,
+    marker: ?[]const u8,
+) ?[]const u8 {
+    const value = if (marker) |needle| blk: {
+        const start = std.mem.indexOf(u8, output, needle) orelse
+            return null;
+        break :blk output[start + needle.len ..];
+    } else blk: {
+        var lines = std.mem.tokenizeAny(u8, output, "\r\n");
+        break :blk lines.next() orelse return null;
+    };
+    const trimmed = std.mem.trim(u8, value, " \t\r\n\"");
+    if (trimmed.len == 0) return null;
+    return trimmed;
 }
 
 fn windowsExecutable(selected: Browser) []const u8 {
@@ -138,6 +270,13 @@ fn macosApplication(selected: Browser) []const u8 {
         .vivaldi => "Vivaldi",
         .epic => "Epic",
         .yandex => "Yandex",
+    };
+}
+
+fn macosExecutable(selected: Browser) []const u8 {
+    return switch (selected) {
+        .firefox => "firefox",
+        else => macosApplication(selected),
     };
 }
 
@@ -208,9 +347,21 @@ test "browser candidates and preference order cover every browser" {
         "Google Chrome",
         macosApplication(.chrome),
     );
+    try std.testing.expectEqualStrings("firefox", macosExecutable(.firefox));
     try std.testing.expectEqualStrings(
         "google-chrome",
         linuxExecutables(.chrome)[0],
+    );
+    try std.testing.expectEqualStrings(
+        "C:\\Browser\\browser.exe",
+        parseCommandValue(
+            "key\r\n  (Default)  REG_SZ  C:\\Browser\\browser.exe\r\n",
+            "REG_SZ",
+        ).?,
+    );
+    try std.testing.expectEqualStrings(
+        "/usr/bin/browser",
+        parseCommandValue("/usr/bin/browser\r\n", null).?,
     );
 
     var seen: std.EnumSet(Browser) = .initEmpty();
