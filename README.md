@@ -12,6 +12,7 @@ The current phase provides:
 - embedded HTML, static directories, custom resources, external URLs, and a
   built-in JavaScript bridge;
 - application-wide default static directories for windows without content;
+- optional recursive directory monitoring with per-window browser reloads;
 - inline and file-backed per-window favicons;
 - runtime content and resource-handler replacement through
   `Window.setContent()`;
@@ -118,6 +119,11 @@ and `webui.Response` directly.
 Set `App.Options.default_directory` to let windows created without `.content`
 inherit one static directory. Explicit window content takes precedence. A
 window without either setting returns `error.MissingContent`.
+
+Set `App.Options.folder_monitor_interval` to a positive `std.Io.Duration` to
+recursively poll active directory content. A changed tree sends
+`location.reload();` to that window's connected clients. Monitoring is
+disabled by default and stops with `Running.stop()`.
 
 Use `Window.setIcon(io, data, mime_type)` for in-memory favicon data or
 `Window.setIconFile(io, path)` for SVG, PNG, ICO, JPEG, GIF, WebP, or AVIF

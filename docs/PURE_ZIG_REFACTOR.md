@@ -297,7 +297,6 @@ implementations.
 
 | Upstream API | Current gap |
 |---|---|
-| `webui_set_config(folder_monitor)` | Directory change monitoring and automatic browser reload are not implemented. |
 | `webui_open_url()` | The internal OS URL opener is not exposed as a general public API. |
 | `webui_get_best_browser()`, `webui_browser_exist()`, `webui_show_browser()`, `webui_set_browser_folder()` | Browser discovery, selection, and custom executable locations are not implemented. |
 | `webui_set_custom_parameters()` | Custom browser command-line arguments are not implemented. |
@@ -332,6 +331,7 @@ not implementation gaps:
 | `webui_show_client()` | `Client.show()` replaces the window content and navigates only the selected client. |
 | `webui_is_shown()` | `Window.isShown()` reports whether the window has at least one connected browser client. |
 | `webui_set_default_root_folder()` | `App.Options.default_directory` supplies directory content to windows created without explicit content. |
+| `webui_set_config(folder_monitor)` | `App.Options.folder_monitor_interval` enables portable recursive directory polling and reloads the affected window's connected clients. |
 | `webui_set_icon()`, `webui_set_icon_file()` | `Window.setIcon()` copies inline data and MIME type; `Window.setIconFile()` loads a supported image file as the window favicon. |
 | `webui_wait()`, `webui_wait_async()` | `Running.wait()` used directly or through `std.Io` concurrency. |
 | `webui_close()`, `webui_destroy()`, `webui_exit()`, `webui_clean()` | `Window.close()`, `Running.stop()`, and `App.deinit()`. |
@@ -409,15 +409,20 @@ the dynamic root and file-handler methods, `webui_set_default_root_folder()`,
 This completes the browser selection, browser process, window control,
 profile, and proxy methods in the ledger.
 
-### File monitoring and server-side runtimes
+### File monitoring (complete)
 
-- Monitor directory content and reload connected clients on changes.
+Portable recursive directory polling reloads only the clients of a changed
+directory window and follows runtime content replacements.
+
+This completes `webui_set_config(folder_monitor)`.
+
+### Server-side runtimes
+
 - Run served JavaScript and TypeScript through explicitly selected Deno,
   Node.js, or Bun executables.
 - Keep runtime execution disabled by default and pass commands as argv.
 
-This completes `webui_set_config(folder_monitor)` and
-`webui_set_runtime()`.
+This completes `webui_set_runtime()`.
 
 ### Native WebViews
 
@@ -482,4 +487,6 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add optional directory change monitoring and browser reload.
+1. Expose a general OS URL opener and browser discovery queries.
+2. Add explicit browser selection, custom executable locations, and custom
+   browser arguments.

@@ -12,6 +12,7 @@ const capability_len = 32;
 const cookie_len = 32;
 const cookie_name = "webui_auth";
 const favicon_link = "<link rel=\"icon\" href=\"favicon.ico\">";
+const directory_reload_script = "location.reload();";
 
 pub const Tls = struct {
     certificate_pem: []const u8,
@@ -256,6 +257,18 @@ const ConnectedClient = struct {
     peer: Linsang.WebSocketPeer,
 };
 
+const DirectorySnapshot = struct {
+    xor: u64 = 0,
+    sum: u64 = 0,
+    count: usize = 0,
+
+    fn add(self: *DirectorySnapshot, value: u64) void {
+        self.xor ^= value;
+        self.sum +%= value;
+        self.count +%= 1;
+    }
+};
+
 const SelectedClient = struct {
     id: u64,
     peer: Linsang.WebSocketPeer,
@@ -302,12 +315,47 @@ const DirectoryContent = struct {
         self.dir = if (std.fs.path.isAbsolute(self.path))
             try std.Io.Dir.openDirAbsolute(io, self.path, .{
                 .follow_symlinks = false,
+                .iterate = true,
             })
         else
             try std.Io.Dir.cwd().openDir(io, self.path, .{
                 .follow_symlinks = false,
+                .iterate = true,
             });
         self.io = io;
+    }
+
+    fn snapshot(self: *DirectoryContent, io: std.Io) !DirectorySnapshot {
+        const dir = self.dir orelse return error.DirectoryNotOpen;
+        var walker = try dir.walk(self.gpa);
+        defer walker.deinit();
+        var result: DirectorySnapshot = .{};
+        while (true) {
+            const entry = walker.next(io) catch |err| {
+                if (err == error.OutOfMemory) return err;
+                if (err == error.Canceled) return err;
+                result.add(std.hash.Wyhash.hash(0, @errorName(err)));
+                continue;
+            } orelse break;
+            var hash = std.hash.Wyhash.init(0);
+            hash.update(entry.path);
+            const kind: u8 = @intFromEnum(entry.kind);
+            hash.update(std.mem.asBytes(&kind));
+            const stat = entry.dir.statFile(io, entry.basename, .{
+                .follow_symlinks = false,
+            }) catch |err| {
+                if (err == error.Canceled) return err;
+                hash.update(@errorName(err));
+                result.add(hash.final());
+                continue;
+            };
+            hash.update(std.mem.asBytes(&stat.inode));
+            hash.update(std.mem.asBytes(&stat.size));
+            hash.update(std.mem.asBytes(&stat.mtime.nanoseconds));
+            hash.update(std.mem.asBytes(&stat.ctime.nanoseconds));
+            result.add(hash.final());
+        }
+        return result;
     }
 
     fn close(self: *DirectoryContent) void {
@@ -403,6 +451,7 @@ const StoredIcon = struct {
 const WindowState = struct {
     gpa: std.mem.Allocator,
     content: StoredContent,
+    content_revision: u64 = 0,
     icon: ?StoredIcon = null,
     content_mutex: std.Io.RwLock = .init,
     limits: Limits,
@@ -458,7 +507,36 @@ const WindowState = struct {
 
         var previous = self.content;
         self.content = replacement;
+        self.content_revision +%= 1;
         previous.deinit(self.gpa);
+    }
+
+    fn monitoredDirectory(
+        self: *WindowState,
+        io: std.Io,
+    ) ?struct { directory: *DirectoryContent, revision: u64 } {
+        self.content_mutex.lockSharedUncancelable(io);
+        defer self.content_mutex.unlockShared(io);
+        return switch (self.content) {
+            .directory => |directory| blk: {
+                directory.retain();
+                break :blk .{
+                    .directory = directory,
+                    .revision = self.content_revision,
+                };
+            },
+            else => null,
+        };
+    }
+
+    fn hasContentRevision(
+        self: *WindowState,
+        io: std.Io,
+        revision: u64,
+    ) bool {
+        self.content_mutex.lockSharedUncancelable(io);
+        defer self.content_mutex.unlockShared(io);
+        return self.content_revision == revision;
     }
 
     fn replaceIcon(
@@ -1319,6 +1397,52 @@ fn evalBroadcastClient(
     };
 }
 
+fn monitorDirectory(
+    state: *WindowState,
+    io: std.Io,
+    interval: std.Io.Duration,
+) std.Io.Cancelable!void {
+    // ponytail: polling walks each active tree; use native watchers only if
+    // large directory trees make that cost measurable.
+    var revision: ?u64 = null;
+    var previous: ?DirectorySnapshot = null;
+    while (true) {
+        if (state.monitoredDirectory(io)) |selected| {
+            const snapshot = selected.directory.snapshot(io) catch |err| {
+                selected.directory.release();
+                if (err == error.Canceled) return error.Canceled;
+                state.log(.warn, "Directory monitor scan failed: {}", .{err});
+                try std.Io.sleep(io, interval, .awake);
+                continue;
+            };
+            selected.directory.release();
+            if (!state.hasContentRevision(io, selected.revision)) {
+                revision = null;
+                previous = null;
+            } else if (revision == null or revision.? != selected.revision) {
+                revision = selected.revision;
+                previous = snapshot;
+            } else if (!std.meta.eql(previous.?, snapshot)) {
+                _ = state.broadcast(
+                    io,
+                    .js_quick,
+                    directory_reload_script,
+                ) catch |err| {
+                    if (err == error.Canceled) return error.Canceled;
+                    state.log(.warn, "Directory monitor reload failed: {}", .{err});
+                    try std.Io.sleep(io, interval, .awake);
+                    continue;
+                };
+                previous = snapshot;
+            }
+        } else {
+            revision = null;
+            previous = null;
+        }
+        try std.Io.sleep(io, interval, .awake);
+    }
+}
+
 pub const Window = struct {
     state: *WindowState,
 
@@ -1595,6 +1719,7 @@ pub const App = struct {
     server: ?Linsang.Server = null,
     server_io: ?std.Io = null,
     tls_auth: ?Linsang.tls.CertKeyPair = null,
+    monitor_tasks: std.Io.Group = .init,
     started: bool = false,
     closed: std.atomic.Value(bool) = .init(false),
     unauthenticated_connections: std.atomic.Value(usize) = .init(0),
@@ -1606,6 +1731,9 @@ pub const App = struct {
         tls: ?Tls = null,
         use_cookies: bool = false,
         default_directory: ?[]const u8 = null,
+        /// Null disables monitoring. A positive duration recursively polls
+        /// directory content and reloads connected clients after changes.
+        folder_monitor_interval: ?std.Io.Duration = null,
         logger: ?Logger = null,
         logger_user_data: ?*anyopaque = null,
         limits: Limits = .{},
@@ -1635,6 +1763,7 @@ pub const App = struct {
         std.debug.assert(!self.started);
         std.debug.assert(self.server_io == null);
         std.debug.assert(self.tls_auth == null);
+        std.debug.assert(self.monitor_tasks.token.load(.acquire) == null);
         for (self.windows.items) |window| window.deinit();
         self.windows.deinit(self.gpa);
         self.* = undefined;
@@ -1744,11 +1873,22 @@ pub const App = struct {
         errdefer self.server_io = null;
         const inner = try self.server.?.start(io);
         self.started = true;
+        if (self.options.folder_monitor_interval) |interval| {
+            for (self.windows.items) |window|
+                self.monitor_tasks.async(io, monitorDirectory, .{
+                    window,
+                    io,
+                    interval,
+                });
+        }
         return .{ .app = self, .inner = inner };
     }
 
     fn validateNetworkOptions(self: *const App) !void {
         try self.options.limits.validate();
+        if (self.options.folder_monitor_interval) |interval|
+            if (interval.nanoseconds <= 0)
+                return error.InvalidFolderMonitorInterval;
         const address = std.Io.net.IpAddress.parse(
             self.options.address,
             self.options.port,
@@ -1817,6 +1957,7 @@ pub const Running = struct {
     pub fn stop(self: *Running) !void {
         if (self.stopped) return;
         try self.inner.stop();
+        self.app.monitor_tasks.cancel(self.inner.io);
         for (self.app.windows.items) |window|
             window.cancelEvents(self.inner.io);
         self.app.closeDirectories();
@@ -2371,6 +2512,15 @@ test "network options, origins, and protocol limits" {
         private_app.validateNetworkOptions(),
     );
 
+    var invalid_monitor_app = App.init(gpa, .{
+        .folder_monitor_interval = .zero,
+    });
+    defer invalid_monitor_app.deinit();
+    try std.testing.expectError(
+        error.InvalidFolderMonitorInterval,
+        invalid_monitor_app.validateNetworkOptions(),
+    );
+
     var insecure_public_app = App.init(gpa, .{
         .address = "0.0.0.0",
         .public = true,
@@ -2415,6 +2565,54 @@ test "network options, origins, and protocol limits" {
         error.MissingEndMarker,
         invalid_tls_app.start(std.testing.io),
     );
+}
+
+test "directory snapshots track recursive changes" {
+    const gpa = std.testing.allocator;
+    var threaded = std.Io.Threaded.init(gpa, .{ .async_limit = .unlimited });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "public/nested");
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "public/index.html",
+        .data = "initial",
+    });
+    const directory_path = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}/public",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(directory_path);
+
+    const directory = try DirectoryContent.init(gpa, directory_path);
+    defer directory.release();
+    try directory.open(io);
+
+    const initial = try directory.snapshot(io);
+    try std.testing.expectEqual(initial, try directory.snapshot(io));
+
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "public/index.html",
+        .data = "updated content",
+    });
+    const updated = try directory.snapshot(io);
+    try std.testing.expect(!std.meta.eql(initial, updated));
+
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "public/nested/new.txt",
+        .data = "nested",
+    });
+    const added = try directory.snapshot(io);
+    try std.testing.expect(!std.meta.eql(updated, added));
+
+    try tmp.dir.deleteFile(io, "public/nested/new.txt");
+    try std.testing.expect(!std.meta.eql(
+        added,
+        try directory.snapshot(io),
+    ));
 }
 
 test "call accessors, window creation, and routes" {
@@ -2961,6 +3159,163 @@ fn authenticateTestClient(
         response_buffer,
     ));
     return std.mem.eql(u8, response.payload, &.{1});
+}
+
+test "directory monitor reloads changed window only" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    const gpa = std.testing.allocator;
+    var threaded = std.Io.Threaded.init(gpa, .{ .async_limit = .unlimited });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "first");
+    try tmp.dir.createDirPath(io, "second");
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "first/index.html",
+        .data = "first",
+    });
+    try tmp.dir.writeFile(io, .{
+        .sub_path = "second/index.html",
+        .data = "second",
+    });
+    const first_path = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}/first",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(first_path);
+    const second_path = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}/second",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(second_path);
+
+    var app = App.init(gpa, .{
+        .folder_monitor_interval = .fromMilliseconds(5),
+    });
+    defer app.deinit();
+    const first_window = try app.createWindow(.{
+        .content = .{ .directory = first_path },
+    });
+    const second_window = try app.createWindow(.{
+        .content = .{ .directory = second_path },
+    });
+    var running = try app.start(io);
+    defer running.stop() catch {};
+
+    const first_stream = try connectTestWebSocket(
+        running.inner.address,
+        io,
+        &first_window.state.capability,
+    );
+    defer first_stream.close(io);
+    const second_stream = try connectTestWebSocket(
+        running.inner.address,
+        io,
+        &second_window.state.capability,
+    );
+    defer second_stream.close(io);
+    var response_buffer: [125]u8 = undefined;
+    try std.testing.expect(try authenticateTestClient(
+        first_stream,
+        io,
+        gpa,
+        first_window.state.token,
+        &first_window.state.capability,
+        &response_buffer,
+    ));
+    try std.testing.expect(try authenticateTestClient(
+        second_stream,
+        io,
+        gpa,
+        second_window.state.token,
+        &second_window.state.capability,
+        &response_buffer,
+    ));
+
+    try std.Io.sleep(io, .fromMilliseconds(30), .awake);
+    const stable_script = "globalThis.monitorStable = true";
+    try std.testing.expectEqual(
+        @as(usize, 1),
+        try first_window.run(io, stable_script),
+    );
+    var packet = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &response_buffer,
+    ));
+    try std.testing.expectEqual(protocol.Command.js_quick, packet.header.command);
+    try std.testing.expectEqualStrings(stable_script, packet.payload);
+
+    try tmp.dir.createDirPath(io, "first/trigger");
+    packet = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &response_buffer,
+    ));
+    try std.testing.expectEqual(protocol.Command.js_quick, packet.header.command);
+    try std.testing.expectEqualStrings(directory_reload_script, packet.payload);
+
+    const isolated_script = "globalThis.monitorIsolated = true";
+    try std.testing.expectEqual(
+        @as(usize, 1),
+        try second_window.run(io, isolated_script),
+    );
+    packet = try protocol.decode(try readServerFrame(
+        second_stream,
+        io,
+        &response_buffer,
+    ));
+    try std.testing.expectEqual(protocol.Command.js_quick, packet.header.command);
+    try std.testing.expectEqualStrings(isolated_script, packet.payload);
+
+    try std.Io.sleep(io, .fromMilliseconds(20), .awake);
+    try std.testing.expectEqual(
+        @as(usize, 1),
+        try first_window.run(io, stable_script),
+    );
+    packet = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &response_buffer,
+    ));
+    try std.testing.expectEqualStrings(stable_script, packet.payload);
+
+    try std.testing.expectEqual(
+        @as(usize, 1),
+        try first_window.setContent(&running, .{ .html = "replacement" }),
+    );
+    packet = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &response_buffer,
+    ));
+    try std.testing.expectEqual(
+        protocol.Command.navigation,
+        packet.header.command,
+    );
+    try tmp.dir.createDirPath(io, "first/ignored");
+    try std.Io.sleep(io, .fromMilliseconds(20), .awake);
+    try std.testing.expectEqual(
+        @as(usize, 1),
+        try first_window.run(io, stable_script),
+    );
+    packet = try protocol.decode(try readServerFrame(
+        first_stream,
+        io,
+        &response_buffer,
+    ));
+    try std.testing.expectEqualStrings(stable_script, packet.payload);
+
+    try first_stream.shutdown(io, .both);
+    try second_stream.shutdown(io, .both);
+    try running.stop();
+    try std.testing.expect(
+        app.monitor_tasks.token.load(.acquire) == null,
+    );
 }
 
 test "window connection waiting observes clients and timeouts" {
