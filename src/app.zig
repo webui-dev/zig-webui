@@ -1368,6 +1368,10 @@ fn onRequest(
             "globalThis.__zigWebuiEvents={};\n",
             .{window.event_binding != null},
         ) catch return failResponse(response);
+        response.print(
+            "globalThis.__zigWebuiDomBindings={};\n",
+            .{window.bindings.items.len != 0},
+        ) catch return failResponse(response);
         response.write(bridge) catch return failResponse(response);
         return .respond;
     }
@@ -1537,6 +1541,17 @@ fn onMessage(
                 connection.wsClose(.protocol_error, "");
                 return;
             };
+            if (packet.header.command == .click) {
+                if (window.binding(data)) |binding| {
+                    var call: Call = .{
+                        .gpa = app.gpa,
+                        .client = client,
+                        .arguments = &.{},
+                    };
+                    defer call.deinit();
+                    binding.handler(&call, binding.user_data) catch {};
+                }
+            }
             window.dispatch(.{
                 .kind = if (packet.header.command == .click)
                     .click
@@ -1756,6 +1771,16 @@ fn integrationHandler(call: *Call, user_data: ?*anyopaque) !void {
         @ptrCast(@alignCast(user_data.?));
     client_id.store(call.client.id(), .release);
     try call.reply("Hello from Zig");
+}
+
+fn integrationDomBindingHandler(
+    call: *Call,
+    user_data: ?*anyopaque,
+) !void {
+    if (call.arguments.len != 0) return error.UnexpectedArgument;
+    const called: *std.atomic.Value(bool) =
+        @ptrCast(@alignCast(user_data.?));
+    called.store(true, .release);
 }
 
 const IntegrationEventState = struct {
@@ -2118,6 +2143,12 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     second_window.onEvent(integrationEventHandler, &secondary_events);
     var called_client_id: std.atomic.Value(u64) = .init(0);
     try window.bind("greet", integrationHandler, &called_client_id);
+    var dom_binding_called: std.atomic.Value(bool) = .init(false);
+    try window.bind(
+        "primary",
+        integrationDomBindingHandler,
+        &dom_binding_called,
+    );
     var running = try app.start(io);
     defer running.stop() catch {};
     try std.testing.expect(!std.mem.eql(
@@ -2151,16 +2182,18 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         var target: [capability_len + 10]u8 = undefined;
         var response: [8192]u8 = undefined;
         const enabled = "globalThis.__zigWebuiEvents=true;";
+        const dom_bindings = "globalThis.__zigWebuiDomBindings=true;";
         const bytes = try getTestPath(
             running.inner.address,
             io,
             try std.fmt.bufPrint(&target, "/{s}/webui.js", .{
                 window.state.capability,
             }),
-            enabled,
+            dom_bindings,
             &response,
         );
         try std.testing.expect(std.mem.indexOf(u8, bytes, enabled) != null);
+        try std.testing.expect(std.mem.indexOf(u8, bytes, dom_bindings) != null);
     }
     {
         var target: [capability_len + 2]u8 = undefined;
@@ -2259,16 +2292,18 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
         var target: [capability_len + 10]u8 = undefined;
         var response: [8192]u8 = undefined;
         const disabled = "globalThis.__zigWebuiEvents=false;";
+        const dom_bindings = "globalThis.__zigWebuiDomBindings=false;";
         const bytes = try getTestPath(
             running.inner.address,
             io,
             try std.fmt.bufPrint(&target, "/{s}/webui.js", .{
                 external_window.state.capability,
             }),
-            disabled,
+            dom_bindings,
             &response,
         );
         try std.testing.expect(std.mem.indexOf(u8, bytes, disabled) != null);
+        try std.testing.expect(std.mem.indexOf(u8, bytes, dom_bindings) != null);
     }
 
     try std.testing.expectError(
@@ -2373,6 +2408,7 @@ test "JavaScript and Zig calls complete over HTTP and WebSocket" {
     try std.testing.expect(primary_events.connected.load(.acquire));
     try std.testing.expect(primary_events.clicked.load(.acquire));
     try std.testing.expect(primary_events.navigated.load(.acquire));
+    try std.testing.expect(dom_binding_called.load(.acquire));
     try std.testing.expect(!secondary_events.connected.load(.acquire));
     const targeted_client: Client = .{
         .state = window.state,

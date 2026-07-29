@@ -38,6 +38,7 @@ test("bridge handles commands and external script origins", async () => {
     globalThis.WebSocket = WebSocketMock;
     globalThis.__zigWebuiCapability = "0123456789abcdef0123456789abcdef";
     globalThis.__zigWebuiEvents = true;
+    globalThis.__zigWebuiDomBindings = false;
     globalThis.__zigWebuiToken = 7;
     globalThis.document = {
         addEventListener(type, listener) {
@@ -168,6 +169,50 @@ test("bridge handles commands and external script origins", async () => {
             new TextDecoder().decode(eventPacket.subarray(8)),
             "http://localhost/history",
         );
+
+        delete globalThis.navigation;
+        globalThis.__zigWebuiEvents = false;
+        globalThis.__zigWebuiDomBindings = true;
+        clickListener = undefined;
+        delete globalThis.webui;
+        delete require.cache[require.resolve("./bridge.js")];
+        require("./bridge.js");
+        const bindingSocket = WebSocketMock.instance;
+        bindingSocket.onopen();
+        await bindingSocket.onmessage({
+            data: frame(0xf5, Uint8Array.of(1)),
+        });
+        assert.equal(typeof clickListener, "function");
+
+        const dynamicButton = { id: "dynamic-binding" };
+        clickListener({
+            target: {
+                closest(selector) {
+                    return selector === "[id]" ? dynamicButton : null;
+                },
+            },
+        });
+        eventPacket = new Uint8Array(bindingSocket.sent);
+        assert.equal(eventPacket[7], 0xfc);
+        assert.equal(
+            new TextDecoder().decode(eventPacket.subarray(8)),
+            dynamicButton.id,
+        );
+
+        prevented = false;
+        const sendsBeforeLink = bindingSocket.sendCount;
+        clickListener({
+            target: {
+                closest() {
+                    return null;
+                },
+            },
+            preventDefault() {
+                prevented = true;
+            },
+        });
+        assert.equal(prevented, false);
+        assert.equal(bindingSocket.sendCount, sendsBeforeLink);
     } finally {
         delete globalThis.WebSocket;
         delete globalThis.document;
@@ -178,6 +223,7 @@ test("bridge handles commands and external script origins", async () => {
         delete globalThis.quickResult;
         delete globalThis.webui;
         delete globalThis.__zigWebuiCapability;
+        delete globalThis.__zigWebuiDomBindings;
         delete globalThis.__zigWebuiEvents;
         delete globalThis.__zigWebuiToken;
     }

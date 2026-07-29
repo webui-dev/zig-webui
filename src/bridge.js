@@ -39,12 +39,14 @@
             socket.send(packet(command, 0, encoder.encode(value)));
     }
 
-    if (globalThis.__zigWebuiEvents) {
+    // ponytail: Zig filters IDs to avoid injecting names; send a filtered
+    // list only if pages with many unrelated IDs make click traffic matter.
+    if (globalThis.__zigWebuiEvents || globalThis.__zigWebuiDomBindings) {
         document.addEventListener("click", (event) => {
             const element = event.target?.closest?.("[id]");
             if (element) sendEvent(commandClick, element.id);
 
-            if (!("navigation" in globalThis)) {
+            if (globalThis.__zigWebuiEvents && !("navigation" in globalThis)) {
                 const link = event.target?.closest?.("a[href]");
                 if (link && connected) {
                     event.preventDefault();
@@ -52,13 +54,13 @@
                 }
             }
         });
-        if ("navigation" in globalThis) {
-            globalThis.navigation.addEventListener("navigate", (event) => {
-                if (!connected) return;
-                if (event.cancelable) event.preventDefault();
-                sendEvent(commandNavigation, event.destination.url);
-            });
-        }
+    }
+    if (globalThis.__zigWebuiEvents && "navigation" in globalThis) {
+        globalThis.navigation.addEventListener("navigate", (event) => {
+            if (!connected) return;
+            if (event.cancelable) event.preventDefault();
+            sendEvent(commandNavigation, event.destination.url);
+        });
     }
 
     socket.onopen = () => socket.send(

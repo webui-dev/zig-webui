@@ -102,6 +102,11 @@ URL for navigation, and is empty for connected or disconnected events.
 Navigation attempts are intercepted while an event handler is installed; call
 `Event.client.navigate` from the handler to continue them.
 
+`Window.bind("button", ...)` also dispatches clicks from elements with
+`id="button"`, including elements added after the bridge loads. DOM click
+handlers receive no arguments and their replies are ignored; explicit
+`webui.call("button", ...)` remains available.
+
 Use `Client.run` or `Window.run` when JavaScript results and errors are not
 needed. These methods use the protocol's `JS_QUICK` command and do not consume
 pending evaluation slots.

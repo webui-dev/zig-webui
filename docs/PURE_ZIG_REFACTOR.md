@@ -295,7 +295,6 @@ implementations.
 
 | Upstream API | Current gap |
 |---|---|
-| `webui_bind()` | `Window.bind` supports explicit `webui.call()` calls, but the bridge does not automatically dispatch DOM events from an element with the same ID to that binding. |
 | `webui_show()`, `webui_set_root_folder()`, `webui_set_file_handler()`, `webui_set_file_handler_window()` | Content and resource handling can only be selected when creating a window; replacing them at runtime is not implemented. |
 | `webui_show_client()` | `Client` cannot replace the content of only one connected browser. |
 | `webui_is_shown()` | There is no window-level connected/shown query. |
@@ -347,6 +346,7 @@ not implementation gaps:
 | `webui_wait()`, `webui_wait_async()` | `Running.wait()` used directly or through `std.Io` concurrency. |
 | `webui_close()`, `webui_destroy()`, `webui_exit()`, `webui_clean()` | `Window.close()`, `Running.stop()`, and `App.deinit()`. |
 | `webui_set_context()`, `webui_get_context()` | Binding and event-handler `user_data`. |
+| `webui_bind()` | `Window.bind()` handles explicit `webui.call()` requests and zero-argument DOM clicks from elements with a matching ID. |
 | `webui_get_count()`, `webui_get_size()`, `webui_get_size_at()` | `Call.arguments.len` and `Call.bytes(index).len`. |
 | `webui_get_string()`, `webui_get_string_at()`, `webui_get_int()`, `webui_get_int_at()`, `webui_get_float()`, `webui_get_float_at()`, `webui_get_bool()`, `webui_get_bool_at()` | `Call.string()`, `Call.int()`, `Call.float()`, and `Call.boolean()`. |
 | `webui_return_string()`, `webui_return_int()`, `webui_return_float()`, `webui_return_bool()` | `Call.reply()`, `Call.replyInt()`, `Call.replyFloat()`, and `Call.replyBool()`. |
@@ -384,8 +384,6 @@ This completes the behavior represented by `webui_set_public()`,
 
 ### Calls, bindings, and browser bridge
 
-- Make element-name bindings dispatch the same binding for DOM events while
-  preserving explicit `webui.call()` support.
 - Implement bridge `setLogging()`, `encode()`, `decode()`,
   `setEventCallback()`, `event`, `isHighContrast()`, and
   `allowNavigation()`.
@@ -505,5 +503,4 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add element-name DOM binding dispatch.
-2. Complete the public browser bridge API.
+1. Complete the public browser bridge API.
