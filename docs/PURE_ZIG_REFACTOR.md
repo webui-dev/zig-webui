@@ -17,17 +17,37 @@ Here, pure Zig means the core package and its dependencies contain no bundled
 C, C++, or Objective-C implementation. Calling the operating system through
 the Zig standard library and launching an installed browser remain in scope.
 
-## Confirmed Baseline
+## Current Rewrite Status
+
+Status snapshot: 2026-07-30, after commit `a5dbde0`.
+
+The external-browser core is now implemented in Zig on top of pinned Linsang.
+The legacy wrapper, C API, compatibility files, and examples have been
+deleted.
+
+| Area | Status |
+|---|---|
+| Server and security | HTTP, WebSocket, TLS, loopback/public policy, capabilities, Origin checks, cookies, and protocol limits are implemented. |
+| Browser bridge | Bindings, typed arguments and replies, events, deferred replies, JavaScript evaluation, raw data, navigation, and multiple clients are implemented. |
+| Content and lifecycle | HTML, directories, custom handlers, external URLs, runtime content replacement, default directories, favicons, directory monitoring, logging, and deterministic shutdown are implemented. |
+| Browser integration | Default URL opening, browser discovery, explicit browser selection, custom executables and argv, direct child tracking, replacement, and shutdown cleanup are implemented. |
+| Current validation | `zig build test`, native builds, Windows x86_64 builds, macOS aarch64 builds, and Windows/macOS test-module cross-compilation pass. |
+
+Remaining work is limited to browser window controls and geometry, managed
+profiles and proxies, a portable parent-process numeric ID, server-side
+runtimes, optional native WebViews and handles, and the final parity validation
+gates. The coverage ledger below is the authoritative method-level list.
+
+## Original Baseline
 
 | Component | Status |
 |---|---|
-| zig-webui | `webui.zig` is about 1,334 lines and `c.zig` about 1,188 lines; most code forwards the C API |
-| Current WebUI version | `2.5.0-beta.4`, pinned to `dadf4175d6f2c4060b7a27a32e6e9e64e647116f` |
+| Original zig-webui | `webui.zig` was about 1,334 lines and `c.zig` about 1,188 lines; most code forwarded the C API |
+| Capability reference | WebUI `2.5.0-beta.4` at `337a183cea0a9c5daee16acb77eed2d5443bbbb0` |
 | Upstream WebUI | Its core is the roughly 14,500-line `src/webui.c`, mixing protocol, server, browser, WebView, and process management |
 | Browser bridge | About 1,006 lines of TypeScript using the 8-byte WebUI binary header |
 | Linsang | Zig 0.16 with HTTP/1.1, WebSocket, static files, TLS, and connection lifecycle support |
 | Linsang validation | All 101 tests pass at `3b50417e3ddb7a0651a8dd8b7154f26c4d4e5608` |
-| Current zig-webui validation | `zig build test` passes |
 
 [Linsang issue #1](https://github.com/jinzhongjia/Linsang/issues/1) added a
 reference-counted `WebSocketPeer`, immediate cross-task sends, safe send/close
@@ -65,12 +85,13 @@ races, and synchronous access to the actual `port = 0` address through
 - Zig 0.14 or 0.15 compatibility. Zig 0.16 is the baseline.
 - Automatic self-signed certificate generation.
 
-### Deferred capability parity
+### Remaining capability parity
 
 - WebView2, GTK/WebKit, or WKWebView.
 - Deno, Node, or Bun server-side runtimes.
-- Automatic reload, proxies, or browser profile management.
-- Browser selection, managed processes, and window-control flags.
+- Browser window controls, geometry, and high-contrast control.
+- Browser profiles and proxy configuration.
+- A portable parent-process numeric ID accessor.
 
 These do not block the external-browser core, but they are required before
 declaring complete upstream capability parity.
@@ -100,7 +121,7 @@ Only WebUI-specific behavior needs a Zig implementation:
 
 ## Protocol Strategy
 
-The first phase keeps the existing WebUI bridge behavior and 8-byte header so
+The rewrite keeps the existing WebUI bridge behavior and 8-byte header so
 the front end and back end do not change simultaneously:
 
 ```text
@@ -145,9 +166,12 @@ try window.bind("sum", sum, null);
 var running = try app.start(io);
 defer running.stop() catch {};
 
-try window.open(io, .{ .browser = .default });
+try window.open(io, &running);
 try running.wait();
 ```
+
+Use `window.openWithBrowser(&running, options)` when explicit browser
+selection, a custom executable, or additional argv is required.
 
 Start with one explicit type-erased handler signature:
 
