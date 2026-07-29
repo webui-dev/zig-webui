@@ -107,6 +107,10 @@ Navigation attempts are intercepted while an event handler is installed; call
 handlers receive no arguments and their replies are ignored; explicit
 `webui.call("button", ...)` remains available.
 
+The browser-side `webui` object also provides connection events, runtime
+logging, Base64 helpers, navigation control, and native high-contrast media
+query detection.
+
 Use `Client.run` or `Window.run` when JavaScript results and errors are not
 needed. These methods use the protocol's `JS_QUICK` command and do not consume
 pending evaluation slots.

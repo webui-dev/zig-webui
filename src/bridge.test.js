@@ -35,6 +35,10 @@ test("bridge handles commands and external script origins", async () => {
     let windowClosed = false;
     let received;
     let clickListener;
+    const bridgeEvents = [];
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => logs.push(args.join(" "));
     globalThis.WebSocket = WebSocketMock;
     globalThis.__zigWebuiCapability = "0123456789abcdef0123456789abcdef";
     globalThis.__zigWebuiEvents = true;
@@ -53,12 +57,36 @@ test("bridge handles commands and external script origins", async () => {
     globalThis.close = () => {
         windowClosed = true;
     };
+    globalThis.matchMedia = (query) => ({
+        matches: query === "(forced-colors: active)",
+    });
     globalThis.receiveRaw = (data) => {
         received = [...data];
     };
 
     try {
         require("./bridge.js");
+        assert.deepEqual(globalThis.webui.event, {
+            CONNECTED: 0,
+            DISCONNECTED: 1,
+        });
+        globalThis.webui.setEventCallback((event) => bridgeEvents.push(event));
+        assert.throws(
+            () => globalThis.webui.setEventCallback(null),
+            /must be a function/,
+        );
+        assert.equal(globalThis.webui.encode("Zig WebUI"), "WmlnIFdlYlVJ");
+        assert.equal(globalThis.webui.decode("WmlnIFdlYlVJ"), "Zig WebUI");
+        assert.equal(await globalThis.webui.isHighContrast(), true);
+        globalThis.matchMedia = (query) => ({
+            matches: query === "(prefers-contrast: more)",
+        });
+        assert.equal(await globalThis.webui.isHighContrast(), true);
+        globalThis.matchMedia = () => ({ matches: false });
+        assert.equal(await globalThis.webui.isHighContrast(), false);
+        delete globalThis.matchMedia;
+        assert.equal(await globalThis.webui.isHighContrast(), false);
+        globalThis.webui.setLogging(true);
         const socket = WebSocketMock.instance;
         assert.equal(
             socket.url,
@@ -72,6 +100,12 @@ test("bridge handles commands and external script origins", async () => {
         await socket.onmessage({
             data: frame(0xf5, Uint8Array.of(1)),
         });
+        await socket.onmessage({
+            data: frame(0xf5, Uint8Array.of(1)),
+        });
+        assert.deepEqual(bridgeEvents, [globalThis.webui.event.CONNECTED]);
+        assert(logs.includes("WebUI -> Log Enabled."));
+        assert(logs.includes("WebUI -> Connected"));
         const sendsBeforeQuick = socket.sendCount;
         await socket.onmessage({
             data: frame(
@@ -116,6 +150,22 @@ test("bridge handles commands and external script origins", async () => {
             new TextDecoder().decode(eventPacket.subarray(8)),
             link.href,
         );
+        globalThis.webui.allowNavigation(true);
+        prevented = false;
+        const sendsBeforeAllowedLink = socket.sendCount;
+        clickListener({
+            target: {
+                closest(selector) {
+                    return selector === "a[href]" ? link : null;
+                },
+            },
+            preventDefault() {
+                prevented = true;
+            },
+        });
+        assert.equal(prevented, false);
+        assert.equal(socket.sendCount, sendsBeforeAllowedLink);
+        globalThis.webui.allowNavigation(false);
 
         await socket.onmessage({
             data: frame(0xfb, encoder.encode("/next")),
@@ -132,6 +182,15 @@ test("bridge handles commands and external script origins", async () => {
         await socket.onmessage({ data: frame(0xfa) });
         assert.equal(socket.closed, true);
         assert.equal(windowClosed, true);
+        socket.onclose();
+        socket.onclose();
+        assert.deepEqual(bridgeEvents, [
+            globalThis.webui.event.CONNECTED,
+            globalThis.webui.event.DISCONNECTED,
+        ]);
+        assert(logs.includes("WebUI -> Disconnected"));
+        globalThis.webui.setLogging(false);
+        assert(logs.includes("WebUI -> Log Disabled."));
 
         let navigationListener;
         globalThis.navigation = {
@@ -168,6 +227,21 @@ test("bridge handles commands and external script origins", async () => {
         assert.equal(
             new TextDecoder().decode(eventPacket.subarray(8)),
             "http://localhost/history",
+        );
+        globalThis.webui.allowNavigation(true);
+        prevented = false;
+        const sendsBeforeAllowedNavigation = navigationSocket.sendCount;
+        navigationListener({
+            cancelable: true,
+            destination: { url: "http://localhost/allowed" },
+            preventDefault() {
+                prevented = true;
+            },
+        });
+        assert.equal(prevented, false);
+        assert.equal(
+            navigationSocket.sendCount,
+            sendsBeforeAllowedNavigation,
         );
 
         delete globalThis.navigation;
@@ -214,9 +288,11 @@ test("bridge handles commands and external script origins", async () => {
         assert.equal(prevented, false);
         assert.equal(bindingSocket.sendCount, sendsBeforeLink);
     } finally {
+        console.log = originalLog;
         delete globalThis.WebSocket;
         delete globalThis.document;
         delete globalThis.location;
+        delete globalThis.matchMedia;
         delete globalThis.navigation;
         delete globalThis.close;
         delete globalThis.receiveRaw;

@@ -12,8 +12,16 @@
     const decoder = new TextDecoder();
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
     const pending = new Map();
+    const event = Object.freeze({
+        CONNECTED: 0,
+        DISCONNECTED: 1,
+    });
     let nextId = 1;
     let connected = false;
+    let logging = false;
+    let allowNavigation = !globalThis.__zigWebuiEvents;
+    let eventCallback = null;
+    let lastEvent = -1;
 
     const bridgeSource = document.currentScript?.src
         ? new URL(document.currentScript.src)
@@ -39,6 +47,17 @@
             socket.send(packet(command, 0, encoder.encode(value)));
     }
 
+    function log(message) {
+        if (logging) console.log(`WebUI -> ${message}`);
+    }
+
+    function emitEvent(value) {
+        if (eventCallback && value !== lastEvent) {
+            lastEvent = value;
+            eventCallback(value);
+        }
+    }
+
     // ponytail: Zig filters IDs to avoid injecting names; send a filtered
     // list only if pages with many unrelated IDs make click traffic matter.
     if (globalThis.__zigWebuiEvents || globalThis.__zigWebuiDomBindings) {
@@ -46,7 +65,10 @@
             const element = event.target?.closest?.("[id]");
             if (element) sendEvent(commandClick, element.id);
 
-            if (globalThis.__zigWebuiEvents && !("navigation" in globalThis)) {
+            if (globalThis.__zigWebuiEvents &&
+                !allowNavigation &&
+                !("navigation" in globalThis))
+            {
                 const link = event.target?.closest?.("a[href]");
                 if (link && connected) {
                     event.preventDefault();
@@ -57,20 +79,25 @@
     }
     if (globalThis.__zigWebuiEvents && "navigation" in globalThis) {
         globalThis.navigation.addEventListener("navigate", (event) => {
-            if (!connected) return;
+            if (!connected || allowNavigation) return;
             if (event.cancelable) event.preventDefault();
             sendEvent(commandNavigation, event.destination.url);
         });
     }
 
-    socket.onopen = () => socket.send(
-        packet(commandCheckToken, 0, encoder.encode(globalThis.__zigWebuiCapability)),
-    );
+    socket.onopen = () => {
+        log("Connected");
+        socket.send(
+            packet(commandCheckToken, 0, encoder.encode(globalThis.__zigWebuiCapability)),
+        );
+    };
     socket.onclose = () => {
         connected = false;
+        log("Disconnected");
         for (const promise of pending.values())
             promise.reject(new Error("WebUI connection closed"));
         pending.clear();
+        emitEvent(event.DISCONNECTED);
     };
     socket.onmessage = async ({ data }) => {
         const bytes = new Uint8Array(data);
@@ -79,6 +106,7 @@
         const id = view.getUint16(5, true);
         if (bytes[7] === commandCheckToken) {
             connected = bytes.length > 8 && bytes[8] === 1;
+            if (connected) emitEvent(event.CONNECTED);
             return;
         }
         if (bytes[7] === commandJs || bytes[7] === commandJsQuick) {
@@ -131,9 +159,11 @@
     };
 
     globalThis.webui = {
+        event,
         isConnected: () => connected,
         call(name, ...args) {
             if (!connected) return Promise.reject(new Error("WebUI is not connected"));
+            log(`Calling [${name}(...)]`);
             const values = args.map((arg) =>
                 arg instanceof Uint8Array ? arg : encoder.encode(String(arg)),
             );
@@ -164,6 +194,29 @@
                     reject(error);
                 }
             });
+        },
+        setLogging(status) {
+            logging = Boolean(status);
+            console.log(`WebUI -> Log ${logging ? "Enabled" : "Disabled"}.`);
+        },
+        encode(data) {
+            return globalThis.btoa(data);
+        },
+        decode(data) {
+            return globalThis.atob(data);
+        },
+        setEventCallback(callback) {
+            if (typeof callback !== "function")
+                throw new TypeError("Event callback must be a function");
+            eventCallback = callback;
+        },
+        async isHighContrast() {
+            if (globalThis.matchMedia?.("(forced-colors: active)").matches)
+                return true;
+            return globalThis.matchMedia?.("(prefers-contrast: more)").matches ?? false;
+        },
+        allowNavigation(status) {
+            allowNavigation = Boolean(status);
         },
     };
 })();

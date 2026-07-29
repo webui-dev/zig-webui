@@ -318,21 +318,14 @@ implementations.
 | `webui_set_runtime()` | Deno, Node.js, and Bun execution for served files is not implemented. |
 | `webui_show_wv()`, `webui_set_close_handler_wv()`, `webui_get_hwnd()`, `webui_win32_get_hwnd()` | Native WebView hosting and native window handles are outside the pure Zig browser core. |
 
-### Missing Browser Bridge APIs
+### Browser Bridge APIs
 
-The current browser object implements `webui.call()` and
-`webui.isConnected()`. These upstream bridge APIs are not implemented:
-
-| Upstream bridge API | Current gap |
-|---|---|
-| `webui.setLogging()` | Runtime bridge logging control is not exposed. |
-| `webui.setEventCallback()` and `webui.event` | Browser-side connected and disconnected callbacks are not exposed. |
-| `webui.isHighContrast()` | Browser-side high-contrast detection is not exposed. |
-| `webui.allowNavigation()` | Navigation interception cannot be changed by browser JavaScript at runtime. |
-
-`webui.encode()` and `webui.decode()` are intentionally replaced by the
-browser's `btoa()` and `atob()` functions. The upstream bridge's
-`callCore()` method remains an internal implementation detail.
+The browser-side `webui` object implements `call()`, `isConnected()`,
+`setLogging()`, `encode()`, `decode()`, `setEventCallback()`, `event`,
+`isHighContrast()`, and `allowNavigation()`. Encoding delegates to `btoa()`
+and `atob()`, while high-contrast detection uses native browser media
+queries. The upstream bridge's `callCore()` method remains an internal
+implementation detail.
 
 ### Intentional Zig Replacements
 
@@ -382,12 +375,10 @@ the coverage ledger in the same commit.
 This completes the behavior represented by `webui_set_public()`,
 `webui_set_tls_certificate()`, and `webui_set_config(use_cookies)`.
 
-### Calls, bindings, and browser bridge
+### Calls, bindings, and browser bridge (complete)
 
-- Implement bridge `setLogging()`, `encode()`, `decode()`,
-  `setEventCallback()`, `event`, `isHighContrast()`, and
-  `allowNavigation()`.
-- Preserve string, number, boolean, and `Uint8Array` call arguments.
+- Implements the complete public bridge surface.
+- Preserves string, number, boolean, and `Uint8Array` call arguments.
 
 This completes `webui_bind()`, the remaining typed argument and return
 methods, and the public browser bridge surface.
@@ -503,4 +494,7 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Complete the public browser bridge API.
+1. Add an owned delayed-response handle for asynchronous binding responses.
+2. Add per-window event scheduling control.
+3. Add optional wait-for-connection behavior and a connection timeout.
+4. Add a caller-provided logger.
