@@ -11,6 +11,8 @@ The current phase provides:
 - one `App`, multiple isolated windows, and automatic port selection;
 - embedded HTML, static directories, custom resources, external URLs, and a
   built-in JavaScript bridge;
+- explicit browser connection waiting and timeout through
+  `Window.waitForConnection()`;
 - JavaScript calls to Zig bindings with return values;
 - typed integer, float, and boolean call arguments and replies;
 - owned one-shot delayed binding replies through `Call.deferReply()`;
@@ -95,6 +97,11 @@ zig build run
 Building and using the library does not require Node or npm. `Window.evalAll`
 returns owned results; call `deinit` on them after consuming every per-client
 outcome.
+
+`Window.open()` launches the browser and returns immediately. Call
+`Window.waitForConnection(io, timeout)` when startup must wait for a browser;
+it returns the first connected `Client`. `Window.eval()` uses the same total
+timeout for connection waiting and JavaScript execution.
 
 Serve a directory by setting
 `.content = .{ .directory = "path/to/public" }`. The path is opened when the

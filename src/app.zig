@@ -232,6 +232,11 @@ const ConnectedClient = struct {
     peer: Linsang.WebSocketPeer,
 };
 
+const SelectedClient = struct {
+    id: u64,
+    peer: Linsang.WebSocketPeer,
+};
+
 const DirectoryContent = struct {
     path: []u8,
     dir: ?std.Io.Dir = null,
@@ -734,6 +739,47 @@ const WindowState = struct {
         return sent;
     }
 
+    fn waitForClient(
+        self: *WindowState,
+        io: std.Io,
+        target_client_id: ?u64,
+        require_single: bool,
+        deadline: std.Io.Clock.Timestamp,
+    ) !SelectedClient {
+        while (true) {
+            self.mutex.lockUncancelable(io);
+            if (target_client_id) |target| {
+                if (self.clientIndexById(target)) |index| {
+                    const selected = SelectedClient{
+                        .id = target,
+                        .peer = self.clients.items[index].peer.clone(),
+                    };
+                    self.mutex.unlock(io);
+                    return selected;
+                }
+                self.mutex.unlock(io);
+                return error.ConnectionClosed;
+            }
+            if (self.clients.items.len > 0) {
+                if (require_single and self.clients.items.len > 1) {
+                    self.mutex.unlock(io);
+                    return error.MultipleClientsConnected;
+                }
+                const selected = SelectedClient{
+                    .id = self.clients.items[0].id,
+                    .peer = self.clients.items[0].peer.clone(),
+                };
+                self.mutex.unlock(io);
+                return selected;
+            }
+            self.mutex.unlock(io);
+            if (deadline.compare(.lte, .now(io, .awake))) return error.Timeout;
+            // ponytail: 1 ms polling is enough for browser startup; use a
+            // condition if sub-millisecond connection wakeups matter.
+            try std.Io.sleep(io, .fromMilliseconds(1), .awake);
+        }
+    }
+
     fn eval(
         self: *WindowState,
         io: std.Io,
@@ -748,36 +794,13 @@ const WindowState = struct {
             .clock = .awake,
             .raw = timeout,
         });
-        var client_id: u64 = undefined;
-        var peer: Linsang.WebSocketPeer = while (true) {
-            self.mutex.lockUncancelable(io);
-            if (target_client_id) |target| {
-                if (self.clientIndexById(target)) |index| {
-                    client_id = target;
-                    const owned = self.clients.items[index].peer.clone();
-                    self.mutex.unlock(io);
-                    break owned;
-                }
-                self.mutex.unlock(io);
-                return error.ConnectionClosed;
-            }
-            if (self.clients.items.len == 1) {
-                client_id = self.clients.items[0].id;
-                const owned = self.clients.items[0].peer.clone();
-                self.mutex.unlock(io);
-                break owned;
-            }
-            if (self.clients.items.len > 1) {
-                self.mutex.unlock(io);
-                return error.MultipleClientsConnected;
-            }
-            self.mutex.unlock(io);
-            if (deadline.compare(.lte, .now(io, .awake))) return error.Timeout;
-            // ponytail: polling is enough while one window owns the server;
-            // replace it with an event when multiple windows are supported.
-            try std.Io.sleep(io, .fromMilliseconds(1), .awake);
-        };
-        defer peer.deinit();
+        var selected = try self.waitForClient(
+            io,
+            target_client_id,
+            true,
+            deadline,
+        );
+        defer selected.peer.deinit();
 
         var pending: PendingEval = undefined;
         self.mutex.lockUncancelable(io);
@@ -787,7 +810,7 @@ const WindowState = struct {
         }
         pending = .{
             .id = self.nextEvalId(),
-            .client_id = client_id,
+            .client_id = selected.id,
             .buffer = result_buffer,
         };
         self.pending_evals.append(self.gpa, &pending) catch |err| {
@@ -804,7 +827,7 @@ const WindowState = struct {
             .id = pending.id,
             .command = .js,
         }, script);
-        peer.sendBinary(packet.items) catch |err| switch (err) {
+        selected.peer.sendBinary(packet.items) catch |err| switch (err) {
             error.Closed => return error.ConnectionClosed,
             else => return err,
         };
@@ -1130,6 +1153,22 @@ pub const Window = struct {
         const page_url = try self.url(running, self.state.gpa);
         defer self.state.gpa.free(page_url);
         try browser.open(self.state.gpa, io, page_url);
+    }
+
+    /// Wait for at least one browser connection and return the first client.
+    pub fn waitForConnection(
+        self: Window,
+        io: std.Io,
+        timeout: std.Io.Duration,
+    ) !Client {
+        var selected = try self.state.waitForClient(
+            io,
+            null,
+            false,
+            .fromNow(io, .{ .clock = .awake, .raw = timeout }),
+        );
+        defer selected.peer.deinit();
+        return .{ .state = self.state, .client_id = selected.id };
     }
 
     pub fn url(
@@ -2508,6 +2547,65 @@ fn authenticateTestClient(
         response_buffer,
     ));
     return std.mem.eql(u8, response.payload, &.{1});
+}
+
+test "window connection waiting observes clients and timeouts" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    const gpa = std.testing.allocator;
+    var threaded = std.Io.Threaded.init(gpa, .{ .async_limit = .unlimited });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var app = App.init(gpa, .{});
+    defer app.deinit();
+    const window = try app.createWindow(.{
+        .content = .{ .html = "connection wait test" },
+    });
+    var running = try app.start(io);
+    defer running.stop() catch {};
+
+    try std.testing.expectError(
+        error.Timeout,
+        window.waitForConnection(io, .fromMilliseconds(5)),
+    );
+    var waiting = io.async(Window.waitForConnection, .{
+        window,
+        io,
+        std.Io.Duration.fromSeconds(1),
+    });
+    defer _ = waiting.cancel(io) catch {};
+
+    const stream = try connectTestWebSocket(
+        running.inner.address,
+        io,
+        &window.state.capability,
+    );
+    defer stream.close(io);
+    var response_buffer: [125]u8 = undefined;
+    try std.testing.expect(try authenticateTestClient(
+        stream,
+        io,
+        gpa,
+        window.state.token,
+        &window.state.capability,
+        &response_buffer,
+    ));
+
+    const delayed = try waiting.await(io);
+    try std.testing.expect(delayed.isConnected(io));
+    const immediate = try window.waitForConnection(io, .zero);
+    try std.testing.expectEqual(delayed.id(), immediate.id());
+
+    try stream.shutdown(io, .both);
+    for (0..100) |_| {
+        if (!delayed.isConnected(io)) break;
+        try std.Io.sleep(io, .fromMilliseconds(1), .awake);
+    }
+    try std.testing.expect(!delayed.isConnected(io));
+    try std.testing.expectError(
+        error.Timeout,
+        window.waitForConnection(io, .fromMilliseconds(5)),
+    );
 }
 
 test "binding replies can be deferred, bounded, and disconnected" {
