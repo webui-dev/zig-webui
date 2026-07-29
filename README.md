@@ -28,6 +28,8 @@ The current phase provides:
   `Window.onEvent`;
 - same-origin WebSocket validation for hosted content and external-page Origin
   validation for `.external_url`;
+- optional path-scoped `HttpOnly` cookie authorization through
+  `App.Options.use_cookies`;
 - loopback-only listening by default and caller-provided TLS for explicit
   public listening;
 - default-browser launching and deterministic shutdown.
@@ -115,6 +117,7 @@ Non-loopback listening requires both explicit public mode and TLS:
 var app = webui.App.init(gpa, .{
     .address = "0.0.0.0",
     .public = true,
+    .use_cookies = true,
     .tls = .{
         .certificate_pem = @embedFile("certificate.pem"),
         .private_key_pem = @embedFile("private-key.pem"),

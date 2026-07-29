@@ -305,7 +305,6 @@ implementations.
 | `webui_set_config(show_wait_connection)`, `webui_set_timeout()` | `Window.open()` does not optionally wait for a browser connection. |
 | `webui_set_config(ui_event_blocking)`, `webui_set_event_blocking()` | Per-window event scheduling control is not exposed. |
 | `webui_set_config(folder_monitor)` | Directory change monitoring and automatic browser reload are not implemented. |
-| `webui_set_config(use_cookies)` | Client authorization uses capability URLs; optional cookie-based authorization is not implemented. |
 | `webui_set_default_root_folder()` | There is no application-wide default directory content setting. |
 | `webui_set_logger()` | There is no caller-provided logging callback. |
 | `webui_set_icon()`, `webui_set_icon_file()` | Window icon configuration is not implemented. |
@@ -358,6 +357,7 @@ not implementation gaps:
 | `webui_close_client()`, `webui_navigate_client()`, `webui_send_raw_client()` | `Client.close()`, `Client.navigate()`, and `Client.sendRaw()`. |
 | `webui_navigate()`, `webui_send_raw()` | `Window.navigate()` and `Window.sendRaw()`. |
 | `webui_set_config(multi_client)` | `WindowOptions.max_clients`. |
+| `webui_set_config(use_cookies)` | `App.Options.use_cookies` adds a per-window, path-scoped `HttpOnly` authorization cookie while retaining capability URLs and protocol authentication. |
 | `webui_set_public()` | `App.Options.public` permits non-loopback listening only with TLS; Origin and explicit connection and protocol limits are enforced. |
 | `webui_set_tls_certificate()` | `App.Options.tls` accepts caller-provided PEM certificate and private-key bytes. |
 | `webui_set_port()`, `webui_get_port()`, `webui_get_free_port()` | `App.Options.port`, including `0` for automatic selection, and the running window URL. |
@@ -508,6 +508,5 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add optional cookie authorization.
-2. Add `Call.float()`, `Call.replyFloat()`, and `Call.replyBool()`.
-3. Complete the public browser bridge API.
+1. Add `Call.float()`, `Call.replyFloat()`, and `Call.replyBool()`.
+2. Complete the public browser bridge API.

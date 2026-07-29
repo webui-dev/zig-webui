@@ -6,6 +6,8 @@ const protocol = @import("protocol.zig");
 const bridge = @embedFile("bridge.js");
 const default_max_pending_evals = 64;
 const capability_len = 32;
+const cookie_len = 32;
+const cookie_name = "webui_auth";
 
 pub const Tls = struct {
     certificate_pem: []const u8,
@@ -272,6 +274,7 @@ const WindowState = struct {
     max_clients: usize,
     max_pending_evals: usize,
     capability: [capability_len]u8 = @splat(0),
+    cookie: [cookie_len]u8 = @splat(0),
     token: u32 = 0,
     bindings: std.ArrayList(Binding) = .empty,
     event_binding: ?EventBinding = null,
@@ -972,6 +975,7 @@ pub const App = struct {
         port: u16 = 0,
         public: bool = false,
         tls: ?Tls = null,
+        use_cookies: bool = false,
         limits: Limits = .{},
     };
 
@@ -1043,11 +1047,12 @@ pub const App = struct {
         errdefer self.deinitTls();
         for (self.windows.items, 0..) |window, index| {
             while (true) {
-                var random: [20]u8 = undefined;
+                var random: [36]u8 = undefined;
                 try io.randomSecure(&random);
                 window.token = std.mem.readInt(u32, random[0..4], .little);
                 if (window.token == 0) continue;
-                window.capability = std.fmt.bytesToHex(random[4..], .lower);
+                window.capability = std.fmt.bytesToHex(random[4..20], .lower);
+                window.cookie = std.fmt.bytesToHex(random[20..], .lower);
                 for (self.windows.items[0..index]) |existing| {
                     if (std.mem.eql(
                         u8,
@@ -1249,6 +1254,59 @@ fn originAllowed(
     };
 }
 
+fn requestCookie(request: *const Linsang.Request, name: []const u8) ?[]const u8 {
+    var pairs = std.mem.splitScalar(
+        u8,
+        request.header("cookie") orelse return null,
+        ';',
+    );
+    while (pairs.next()) |pair| {
+        const trimmed = std.mem.trim(u8, pair, " \t");
+        const separator = std.mem.indexOfScalar(u8, trimmed, '=') orelse
+            continue;
+        if (std.mem.eql(
+            u8,
+            std.mem.trim(u8, trimmed[0..separator], " \t"),
+            name,
+        )) return std.mem.trim(u8, trimmed[separator + 1 ..], " \t");
+    }
+    return null;
+}
+
+fn cookieAllowed(
+    app: *const App,
+    window: *const WindowState,
+    request: *const Linsang.Request,
+) bool {
+    if (!app.options.use_cookies) return true;
+    const value = requestCookie(request, cookie_name) orelse return false;
+    if (value.len != cookie_len) return false;
+    return std.crypto.timing_safe.eql(
+        [cookie_len]u8,
+        window.cookie,
+        value[0..cookie_len].*,
+    );
+}
+
+fn setCookie(
+    app: *const App,
+    window: *const WindowState,
+    response: *Linsang.Response,
+) !void {
+    if (!app.options.use_cookies) return;
+    var buffer: [capability_len + cookie_len + 80]u8 = undefined;
+    try response.setHeader("Set-Cookie", try std.fmt.bufPrint(
+        &buffer,
+        "{s}={s}; Path=/{s}/; HttpOnly; SameSite=Strict{s}",
+        .{
+            cookie_name,
+            window.cookie,
+            window.capability,
+            if (app.options.tls == null) "" else "; Secure",
+        },
+    ));
+}
+
 fn route(app: *const App, path: []const u8) ?Route {
     if (path.len < capability_len + 2 or
         path[0] != '/' or
@@ -1275,12 +1333,15 @@ fn onRequest(
     };
     const window = resolved.window;
     if (std.mem.eql(u8, resolved.resource, "_webui_ws_connect")) {
-        if (!originAllowed(app, window, request)) {
+        if (!originAllowed(app, window, request) or
+            !cookieAllowed(app, window, request))
+        {
             response.status = .forbidden;
             return .respond;
         }
         return .upgrade;
     }
+    setCookie(app, window, response) catch return failResponse(response);
     if (std.mem.eql(u8, resolved.resource, "webui.js")) {
         response.setHeader("Content-Type", "text/javascript; charset=utf-8") catch
             return failResponse(response);
@@ -1524,6 +1585,17 @@ test "network options, origins, and protocol limits" {
         "https://example.com",
         "https://example.com:444",
     ));
+    var cookie_request: Request = .{};
+    cookie_request.headers_buf[0] = .{
+        .name = "Cookie",
+        .value = "other=value; webui_auth=0123456789abcdef",
+    };
+    cookie_request.headers_len = 1;
+    try std.testing.expectEqualStrings(
+        "0123456789abcdef",
+        requestCookie(&cookie_request, cookie_name).?,
+    );
+    try std.testing.expect(requestCookie(&cookie_request, "missing") == null);
     const oversized_call = try protocol.decodeCall("x\x004\x001234\x00");
     try std.testing.expectError(
         error.ArgumentTooLarge,
@@ -1789,15 +1861,25 @@ fn readServerFrame(
     return buffer[0..header[1]];
 }
 
-fn connectTestWebSocketOrigin(
+fn connectTestWebSocketOriginCookie(
     address: std.Io.net.IpAddress,
     io: std.Io,
     capability: []const u8,
     origin: []const u8,
+    cookie: ?[]const u8,
 ) !std.Io.net.Stream {
     const stream = try address.connect(io, .{ .mode = .stream });
     errdefer stream.close(io);
     var request: [512]u8 = undefined;
+    var cookie_buffer: [cookie_name.len + cookie_len + 12]u8 = undefined;
+    const cookie_header = if (cookie) |value|
+        try std.fmt.bufPrint(
+            &cookie_buffer,
+            "Cookie: {s}={s}\r\n",
+            .{ cookie_name, value },
+        )
+    else
+        "";
     try writeAll(
         stream,
         io,
@@ -1807,9 +1889,10 @@ fn connectTestWebSocketOrigin(
                 "Host: localhost\r\nUpgrade: websocket\r\n" ++
                 "Connection: Upgrade\r\n" ++
                 "Origin: {s}\r\n" ++
+                "{s}" ++
                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" ++
                 "Sec-WebSocket-Version: 13\r\n\r\n",
-            .{ capability, origin },
+            .{ capability, origin, cookie_header },
         ),
     );
     var handshake: [512]u8 = undefined;
@@ -1817,6 +1900,21 @@ fn connectTestWebSocketOrigin(
     if (!std.mem.startsWith(u8, accepted, "HTTP/1.1 101"))
         return error.WebSocketUpgradeFailed;
     return stream;
+}
+
+fn connectTestWebSocketOrigin(
+    address: std.Io.net.IpAddress,
+    io: std.Io,
+    capability: []const u8,
+    origin: []const u8,
+) !std.Io.net.Stream {
+    return connectTestWebSocketOriginCookie(
+        address,
+        io,
+        capability,
+        origin,
+        null,
+    );
 }
 
 fn connectTestWebSocket(
@@ -1829,6 +1927,21 @@ fn connectTestWebSocket(
         io,
         capability,
         "http://localhost",
+    );
+}
+
+fn connectTestWebSocketCookie(
+    address: std.Io.net.IpAddress,
+    io: std.Io,
+    capability: []const u8,
+    cookie: []const u8,
+) !std.Io.net.Stream {
+    return connectTestWebSocketOriginCookie(
+        address,
+        io,
+        capability,
+        "http://localhost",
+        cookie,
     );
 }
 
@@ -1853,6 +1966,79 @@ fn authenticateTestClient(
         response_buffer,
     ));
     return std.mem.eql(u8, response.payload, &.{1});
+}
+
+test "cookie authorization guards WebSocket upgrades" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    const gpa = std.testing.allocator;
+    var threaded = std.Io.Threaded.init(gpa, .{ .async_limit = .unlimited });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var app = App.init(gpa, .{ .use_cookies = true });
+    defer app.deinit();
+    const window = try app.createWindow(.{
+        .content = .{ .html = "cookie page" },
+    });
+    var running = try app.start(io);
+    defer running.stop() catch {};
+
+    try std.testing.expectError(
+        error.WebSocketUpgradeFailed,
+        connectTestWebSocket(
+            running.inner.address,
+            io,
+            &window.state.capability,
+        ),
+    );
+
+    var target: [capability_len + 2]u8 = undefined;
+    var response: [1024]u8 = undefined;
+    const bytes = try getTestPath(
+        running.inner.address,
+        io,
+        try std.fmt.bufPrint(&target, "/{s}/", .{window.state.capability}),
+        "cookie page",
+        &response,
+    );
+    var expected_header: [capability_len + cookie_len + 80]u8 = undefined;
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        bytes,
+        try std.fmt.bufPrint(
+            &expected_header,
+            "Set-Cookie: {s}={s}; Path=/{s}/; HttpOnly; SameSite=Strict\r\n",
+            .{ cookie_name, window.state.cookie, window.state.capability },
+        ),
+    ) != null);
+
+    try std.testing.expectError(
+        error.WebSocketUpgradeFailed,
+        connectTestWebSocketCookie(
+            running.inner.address,
+            io,
+            &window.state.capability,
+            "00000000000000000000000000000000",
+        ),
+    );
+    const client = try connectTestWebSocketCookie(
+        running.inner.address,
+        io,
+        &window.state.capability,
+        &window.state.cookie,
+    );
+    defer client.close(io);
+    var response_payload: [125]u8 = undefined;
+    try std.testing.expect(try authenticateTestClient(
+        client,
+        io,
+        gpa,
+        window.state.token,
+        &window.state.capability,
+        &response_payload,
+    ));
+    try client.shutdown(io, .both);
+    try std.Io.sleep(io, .fromMilliseconds(20), .awake);
 }
 
 test "JavaScript and Zig calls complete over HTTP and WebSocket" {
