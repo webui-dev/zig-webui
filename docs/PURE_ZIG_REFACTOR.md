@@ -30,7 +30,7 @@ deleted.
 | Server and security | HTTP, WebSocket, TLS, loopback/public policy, capabilities, Origin checks, cookies, and protocol limits are implemented. |
 | Browser bridge | Bindings, typed arguments and replies, events, deferred replies, JavaScript evaluation, raw data, navigation, and multiple clients are implemented. |
 | Content and lifecycle | HTML, directories, custom handlers, external URLs, runtime content replacement, default directories, favicons, directory monitoring, logging, and deterministic shutdown are implemented. |
-| Browser integration | Default URL opening, browser discovery, explicit browser selection, custom executables and argv, direct child tracking, replacement, and shutdown cleanup are implemented. |
+| Browser integration | Default URL opening, browser discovery, explicit browser selection, typed launch controls, custom executables and argv, direct child tracking, replacement, and shutdown cleanup are implemented. |
 | Current validation | `zig build test`, native builds, Windows x86_64 builds, macOS aarch64 builds, and Windows/macOS test-module cross-compilation pass. |
 
 Remaining work is limited to browser window controls and geometry, managed
@@ -321,10 +321,10 @@ implementations.
 
 | Upstream API | Current gap |
 |---|---|
-| `webui_set_kiosk()`, `webui_focus()`, `webui_minimize()`, `webui_maximize()`, `webui_set_hide()` | Browser window mode and lifecycle controls are not implemented. |
-| `webui_set_resizable()`, `webui_set_size()`, `webui_set_minimum_size()`, `webui_set_position()`, `webui_set_center()` | Browser window geometry controls are not implemented. |
+| `webui_focus()`, `webui_minimize()`, `webui_maximize()`, `webui_set_hide()` | Runtime browser window lifecycle controls are not implemented. |
+| `webui_set_resizable()`, `webui_set_minimum_size()`, `webui_set_center()` | The remaining browser window geometry controls are not implemented. |
 | `webui_set_frameless()`, `webui_set_transparent()` | Frameless and transparent browser window modes are not implemented. |
-| `webui_set_high_contrast()`, `webui_is_high_contrast()` | High-contrast mode control and detection are not implemented. |
+| `webui_is_high_contrast()` | Portable host high-contrast detection is not implemented. |
 | `webui_set_profile()`, `webui_delete_profile()`, `webui_delete_all_profiles()` | Managed browser profiles are not implemented. |
 | `webui_set_proxy()` | Browser proxy configuration is not implemented. |
 | `webui_get_parent_process_id()` | A portable parent-process numeric ID accessor is not implemented. |
@@ -354,6 +354,7 @@ not implementation gaps:
 | `webui_open_url()` | `openUrl()` safely passes a non-empty URL as one argument to the platform default opener. |
 | `webui_get_best_browser()`, `webui_browser_exist()` | `bestBrowser()` and `browserExists()` discover registered or executable browser candidates through the public `Browser` enum. |
 | `webui_show_browser()`, `webui_set_browser_folder()`, `webui_set_custom_parameters()` | `Window.openWithBrowser()` accepts a `BrowserLaunchOptions` value with an explicit browser, optional full executable path, and additional argv. |
+| `webui_set_kiosk()`, `webui_set_size()`, `webui_set_position()`, `webui_set_high_contrast()` | Typed `BrowserLaunchOptions` generate supported Chromium-family launch controls; Firefox also supports kiosk mode. Unsupported combinations return an error. |
 | `webui_get_child_process_id()` | `Window.openWithBrowser()` returns the retained direct child's `BrowserProcessId`; `Window.browserProcessId()` retrieves it later. |
 | `webui_set_default_root_folder()` | `App.Options.default_directory` supplies directory content to windows created without explicit content. |
 | `webui_set_config(folder_monitor)` | `App.Options.folder_monitor_interval` enables portable recursive directory polling and reloads the affected window's connected clients. |
@@ -429,11 +430,13 @@ and shutdown cleanup are implemented.
 This completes the browser discovery, selection, custom-parameter, and direct
 child tracking methods in the ledger.
 
-### Browser window controls
+### Browser window controls (partial)
 
-- Implement kiosk, focus, minimize, maximize, hidden, resizable, geometry,
-  frameless, transparent, and high-contrast controls where the selected
-  browser and platform support them.
+- Typed kiosk, size, position, and high-contrast launch controls are
+  implemented where the selected browser supports them.
+- Implement focus, minimize, maximize, hidden, resizable, minimum-size,
+  centering, frameless, and transparent controls where the selected browser
+  and platform support them.
 - Implement managed profiles and proxy configuration.
 
 This completes the window control, profile, and proxy methods in the ledger.
@@ -516,6 +519,6 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add typed browser launch controls for kiosk, hidden, high-contrast,
-   resizable, size, and position behavior.
-2. Add managed browser profiles and proxy configuration.
+1. Add managed browser profiles and proxy configuration.
+2. Implement or explicitly reject the remaining platform-specific runtime
+   window controls.

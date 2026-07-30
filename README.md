@@ -122,9 +122,12 @@ standard macOS application bundles, and executable candidates on other
 platforms without opening the selected browser.
 
 `Window.openWithBrowser(&running, options)` launches a selected `Browser`
-with an optional full executable path and additional argv. Chromium-family
-browsers receive an `--app=` URL argument; Firefox receives `-new-window`.
-The returned `BrowserProcessId`, also available through
+with an optional full executable path, additional argv, and typed kiosk,
+window size, window position, and high-contrast controls. Chromium-family
+browsers support all four controls; Firefox supports kiosk mode. Unsupported
+browser and control combinations return `error.UnsupportedBrowserControl`.
+Chromium-family browsers receive an `--app=` URL argument; Firefox receives
+`-new-window`. The returned `BrowserProcessId`, also available through
 `Window.browserProcessId()`, is a PID on POSIX and a process handle on
 Windows. Each window retains at most one launched child; launching another
 replaces it, and `Running.stop()` kills and reaps every retained child.

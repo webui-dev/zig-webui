@@ -16,11 +16,29 @@ pub const Browser = enum {
 };
 
 pub const LaunchOptions = struct {
+    pub const Size = struct {
+        width: u32,
+        height: u32,
+    };
+
+    pub const Position = struct {
+        x: i32,
+        y: i32,
+    };
+
     browser: Browser,
     /// Full path or PATH-resolvable executable name. Null uses discovery.
     executable: ?[]const u8 = null,
     /// Additional arguments inserted before the browser URL argument.
     arguments: []const []const u8 = &.{},
+    /// Start in kiosk mode. Supported by Chromium-family browsers and Firefox.
+    kiosk: bool = false,
+    /// Initial outer window size. Supported by Chromium-family browsers.
+    size: ?Size = null,
+    /// Initial window position. Supported by Chromium-family browsers.
+    position: ?Position = null,
+    /// Force native high-contrast UI. Supported by Chromium-family browsers.
+    high_contrast: bool = false,
 };
 
 /// PID on POSIX and a process handle on Windows.
@@ -73,6 +91,7 @@ pub fn launch(
     if (url.len == 0) return error.InvalidUrl;
     if (options.executable) |executable|
         if (executable.len == 0) return error.InvalidBrowserExecutable;
+    try validateLaunchOptions(options);
 
     const discovered = if (options.executable == null)
         try resolveExecutable(gpa, io, options.browser) orelse
@@ -82,30 +101,80 @@ pub fn launch(
     defer if (discovered) |executable| gpa.free(executable);
     const executable = options.executable orelse discovered.?;
 
-    var argv: std.ArrayList([]const u8) = .empty;
-    defer argv.deinit(gpa);
-    try argv.append(gpa, executable);
-    try argv.appendSlice(gpa, options.arguments);
-    const app_url = switch (options.browser) {
-        .firefox, .safari => null,
-        else => try std.fmt.allocPrint(gpa, "--app={s}", .{url}),
-    };
-    defer if (app_url) |argument| gpa.free(argument);
-    switch (options.browser) {
-        .firefox => {
-            try argv.append(gpa, "-new-window");
-            try argv.append(gpa, url);
-        },
-        .safari => try argv.append(gpa, url),
-        else => try argv.append(gpa, app_url.?),
-    }
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const argv = try buildLaunchArgv(
+        arena.allocator(),
+        executable,
+        url,
+        options,
+    );
 
     return std.process.spawn(io, .{
-        .argv = argv.items,
+        .argv = argv,
         .stdin = .ignore,
         .stdout = .ignore,
         .stderr = .ignore,
     });
+}
+
+fn buildLaunchArgv(
+    allocator: std.mem.Allocator,
+    executable: []const u8,
+    url: []const u8,
+    options: LaunchOptions,
+) ![]const []const u8 {
+    try validateLaunchOptions(options);
+
+    var argv: std.ArrayList([]const u8) = .empty;
+    try argv.append(allocator, executable);
+    try argv.appendSlice(allocator, options.arguments);
+    if (options.kiosk) try argv.append(allocator, "--kiosk");
+    if (options.size) |size| try argv.append(
+        allocator,
+        try std.fmt.allocPrint(
+            allocator,
+            "--window-size={d},{d}",
+            .{ size.width, size.height },
+        ),
+    );
+    if (options.position) |position| try argv.append(
+        allocator,
+        try std.fmt.allocPrint(
+            allocator,
+            "--window-position={d},{d}",
+            .{ position.x, position.y },
+        ),
+    );
+    if (options.high_contrast)
+        try argv.append(allocator, "--force-high-contrast");
+    switch (options.browser) {
+        .firefox => {
+            try argv.append(allocator, "-new-window");
+            try argv.append(allocator, url);
+        },
+        .safari => try argv.append(allocator, url),
+        else => try argv.append(
+            allocator,
+            try std.fmt.allocPrint(allocator, "--app={s}", .{url}),
+        ),
+    }
+    return argv.toOwnedSlice(allocator);
+}
+
+fn validateLaunchOptions(options: LaunchOptions) !void {
+    if (options.size) |size|
+        if (size.width == 0 or size.height == 0)
+            return error.InvalidWindowSize;
+    switch (options.browser) {
+        .firefox => if (options.size != null or
+            options.position != null or options.high_contrast)
+            return error.UnsupportedBrowserControl,
+        .safari => if (options.kiosk or options.size != null or
+            options.position != null or options.high_contrast)
+            return error.UnsupportedBrowserControl,
+        else => {},
+    }
 }
 
 fn commandSucceeds(
@@ -332,6 +401,83 @@ fn preferredBrowsers() []const Browser {
             .safari,
         },
     };
+}
+
+test "typed browser controls build supported argv" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const chromium = try buildLaunchArgv(
+        arena.allocator(),
+        "/browser",
+        "https://127.0.0.1/",
+        .{
+            .browser = .chromium,
+            .arguments = &.{"--guest"},
+            .kiosk = true,
+            .size = .{ .width = 1280, .height = 720 },
+            .position = .{ .x = -20, .y = 30 },
+            .high_contrast = true,
+        },
+    );
+    const expected_chromium: []const []const u8 = &.{
+        "/browser",
+        "--guest",
+        "--kiosk",
+        "--window-size=1280,720",
+        "--window-position=-20,30",
+        "--force-high-contrast",
+        "--app=https://127.0.0.1/",
+    };
+    try std.testing.expectEqualDeep(expected_chromium, chromium);
+
+    const firefox = try buildLaunchArgv(
+        arena.allocator(),
+        "/firefox",
+        "https://127.0.0.1/",
+        .{ .browser = .firefox, .kiosk = true },
+    );
+    const expected_firefox: []const []const u8 = &.{
+        "/firefox",
+        "--kiosk",
+        "-new-window",
+        "https://127.0.0.1/",
+    };
+    try std.testing.expectEqualDeep(expected_firefox, firefox);
+
+    try std.testing.expectError(
+        error.InvalidWindowSize,
+        buildLaunchArgv(
+            arena.allocator(),
+            "/browser",
+            "https://127.0.0.1/",
+            .{
+                .browser = .chromium,
+                .size = .{ .width = 0, .height = 720 },
+            },
+        ),
+    );
+    try std.testing.expectError(
+        error.UnsupportedBrowserControl,
+        buildLaunchArgv(
+            arena.allocator(),
+            "/firefox",
+            "https://127.0.0.1/",
+            .{
+                .browser = .firefox,
+                .position = .{ .x = 0, .y = 0 },
+            },
+        ),
+    );
+    try std.testing.expectError(
+        error.UnsupportedBrowserControl,
+        buildLaunchArgv(
+            arena.allocator(),
+            "/safari",
+            "https://127.0.0.1/",
+            .{ .browser = .safari, .kiosk = true },
+        ),
+    );
 }
 
 test "browser candidates and preference order cover every browser" {
