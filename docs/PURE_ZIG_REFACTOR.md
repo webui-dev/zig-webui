@@ -19,7 +19,7 @@ the Zig standard library and launching an installed browser remain in scope.
 
 ## Current Rewrite Status
 
-Status snapshot: 2026-07-30, after commit `a5dbde0`.
+Status snapshot: 2026-07-31.
 
 The external-browser core is now implemented in Zig on top of pinned Linsang.
 The legacy wrapper, C API, compatibility files, and examples have been
@@ -30,13 +30,13 @@ deleted.
 | Server and security | HTTP, WebSocket, TLS, loopback/public policy, capabilities, Origin checks, cookies, and protocol limits are implemented. |
 | Browser bridge | Bindings, typed arguments and replies, events, deferred replies, JavaScript evaluation, raw data, navigation, and multiple clients are implemented. |
 | Content and lifecycle | HTML, directories, custom handlers, external URLs, runtime content replacement, default directories, favicons, directory monitoring, logging, and deterministic shutdown are implemented. |
-| Browser integration | Default URL opening, browser discovery, explicit browser selection, typed launch controls, custom executables and argv, direct child tracking, replacement, and shutdown cleanup are implemented. |
+| Browser integration | Default URL opening, browser discovery, explicit browser selection, typed launch controls, managed profiles, Chromium-family proxies, custom executables and argv, direct child tracking, replacement, and shutdown cleanup are implemented. |
 | Current validation | `zig build test`, native builds, Windows x86_64 builds, macOS aarch64 builds, and Windows/macOS test-module cross-compilation pass. |
 
-Remaining work is limited to browser window controls and geometry, managed
-profiles and proxies, a portable parent-process numeric ID, server-side
-runtimes, optional native WebViews and handles, and the final parity validation
-gates. The coverage ledger below is the authoritative method-level list.
+Remaining work is limited to browser window controls and geometry, portable
+host high-contrast and parent-process detection, server-side runtimes, optional
+native WebViews and handles, and the final parity validation gates. The
+coverage ledger below is the authoritative method-level list.
 
 ## Original Baseline
 
@@ -89,8 +89,8 @@ races, and synchronous access to the actual `port = 0` address through
 
 - WebView2, GTK/WebKit, or WKWebView.
 - Deno, Node, or Bun server-side runtimes.
-- Browser window controls, geometry, and high-contrast control.
-- Browser profiles and proxy configuration.
+- Remaining browser window lifecycle and geometry controls.
+- Portable host high-contrast detection.
 - A portable parent-process numeric ID accessor.
 
 These do not block the external-browser core, but they are required before
@@ -302,6 +302,8 @@ protocol input never panics.
 | `setRootFolder()` | Initial `.directory` content or runtime `Window.setContent()`. |
 | `setDefaultRootFolder()` | `App.Options.default_directory` and an omitted window `content`. |
 | `setIcon()` / `setIconFile()` | `Window.setIcon()` / `Window.setIconFile()`. |
+| `setProfile()` / `setProxy()` | `BrowserLaunchOptions.profile` / `BrowserLaunchOptions.proxy`. |
+| `deleteProfile()` / `deleteAllProfiles()` | `Window.deleteBrowserProfile()` / `Running.deleteAllBrowserProfiles()`. |
 | Global `setConfig()` | `App.Options` or `Window.Options` |
 | `wait()` / `clean()` | `Running.wait()` / `App.deinit()` |
 | `malloc/free/memcpy/encode/decode` | Zig allocators and standard library |
@@ -325,8 +327,6 @@ implementations.
 | `webui_set_resizable()`, `webui_set_minimum_size()`, `webui_set_center()` | The remaining browser window geometry controls are not implemented. |
 | `webui_set_frameless()`, `webui_set_transparent()` | Frameless and transparent browser window modes are not implemented. |
 | `webui_is_high_contrast()` | Portable host high-contrast detection is not implemented. |
-| `webui_set_profile()`, `webui_delete_profile()`, `webui_delete_all_profiles()` | Managed browser profiles are not implemented. |
-| `webui_set_proxy()` | Browser proxy configuration is not implemented. |
 | `webui_get_parent_process_id()` | A portable parent-process numeric ID accessor is not implemented. |
 | `webui_set_runtime()` | Deno, Node.js, and Bun execution for served files is not implemented. |
 | `webui_show_wv()`, `webui_set_close_handler_wv()`, `webui_get_hwnd()`, `webui_win32_get_hwnd()` | Native WebView hosting and native window handles are outside the pure Zig browser core. |
@@ -355,6 +355,8 @@ not implementation gaps:
 | `webui_get_best_browser()`, `webui_browser_exist()` | `bestBrowser()` and `browserExists()` discover registered or executable browser candidates through the public `Browser` enum. |
 | `webui_show_browser()`, `webui_set_browser_folder()`, `webui_set_custom_parameters()` | `Window.openWithBrowser()` accepts a `BrowserLaunchOptions` value with an explicit browser, optional full executable path, and additional argv. |
 | `webui_set_kiosk()`, `webui_set_size()`, `webui_set_position()`, `webui_set_high_contrast()` | Typed `BrowserLaunchOptions` generate supported Chromium-family launch controls; Firefox also supports kiosk mode. Unsupported combinations return an error. |
+| `webui_set_profile()`, `webui_delete_profile()`, `webui_delete_all_profiles()` | `BrowserLaunchOptions.profile` uses a safe absolute directory. Firefox receives a direct profile path without global registration. `Window.deleteBrowserProfile()` and `Running.deleteAllBrowserProfiles()` stop affected managed children before recursive deletion. |
+| `webui_set_proxy()` | `BrowserLaunchOptions.proxy` generates the Chromium-family proxy switch. Firefox and Safari return an explicit unsupported error; upstream also leaves Firefox proxy handling unimplemented. |
 | `webui_get_child_process_id()` | `Window.openWithBrowser()` returns the retained direct child's `BrowserProcessId`; `Window.browserProcessId()` retrieves it later. |
 | `webui_set_default_root_folder()` | `App.Options.default_directory` supplies directory content to windows created without explicit content. |
 | `webui_set_config(folder_monitor)` | `App.Options.folder_monitor_interval` enables portable recursive directory polling and reloads the affected window's connected clients. |
@@ -437,9 +439,8 @@ child tracking methods in the ledger.
 - Implement focus, minimize, maximize, hidden, resizable, minimum-size,
   centering, frameless, and transparent controls where the selected browser
   and platform support them.
-- Implement managed profiles and proxy configuration.
 
-This completes the window control, profile, and proxy methods in the ledger.
+Managed profiles and Chromium-family proxy configuration are complete.
 
 ### File monitoring (complete)
 
@@ -519,6 +520,6 @@ zig build -Dtarget=aarch64-macos
 
 Continue capability parity:
 
-1. Add managed browser profiles and proxy configuration.
+1. Add portable parent-process and host high-contrast detection.
 2. Implement or explicitly reject the remaining platform-specific runtime
    window controls.

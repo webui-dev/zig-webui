@@ -478,6 +478,7 @@ const WindowState = struct {
     pending_events: usize = 0,
     next_client_id: u64 = 1,
     next_eval_id: u16 = 1,
+    browser_profile: ?[]u8 = null,
 
     fn deinit(self: *WindowState) void {
         std.debug.assert(self.pending_evals.items.len == 0);
@@ -490,6 +491,7 @@ const WindowState = struct {
         for (self.bindings.items) |item| self.gpa.free(item.name);
         self.bindings.deinit(self.gpa);
         if (self.icon) |*icon| icon.deinit(self.gpa);
+        if (self.browser_profile) |profile| self.gpa.free(profile);
         self.content.deinit(self.gpa);
         self.gpa.destroy(self);
     }
@@ -1569,6 +1571,19 @@ pub const Window = struct {
             running.inner.io,
             self.state,
             child,
+            options.profile,
+        );
+    }
+
+    /// Stop browsers using this window's profile and delete its directory.
+    pub fn deleteBrowserProfile(
+        self: Window,
+        running: *Running,
+    ) !bool {
+        if (!running.app.hasWindow(self.state)) return error.UnknownWindow;
+        return running.app.deleteBrowserProfile(
+            running.inner.io,
+            self.state,
         );
     }
 
@@ -1970,9 +1985,15 @@ pub const App = struct {
         io: std.Io,
         window: *WindowState,
         child: std.process.Child,
+        profile: ?[]const u8,
     ) !BrowserProcessId {
         var owned = child;
         errdefer owned.kill(io);
+        const owned_profile = if (profile) |path|
+            try self.gpa.dupe(u8, path)
+        else
+            null;
+        errdefer if (owned_profile) |path| self.gpa.free(path);
         const id = owned.id.?;
 
         self.browser_mutex.lockUncancelable(io);
@@ -1981,13 +2002,60 @@ pub const App = struct {
             if (managed.window != window) continue;
             managed.child.kill(io);
             managed.child = owned;
+            self.replaceBrowserProfile(window, owned_profile);
             return id;
         }
         try self.managed_browsers.append(self.gpa, .{
             .window = window,
             .child = owned,
         });
+        self.replaceBrowserProfile(window, owned_profile);
         return id;
+    }
+
+    fn replaceBrowserProfile(
+        self: *App,
+        window: *WindowState,
+        replacement: ?[]u8,
+    ) void {
+        if (window.browser_profile) |profile| self.gpa.free(profile);
+        window.browser_profile = replacement;
+    }
+
+    fn deleteBrowserProfile(
+        self: *App,
+        io: std.Io,
+        window: *WindowState,
+    ) !bool {
+        self.browser_mutex.lockUncancelable(io);
+        defer self.browser_mutex.unlock(io);
+        const profile = window.browser_profile orelse return false;
+
+        var index: usize = 0;
+        while (index < self.managed_browsers.items.len) {
+            const managed = &self.managed_browsers.items[index];
+            const managed_profile = managed.window.browser_profile orelse {
+                index += 1;
+                continue;
+            };
+            if (!std.mem.eql(u8, managed_profile, profile)) {
+                index += 1;
+                continue;
+            }
+            var removed = self.managed_browsers.swapRemove(index);
+            removed.child.kill(io);
+        }
+
+        try std.Io.Dir.cwd().deleteTree(io, profile);
+        for (self.windows.items) |candidate| {
+            const candidate_profile = candidate.browser_profile orelse
+                continue;
+            if (!std.mem.eql(u8, candidate_profile, profile)) continue;
+            if (candidate != window) self.gpa.free(candidate_profile);
+            candidate.browser_profile = null;
+        }
+        self.gpa.free(profile);
+        return true;
     }
 
     fn browserId(
@@ -2071,6 +2139,18 @@ pub const Running = struct {
         while (!self.app.closed.load(.acquire))
             try std.Io.sleep(self.inner.io, .fromMilliseconds(10), .awake);
         try self.stop();
+    }
+
+    /// Stop affected managed browsers and delete every tracked profile.
+    pub fn deleteAllBrowserProfiles(self: *Running) !usize {
+        var deleted: usize = 0;
+        for (self.app.windows.items) |window| {
+            if (try self.app.deleteBrowserProfile(
+                self.inner.io,
+                window,
+            )) deleted += 1;
+        }
+        return deleted;
     }
 };
 
@@ -3315,11 +3395,42 @@ test "selected browser launch owns argv process and shutdown" {
         .{tmp.sub_path},
     );
     defer gpa.free(second_capture);
+    const third_capture = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}/third-argv",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(third_capture);
+    const temp_root = try std.fmt.allocPrint(
+        gpa,
+        ".zig-cache/tmp/{s}",
+        .{tmp.sub_path},
+    );
+    defer gpa.free(temp_root);
+    const absolute_root = try std.Io.Dir.cwd().realPathFileAlloc(
+        io,
+        temp_root,
+        gpa,
+    );
+    defer gpa.free(absolute_root);
+    const first_profile = try std.fs.path.join(
+        gpa,
+        &.{ absolute_root, "first-profile" },
+    );
+    defer gpa.free(first_profile);
+    const second_profile = try std.fs.path.join(
+        gpa,
+        &.{ absolute_root, "second-profile" },
+    );
+    defer gpa.free(second_profile);
 
     var app = App.init(gpa, .{});
     defer app.deinit();
     const window = try app.createWindow(.{
         .content = .{ .html = "managed browser" },
+    });
+    const other_window = try app.createWindow(.{
+        .content = .{ .html = "other managed browser" },
     });
     var running = try app.start(io);
     defer running.stop() catch {};
@@ -3361,6 +3472,8 @@ test "selected browser launch owns argv process and shutdown" {
         .browser = .chromium,
         .executable = executable,
         .arguments = &.{ second_capture, "--guest" },
+        .profile = first_profile,
+        .proxy = "socks5://127.0.0.1:1080",
     });
     try std.testing.expectEqual(
         second_id,
@@ -3376,11 +3489,52 @@ test "selected browser launch owns argv process and shutdown" {
     defer gpa.free(second_argv);
     const expected_second = try std.fmt.allocPrint(
         gpa,
-        "--guest\n--app={s}\n",
-        .{page_url},
+        "--guest\n--user-data-dir={s}\n" ++
+            "--proxy-server=socks5://127.0.0.1:1080\n--app={s}\n",
+        .{ first_profile, page_url },
     );
     defer gpa.free(expected_second);
     try std.testing.expectEqualStrings(expected_second, second_argv);
+
+    _ = try other_window.openWithBrowser(&running, .{
+        .browser = .chromium,
+        .executable = executable,
+        .arguments = &.{third_capture},
+        .profile = second_profile,
+    });
+    const third_argv = try readTestFileEventually(
+        tmp.dir,
+        io,
+        gpa,
+        "third-argv",
+    );
+    defer gpa.free(third_argv);
+    try std.testing.expectEqual(@as(usize, 2), app.managed_browsers.items.len);
+    _ = try tmp.dir.statFile(io, "first-profile", .{});
+    _ = try tmp.dir.statFile(io, "second-profile", .{});
+
+    try std.testing.expect(try window.deleteBrowserProfile(&running));
+    try std.testing.expectEqual(@as(usize, 1), app.managed_browsers.items.len);
+    try std.testing.expectEqual(
+        @as(?BrowserProcessId, null),
+        try window.browserProcessId(&running),
+    );
+    try std.testing.expectError(
+        error.FileNotFound,
+        tmp.dir.statFile(io, "first-profile", .{}),
+    );
+    try std.testing.expectEqual(
+        @as(usize, 1),
+        try running.deleteAllBrowserProfiles(),
+    );
+    try std.testing.expectError(
+        error.FileNotFound,
+        tmp.dir.statFile(io, "second-profile", .{}),
+    );
+    try std.testing.expectEqual(
+        @as(usize, 0),
+        try running.deleteAllBrowserProfiles(),
+    );
 
     try running.stop();
     try std.testing.expectEqual(@as(usize, 0), app.managed_browsers.items.len);

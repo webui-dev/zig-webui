@@ -39,6 +39,10 @@ pub const LaunchOptions = struct {
     position: ?Position = null,
     /// Force native high-contrast UI. Supported by Chromium-family browsers.
     high_contrast: bool = false,
+    /// Absolute profile directory managed by this launch.
+    profile: ?[]const u8 = null,
+    /// Proxy server passed to Chromium-family browsers.
+    proxy: ?[]const u8 = null,
 };
 
 /// PID on POSIX and a process handle on Windows.
@@ -100,6 +104,8 @@ pub fn launch(
         null;
     defer if (discovered) |executable| gpa.free(executable);
     const executable = options.executable orelse discovered.?;
+    if (options.profile) |profile|
+        try std.Io.Dir.cwd().createDirPath(io, profile);
 
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
@@ -148,6 +154,30 @@ fn buildLaunchArgv(
     );
     if (options.high_contrast)
         try argv.append(allocator, "--force-high-contrast");
+    if (options.profile) |profile| switch (options.browser) {
+        .firefox => {
+            try argv.append(allocator, "--profile");
+            try argv.append(allocator, profile);
+            try argv.append(allocator, "--new-instance");
+        },
+        .safari => unreachable,
+        else => try argv.append(
+            allocator,
+            try std.fmt.allocPrint(
+                allocator,
+                "--user-data-dir={s}",
+                .{profile},
+            ),
+        ),
+    };
+    if (options.proxy) |proxy| try argv.append(
+        allocator,
+        try std.fmt.allocPrint(
+            allocator,
+            "--proxy-server={s}",
+            .{proxy},
+        ),
+    );
     switch (options.browser) {
         .firefox => {
             try argv.append(allocator, "-new-window");
@@ -166,15 +196,47 @@ fn validateLaunchOptions(options: LaunchOptions) !void {
     if (options.size) |size|
         if (size.width == 0 or size.height == 0)
             return error.InvalidWindowSize;
+    if (options.profile) |profile| try validateProfilePath(profile);
+    if (options.proxy) |proxy|
+        if (proxy.len == 0 or std.mem.indexOfScalar(u8, proxy, 0) != null)
+            return error.InvalidBrowserProxy;
     switch (options.browser) {
-        .firefox => if (options.size != null or
-            options.position != null or options.high_contrast)
-            return error.UnsupportedBrowserControl,
-        .safari => if (options.kiosk or options.size != null or
-            options.position != null or options.high_contrast)
-            return error.UnsupportedBrowserControl,
+        .firefox => {
+            if (options.size != null or
+                options.position != null or options.high_contrast)
+                return error.UnsupportedBrowserControl;
+            if (options.proxy != null) return error.UnsupportedBrowserProxy;
+        },
+        .safari => {
+            if (options.kiosk or options.size != null or
+                options.position != null or options.high_contrast)
+                return error.UnsupportedBrowserControl;
+            if (options.profile != null)
+                return error.UnsupportedBrowserProfile;
+            if (options.proxy != null) return error.UnsupportedBrowserProxy;
+        },
         else => {},
     }
+}
+
+fn validateProfilePath(path: []const u8) !void {
+    if (path.len == 0 or
+        std.mem.indexOfScalar(u8, path, 0) != null or
+        !std.fs.path.isAbsolute(path))
+    {
+        return error.InvalidBrowserProfile;
+    }
+    var components = std.mem.tokenizeAny(u8, path, "/\\");
+    while (components.next()) |component|
+        if (std.mem.eql(u8, component, ".") or
+            std.mem.eql(u8, component, ".."))
+            return error.InvalidBrowserProfile;
+    const parent = std.fs.path.dirname(path) orelse
+        return error.InvalidBrowserProfile;
+    const grandparent = std.fs.path.dirname(parent) orelse
+        return error.InvalidBrowserProfile;
+    if (std.mem.eql(u8, parent, grandparent))
+        return error.InvalidBrowserProfile;
 }
 
 fn commandSucceeds(
@@ -403,9 +465,17 @@ fn preferredBrowsers() []const Browser {
     };
 }
 
-test "typed browser controls build supported argv" {
+test "typed browser launch options build supported argv" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
+    const profile = if (builtin.os.tag == .windows)
+        "C:\\tmp\\webui\\profile"
+    else
+        "/tmp/webui/profile";
+    const profile_argument = if (builtin.os.tag == .windows)
+        "--user-data-dir=C:\\tmp\\webui\\profile"
+    else
+        "--user-data-dir=/tmp/webui/profile";
 
     const chromium = try buildLaunchArgv(
         arena.allocator(),
@@ -418,6 +488,8 @@ test "typed browser controls build supported argv" {
             .size = .{ .width = 1280, .height = 720 },
             .position = .{ .x = -20, .y = 30 },
             .high_contrast = true,
+            .profile = profile,
+            .proxy = "socks5://127.0.0.1:1080",
         },
     );
     const expected_chromium: []const []const u8 = &.{
@@ -427,6 +499,8 @@ test "typed browser controls build supported argv" {
         "--window-size=1280,720",
         "--window-position=-20,30",
         "--force-high-contrast",
+        profile_argument,
+        "--proxy-server=socks5://127.0.0.1:1080",
         "--app=https://127.0.0.1/",
     };
     try std.testing.expectEqualDeep(expected_chromium, chromium);
@@ -435,11 +509,18 @@ test "typed browser controls build supported argv" {
         arena.allocator(),
         "/firefox",
         "https://127.0.0.1/",
-        .{ .browser = .firefox, .kiosk = true },
+        .{
+            .browser = .firefox,
+            .kiosk = true,
+            .profile = profile,
+        },
     );
     const expected_firefox: []const []const u8 = &.{
         "/firefox",
         "--kiosk",
+        "--profile",
+        profile,
+        "--new-instance",
         "-new-window",
         "https://127.0.0.1/",
     };
@@ -470,12 +551,45 @@ test "typed browser controls build supported argv" {
         ),
     );
     try std.testing.expectError(
-        error.UnsupportedBrowserControl,
+        error.UnsupportedBrowserProxy,
+        buildLaunchArgv(
+            arena.allocator(),
+            "/firefox",
+            "https://127.0.0.1/",
+            .{
+                .browser = .firefox,
+                .proxy = "http://127.0.0.1:8888",
+            },
+        ),
+    );
+    try std.testing.expectError(
+        error.UnsupportedBrowserProfile,
         buildLaunchArgv(
             arena.allocator(),
             "/safari",
             "https://127.0.0.1/",
-            .{ .browser = .safari, .kiosk = true },
+            .{ .browser = .safari, .profile = profile },
+        ),
+    );
+    try std.testing.expectError(
+        error.InvalidBrowserProfile,
+        buildLaunchArgv(
+            arena.allocator(),
+            "/browser",
+            "https://127.0.0.1/",
+            .{
+                .browser = .chromium,
+                .profile = if (builtin.os.tag == .windows) "C:\\" else "/",
+            },
+        ),
+    );
+    try std.testing.expectError(
+        error.InvalidBrowserProxy,
+        buildLaunchArgv(
+            arena.allocator(),
+            "/browser",
+            "https://127.0.0.1/",
+            .{ .browser = .chromium, .proxy = "" },
         ),
     );
 }

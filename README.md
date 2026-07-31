@@ -126,11 +126,21 @@ with an optional full executable path, additional argv, and typed kiosk,
 window size, window position, and high-contrast controls. Chromium-family
 browsers support all four controls; Firefox supports kiosk mode. Unsupported
 browser and control combinations return `error.UnsupportedBrowserControl`.
+Set `.profile` to a safe absolute profile directory; Chromium-family browsers
+receive `--user-data-dir`, while Firefox receives a direct `--profile` path
+without changing the global `profiles.ini`. Set `.proxy` for a
+Chromium-family proxy server. Safari profiles return
+`error.UnsupportedBrowserProfile`; Firefox and Safari proxies return
+`error.UnsupportedBrowserProxy`.
 Chromium-family browsers receive an `--app=` URL argument; Firefox receives
 `-new-window`. The returned `BrowserProcessId`, also available through
 `Window.browserProcessId()`, is a PID on POSIX and a process handle on
 Windows. Each window retains at most one launched child; launching another
 replaces it, and `Running.stop()` kills and reaps every retained child.
+`Window.deleteBrowserProfile(&running)` stops every managed browser sharing
+that profile before deleting it. `Running.deleteAllBrowserProfiles()` deletes
+all tracked profiles. Both remain available after `Running.stop()` and before
+`App.deinit()`.
 
 Serve a directory by setting
 `.content = .{ .directory = "path/to/public" }`. The path is opened when the
