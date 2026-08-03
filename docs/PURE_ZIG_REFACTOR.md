@@ -19,7 +19,7 @@ the Zig standard library and launching an installed browser remain in scope.
 
 ## Current Rewrite Status
 
-Status snapshot: 2026-07-31.
+Status snapshot: 2026-08-03.
 
 The external-browser core is now implemented in Zig on top of pinned Linsang.
 The legacy wrapper, C API, compatibility files, and examples have been
@@ -31,12 +31,19 @@ deleted.
 | Browser bridge | Bindings, typed arguments and replies, events, deferred replies, JavaScript evaluation, raw data, navigation, and multiple clients are implemented. |
 | Content and lifecycle | HTML, directories, custom handlers, external URLs, runtime content replacement, default directories, favicons, directory monitoring, logging, and deterministic shutdown are implemented. |
 | Browser integration | Default URL opening, browser discovery, explicit browser selection, typed launch controls, managed profiles, Chromium-family proxies, custom executables and argv, direct child tracking, replacement, and shutdown cleanup are implemented. |
-| Current validation | `zig build test`, native builds, Windows x86_64 builds, macOS aarch64 builds, and Windows/macOS test-module cross-compilation pass. |
+| Examples and fuzzing | Only the minimal example is retained. The parity-closure examples and the protocol fuzz target are not written. |
+| Current validation | `zig build test` passes 17 Zig tests and the Node bridge test. All five release-gate targets build. The build graph contains no C. |
 
-Remaining work is limited to browser window controls and geometry, portable
-host high-contrast and parent-process detection, server-side runtimes, optional
-native WebViews and handles, and the final parity validation gates. The
-coverage ledger below is the authoritative method-level list.
+`include/webui.h` at the pinned upstream commit exports 111 functions. The 16
+`webui_interface_*` entries are permanently omitted with the C ABI, leaving 95
+in scope; 79 are implemented or have an explicit Zig replacement and 16 remain.
+Every upstream export appears in the ledger below, which is the authoritative
+method-level list.
+
+Remaining work is browser window controls and geometry, portable host
+high-contrast and parent-process detection, server-side runtimes, optional
+native WebViews and handles, the retained examples, and the final parity
+validation gates.
 
 ## Original Baseline
 
@@ -321,6 +328,10 @@ implementations.
 
 ### Missing or Partial Backend Capabilities
 
+These rows are the 16 remaining in-scope upstream exports. Every other export
+appears in the replacement table below or in the omitted `webui_interface_*`
+row.
+
 | Upstream API | Current gap |
 |---|---|
 | `webui_focus()`, `webui_minimize()`, `webui_maximize()`, `webui_set_hide()` | Runtime browser window lifecycle controls are not implemented. |
@@ -491,18 +502,22 @@ zig build -Dtarget=x86_64-macos
 zig build -Dtarget=aarch64-macos
 ```
 
-- Protocol tests cover every command, truncated packets, invalid lengths,
-  invalid tokens, and unknown commands.
-- Node's built-in test runner covers browser bridge command behavior without
-  npm dependencies.
-- Integration tests cover HTTP content, WebSocket handshake, JavaScript-to-Zig,
-  Zig-to-JavaScript, disconnect, and shutdown.
-- Fuzz input never panics or reads out of bounds. Messages and pending calls
-  have explicit limits.
-- `rg 'webui_new|pub extern fn webui_' src` returns no results.
-- The build graph contains only the Zig standard library and pinned Linsang,
-  with no WebUI or CivetWeb artifact.
-- Core integration tests leak no memory under the debug allocator.
+All five builds and both test runners pass as of the status snapshot. Gate
+status:
+
+- Done: Node's built-in test runner covers browser bridge command behavior
+  without npm dependencies.
+- Done: integration tests cover HTTP content, WebSocket handshake,
+  JavaScript-to-Zig, Zig-to-JavaScript, disconnect, and shutdown.
+- Done: `rg 'webui_new|pub extern fn webui_' src` returns no results.
+- Done: the build graph contains only the Zig standard library and pinned
+  Linsang, with no WebUI or CivetWeb artifact.
+- Done: core integration tests leak no memory under the debug allocator.
+- Partial: `protocol.zig` has two direct decode tests. Coverage of every
+  command, truncated packets, invalid lengths, invalid tokens, and unknown
+  commands is incomplete.
+- Not started: a fuzz target proving untrusted input never panics or reads out
+  of bounds. Messages and pending calls already have explicit limits.
 
 ## Main Risks
 
@@ -518,8 +533,16 @@ zig build -Dtarget=aarch64-macos
 
 ## Next Implementation Work
 
-Continue capability parity:
+Ordered by cost against ledger progress:
 
-1. Add portable parent-process and host high-contrast detection.
-2. Implement or explicitly reject the remaining platform-specific runtime
-   window controls.
+1. Add portable parent-process and host high-contrast detection. Both are small
+   standard-library accessors that close two ledger rows.
+2. Write the retained examples for bindings, dynamic content, public TLS, and
+   managed browsers.
+3. Complete the protocol decode tests and add the fuzz target.
+4. Implement or explicitly reject the remaining runtime window controls per
+   browser and platform. External browsers cannot honor most of them, so an
+   explicit unsupported error is an acceptable outcome for a given pair.
+5. Defer server-side runtimes and native WebViews until after the breaking
+   release. Runtimes widen the execution surface and WebViews need the separate
+   design review that the pure Zig boundary requires.
