@@ -48,6 +48,38 @@ pub const LaunchOptions = struct {
 /// PID on POSIX and a process handle on Windows.
 pub const ProcessId = std.process.Child.Id;
 
+/// Numeric ID of the process that created this one.
+pub fn parentProcessId() error{ Unexpected, Unsupported }!u32 {
+    if (builtin.os.tag == .windows) {
+        const windows = std.os.windows;
+        var info: windows.PROCESS.BASIC_INFORMATION = undefined;
+        switch (windows.ntdll.NtQueryInformationProcess(
+            windows.GetCurrentProcess(),
+            .BasicInformation,
+            &info,
+            @sizeOf(@TypeOf(info)),
+            null,
+        )) {
+            .SUCCESS => {},
+            else => |status| return windows.unexpectedStatus(status),
+        }
+        return @truncate(info.InheritedFromUniqueProcessId);
+    }
+    if (builtin.os.tag == .wasi) return error.Unsupported;
+    return @intCast(std.posix.getppid());
+}
+
+/// Whether the host requests a high-contrast interface. Unreadable or absent
+/// desktop settings report false instead of failing.
+pub fn isHighContrast(gpa: std.mem.Allocator, io: std.Io) !bool {
+    return switch (builtin.os.tag) {
+        .windows => windowsHighContrast(gpa, io),
+        .macos => macosHighContrast(gpa, io),
+        .wasi => false,
+        else => desktopHighContrast(gpa, io),
+    };
+}
+
 /// Open a non-empty URL with the operating system's default handler.
 pub fn openUrl(
     gpa: std.mem.Allocator,
@@ -333,6 +365,121 @@ fn resolveMacosExecutable(
     return null;
 }
 
+fn windowsHighContrast(gpa: std.mem.Allocator, io: std.Io) !bool {
+    const flags = (try commandValue(gpa, io, &.{
+        "reg.exe",
+        "query",
+        "HKCU\\Control Panel\\Accessibility\\HighContrast",
+        "/v",
+        "Flags",
+    }, "REG_SZ")) orelse return false;
+    defer gpa.free(flags);
+    return parseHighContrastFlags(flags);
+}
+
+/// `HCF_HIGHCONTRASTON` in the accessibility flags that `SPI_GETHIGHCONTRAST`
+/// also reports.
+fn parseHighContrastFlags(value: []const u8) bool {
+    const flags = std.fmt.parseInt(u32, value, 10) catch return false;
+    return flags & 0x01 != 0;
+}
+
+fn macosHighContrast(gpa: std.mem.Allocator, io: std.Io) !bool {
+    // ponytail: upstream reads AppleInterfaceStyle, which reports dark mode
+    // rather than contrast. increaseContrast is the setting the accessibility
+    // pane writes. Add differentiateWithoutColor only if callers ask for it.
+    for ([_][]const u8{ "increaseContrast", "whiteOnBlack" }) |key| {
+        const value = (try commandValue(gpa, io, &.{
+            "defaults",
+            "read",
+            "com.apple.universalaccess",
+            key,
+        }, null)) orelse continue;
+        defer gpa.free(value);
+        if (std.mem.eql(u8, value, "1")) return true;
+    }
+    return false;
+}
+
+/// Probes in order of directness. Upstream only reads the GNOME accessibility
+/// toggle, so the theme-based desktops fall back to naming conventions.
+/// ponytail: every miss costs one short-lived child process; cache the result
+/// only if a caller polls this on a hot path.
+const high_contrast_probes = [_]struct {
+    argv: []const []const u8,
+    /// Boolean probes must print `true`; the rest must name the theme.
+    boolean: bool,
+}{
+    .{ .argv = &.{
+        "gsettings",
+        "get",
+        "org.gnome.desktop.a11y.interface",
+        "high-contrast",
+    }, .boolean = true },
+    .{ .argv = &.{
+        "gsettings",
+        "get",
+        "org.gnome.desktop.interface",
+        "gtk-theme",
+    }, .boolean = false },
+    .{ .argv = &.{
+        "kreadconfig6",
+        "--file",
+        "kdeglobals",
+        "--group",
+        "General",
+        "--key",
+        "ColorScheme",
+    }, .boolean = false },
+    .{ .argv = &.{
+        "kreadconfig5",
+        "--file",
+        "kdeglobals",
+        "--group",
+        "General",
+        "--key",
+        "ColorScheme",
+    }, .boolean = false },
+    .{ .argv = &.{
+        "xfconf-query",
+        "-c",
+        "xsettings",
+        "-p",
+        "/Net/ThemeName",
+    }, .boolean = false },
+};
+
+fn desktopHighContrast(gpa: std.mem.Allocator, io: std.Io) !bool {
+    for (high_contrast_probes) |probe| {
+        const value = (try commandValue(gpa, io, probe.argv, null)) orelse
+            continue;
+        defer gpa.free(value);
+        const enabled = if (probe.boolean)
+            std.mem.eql(u8, value, "true")
+        else
+            namesHighContrastTheme(value);
+        if (enabled) return true;
+    }
+    return false;
+}
+
+/// Matches GNOME `HighContrast` and `HighContrastInverse`, KDE
+/// `BreezeHighContrast`, and the spaced `High Contrast` scheme names.
+fn namesHighContrastTheme(value: []const u8) bool {
+    var buffer: [64]u8 = undefined;
+    var len: usize = 0;
+    for (value) |byte| {
+        switch (byte) {
+            ' ', '-', '_', '\'', '"' => continue,
+            else => {},
+        }
+        if (len == buffer.len) break;
+        buffer[len] = std.ascii.toLower(byte);
+        len += 1;
+    }
+    return std.mem.indexOf(u8, buffer[0..len], "highcontrast") != null;
+}
+
 fn commandValue(
     gpa: std.mem.Allocator,
     io: std.Io,
@@ -354,7 +501,7 @@ fn commandValue(
         else => return null,
     }
     const value = parseCommandValue(result.stdout, marker) orelse return null;
-    return gpa.dupe(u8, value);
+    return try gpa.dupe(u8, value);
 }
 
 fn parseCommandValue(
@@ -658,4 +805,40 @@ test "browser candidates and preference order cover every browser" {
                 selected,
             ));
     }
+}
+
+test "high contrast settings parse across desktops" {
+    for ([_][]const u8{
+        "HighContrast",
+        "'HighContrastInverse'",
+        "Breeze High Contrast",
+        "highcontrast-dark",
+    }) |value|
+        try std.testing.expect(namesHighContrastTheme(value));
+    for ([_][]const u8{ "Adwaita", "Breeze", "Contrast", "'adw-gtk3'", "" }) |value|
+        try std.testing.expect(!namesHighContrastTheme(value));
+
+    try std.testing.expect(parseHighContrastFlags("127"));
+    try std.testing.expect(parseHighContrastFlags("1"));
+    try std.testing.expect(!parseHighContrastFlags("126"));
+    try std.testing.expect(!parseHighContrastFlags("0"));
+    try std.testing.expect(!parseHighContrastFlags(""));
+    try std.testing.expect(!parseHighContrastFlags("0x1"));
+}
+
+test "host high contrast probe reports a value" {
+    // Absent desktop tooling must report false rather than fail.
+    _ = try isHighContrast(std.testing.allocator, std.testing.io);
+}
+
+test "parent process id names a real process" {
+    const parent = try parentProcessId();
+    try std.testing.expect(parent != 0);
+    // ponytail: the Windows path only runs on Windows, so a native test can
+    // check the POSIX path directly and the rest through the zero check.
+    if (builtin.os.tag != .windows and builtin.os.tag != .wasi)
+        try std.testing.expectEqual(std.posix.getppid(), @as(
+            std.posix.pid_t,
+            @intCast(parent),
+        ));
 }

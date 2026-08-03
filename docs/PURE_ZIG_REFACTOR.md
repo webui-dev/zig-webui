@@ -32,18 +32,17 @@ deleted.
 | Content and lifecycle | HTML, directories, custom handlers, external URLs, runtime content replacement, default directories, favicons, directory monitoring, logging, and deterministic shutdown are implemented. |
 | Browser integration | Default URL opening, browser discovery, explicit browser selection, typed launch controls, managed profiles, Chromium-family proxies, custom executables and argv, direct child tracking, replacement, and shutdown cleanup are implemented. |
 | Examples and fuzzing | Only the minimal example is retained. The parity-closure examples and the protocol fuzz target are not written. |
-| Current validation | `zig build test` passes 17 Zig tests and the Node bridge test. All five release-gate targets build. The build graph contains no C. |
+| Current validation | `zig build test` passes 20 Zig tests and the Node bridge test. All five release-gate targets build. The build graph contains no C. |
 
 `include/webui.h` at the pinned upstream commit exports 111 functions. The 16
 `webui_interface_*` entries are permanently omitted with the C ABI, leaving 95
-in scope; 79 are implemented or have an explicit Zig replacement and 16 remain.
+in scope; 81 are implemented or have an explicit Zig replacement and 14 remain.
 Every upstream export appears in the ledger below, which is the authoritative
 method-level list.
 
-Remaining work is browser window controls and geometry, portable host
-high-contrast and parent-process detection, server-side runtimes, optional
-native WebViews and handles, the retained examples, and the final parity
-validation gates.
+Remaining work is browser window controls and geometry, server-side runtimes,
+optional native WebViews and handles, the retained examples, and the final
+parity validation gates.
 
 ## Original Baseline
 
@@ -97,8 +96,6 @@ races, and synchronous access to the actual `port = 0` address through
 - WebView2, GTK/WebKit, or WKWebView.
 - Deno, Node, or Bun server-side runtimes.
 - Remaining browser window lifecycle and geometry controls.
-- Portable host high-contrast detection.
-- A portable parent-process numeric ID accessor.
 
 These do not block the external-browser core, but they are required before
 declaring complete upstream capability parity.
@@ -328,7 +325,7 @@ implementations.
 
 ### Missing or Partial Backend Capabilities
 
-These rows are the 16 remaining in-scope upstream exports. Every other export
+These rows are the 14 remaining in-scope upstream exports. Every other export
 appears in the replacement table below or in the omitted `webui_interface_*`
 row.
 
@@ -337,8 +334,6 @@ row.
 | `webui_focus()`, `webui_minimize()`, `webui_maximize()`, `webui_set_hide()` | Runtime browser window lifecycle controls are not implemented. |
 | `webui_set_resizable()`, `webui_set_minimum_size()`, `webui_set_center()` | The remaining browser window geometry controls are not implemented. |
 | `webui_set_frameless()`, `webui_set_transparent()` | Frameless and transparent browser window modes are not implemented. |
-| `webui_is_high_contrast()` | Portable host high-contrast detection is not implemented. |
-| `webui_get_parent_process_id()` | A portable parent-process numeric ID accessor is not implemented. |
 | `webui_set_runtime()` | Deno, Node.js, and Bun execution for served files is not implemented. |
 | `webui_show_wv()`, `webui_set_close_handler_wv()`, `webui_get_hwnd()`, `webui_win32_get_hwnd()` | Native WebView hosting and native window handles are outside the pure Zig browser core. |
 
@@ -347,8 +342,11 @@ row.
 The browser-side `webui` object implements `call()`, `isConnected()`,
 `setLogging()`, `encode()`, `decode()`, `setEventCallback()`, `event`,
 `isHighContrast()`, and `allowNavigation()`. Encoding delegates to `btoa()`
-and `atob()`, while high-contrast detection uses native browser media
-queries. The upstream bridge's `callCore()` method remains an internal
+and `atob()`. Upstream's bridge resolves `isHighContrast()` with a
+`callCore("high_contrast")` round trip to the host, while this bridge answers
+locally from the `prefers-contrast` media query, which reports the preference
+of the browser that actually renders the interface. The host reads its own
+operating-system setting through `isHighContrast()`. The upstream bridge's `callCore()` method remains an internal
 implementation detail.
 
 ### Intentional Zig Replacements
@@ -365,9 +363,11 @@ not implementation gaps:
 | `webui_open_url()` | `openUrl()` safely passes a non-empty URL as one argument to the platform default opener. |
 | `webui_get_best_browser()`, `webui_browser_exist()` | `bestBrowser()` and `browserExists()` discover registered or executable browser candidates through the public `Browser` enum. |
 | `webui_show_browser()`, `webui_set_browser_folder()`, `webui_set_custom_parameters()` | `Window.openWithBrowser()` accepts a `BrowserLaunchOptions` value with an explicit browser, optional full executable path, and additional argv. |
+| `webui_is_high_contrast()` | `isHighContrast()` reads the Windows `HighContrast` accessibility flags, the GNOME accessibility toggle, GNOME, KDE, and XFCE high-contrast theme names, and the macOS `increaseContrast` and `whiteOnBlack` settings. Upstream reads `AppleInterfaceStyle` on macOS, which reports dark mode rather than contrast. Missing desktop tooling reports false. |
 | `webui_set_kiosk()`, `webui_set_size()`, `webui_set_position()`, `webui_set_high_contrast()` | Typed `BrowserLaunchOptions` generate supported Chromium-family launch controls; Firefox also supports kiosk mode. Unsupported combinations return an error. |
 | `webui_set_profile()`, `webui_delete_profile()`, `webui_delete_all_profiles()` | `BrowserLaunchOptions.profile` uses a safe absolute directory. Firefox receives a direct profile path without global registration. `Window.deleteBrowserProfile()` and `Running.deleteAllBrowserProfiles()` stop affected managed children before recursive deletion. |
 | `webui_set_proxy()` | `BrowserLaunchOptions.proxy` generates the Chromium-family proxy switch. Firefox and Safari return an explicit unsupported error; upstream also leaves Firefox proxy handling unimplemented. |
+| `webui_get_parent_process_id()` | `parentProcessId()` returns the creating process's numeric ID through `std.posix.getppid()` or `NtQueryInformationProcess`. |
 | `webui_get_child_process_id()` | `Window.openWithBrowser()` returns the retained direct child's `BrowserProcessId`; `Window.browserProcessId()` retrieves it later. |
 | `webui_set_default_root_folder()` | `App.Options.default_directory` supplies directory content to windows created without explicit content. |
 | `webui_set_config(folder_monitor)` | `App.Options.folder_monitor_interval` enables portable recursive directory polling and reloads the affected window's connected clients. |
@@ -535,14 +535,12 @@ status:
 
 Ordered by cost against ledger progress:
 
-1. Add portable parent-process and host high-contrast detection. Both are small
-   standard-library accessors that close two ledger rows.
-2. Write the retained examples for bindings, dynamic content, public TLS, and
+1. Write the retained examples for bindings, dynamic content, public TLS, and
    managed browsers.
-3. Complete the protocol decode tests and add the fuzz target.
-4. Implement or explicitly reject the remaining runtime window controls per
+2. Complete the protocol decode tests and add the fuzz target.
+3. Implement or explicitly reject the remaining runtime window controls per
    browser and platform. External browsers cannot honor most of them, so an
    explicit unsupported error is an acceptable outcome for a given pair.
-5. Defer server-side runtimes and native WebViews until after the breaking
+4. Defer server-side runtimes and native WebViews until after the breaking
    release. Runtimes widen the execution surface and WebViews need the separate
    design review that the pure Zig boundary requires.

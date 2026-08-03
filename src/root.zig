@@ -29,6 +29,8 @@ pub const BrowserProcessId = @import("browser.zig").ProcessId;
 pub const openUrl = @import("browser.zig").openUrl;
 pub const browserExists = @import("browser.zig").browserExists;
 pub const bestBrowser = @import("browser.zig").bestBrowser;
+pub const parentProcessId = @import("browser.zig").parentProcessId;
+pub const isHighContrast = @import("browser.zig").isHighContrast;
 pub const protocol = @import("protocol.zig");
 
 test {
