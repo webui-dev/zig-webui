@@ -372,6 +372,18 @@ pub extern fn webui_set_icon(
     icon_type: [*:0]const u8,
 ) callconv(.c) void;
 
+/// @brief Set the window icon from an icon file (binary format).
+/// Can be used as the taskbar icon on Linux (GTK).
+///
+/// @param window The window number
+/// @param path The icon file path: `icon.png`
+///
+/// @example webui_set_icon_file(myWindow, "icon.png");
+pub extern fn webui_set_icon_file(
+    window: usize,
+    icon_file: [*:0]const u8,
+) callconv(.c) void;
+
 /// @brief Encode text to Base64. The returned buffer need to be freed.
 ///
 /// @param str The string to encode (Should be null terminated)

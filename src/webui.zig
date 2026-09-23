@@ -56,7 +56,7 @@ pub const WebUIErrorInfo = struct {
     msg: [:0]const u8,
 };
 
-/// through this func, we can get webui's lastest error number and error message
+/// through this func, we can get webui's latest error number and error message
 pub fn getLastError() WebUIErrorInfo {
     return .{
         .num = c.webui_get_last_error_number(),
@@ -132,7 +132,7 @@ pub fn getBestBrowser(self: webui) Browser {
 /// Show a window using embedded HTML, or a file.
 /// If the window is already open, it will be refreshed.
 /// This will refresh all windows in multi-client mode.
-/// Returns True if showing the window is successed
+/// Returns True if showing the window is succeeded
 /// `content` is the html which will be shown
 pub fn show(self: webui, content: [:0]const u8) !void {
     const success = c.webui_show(self.window_handle, content.ptr);
@@ -140,7 +140,7 @@ pub fn show(self: webui, content: [:0]const u8) !void {
 }
 
 /// Same as `show()`. But using a specific web browser
-/// Returns True if showing the window is successed
+/// Returns True if showing the window is succeeded
 pub fn showBrowser(self: webui, content: [:0]const u8, browser: Browser) !void {
     const success = c.webui_show_browser(self.window_handle, content.ptr, browser);
     if (!success) return WebUIError.ShowError;
@@ -156,8 +156,8 @@ pub fn startServer(self: webui, path: [:0]const u8) ![:0]const u8 {
 }
 
 /// Show a WebView window using embedded HTML, or a file. If the window is already
-/// opend, it will be refreshed. Note: Win32 need `WebView2Loader.dll`.
-/// Returns True if if showing the WebView window is successed.
+/// opened, it will be refreshed. Note: Win32 need `WebView2Loader.dll`.
+/// Returns True if if showing the WebView window is succeeded.
 pub fn showWv(self: webui, content: [:0]const u8) !void {
     const success = c.webui_show_wv(self.window_handle, content.ptr);
     if (!success) return WebUIError.ShowError;
@@ -332,6 +332,15 @@ pub fn setTimeout(time: usize) void {
 /// Set the default embedded HTML favicon.
 pub fn setIcon(self: webui, icon: [:0]const u8, icon_type: [:0]const u8) void {
     c.webui_set_icon(self.window_handle, icon.ptr, icon_type);
+}
+
+/// Set the Linux GTK window icon from an image file.
+/// Call before showing the WebView window.
+pub fn setIconFile(self: webui, icon_file: [:0]const u8) void {
+    if (builtin.os.tag != .linux) {
+        @compileError("Note: method setIconFile only can call on linux!");
+    }
+    c.webui_set_icon_file(self.window_handle, icon_file.ptr);
 }
 
 /// Base64 encoding. Use this to safely send text based data to the UI. If
@@ -524,7 +533,7 @@ pub fn getPort(self: webui) !usize {
 
 /// Set a custom web-server network port to be used by WebUI.
 /// This can be useful to determine the HTTP link of `webui.js` in case
-/// you are trying to use WebUI with an external web-server like NGNIX
+/// you are trying to use WebUI with an external web-server like NGINX
 /// Returns True if the port is free and usable by WebUI
 pub fn setPort(self: webui, port: usize) !void {
     const success = c.webui_set_port(self.window_handle, port);
@@ -541,7 +550,7 @@ pub fn setConfig(option: Config, status: bool) void {
     c.webui_set_config(option, status);
 }
 
-/// Control if UI events comming from this window should be processed
+/// Control if UI events coming from this window should be processed
 /// one a time in a single blocking thread `True`, or process every event in
 /// a new non-blocking thread `False`. This update single window. You can use
 /// `setConfig(ui_event_blocking, ...)` to update all windows.
@@ -966,7 +975,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
     return self.bind(element, tmp_struct.handle);
 }
 
-/// this funciton will return a fn's params tuple
+/// this function will return a fn's params tuple
 const fnParamsToTuple = tuple.fnParamsToTuple;
 
 pub const WEBUI_VERSION: std.SemanticVersion = .{
