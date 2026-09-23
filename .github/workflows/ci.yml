@@ -7,10 +7,16 @@ on:
   push:
     paths:
       - "**.zig"
+      - "**.zon"
+      - "tests/**"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
     paths:
       - "**.zig"
+      - "**.zon"
+      - "tests/**"
+      - ".github/workflows/ci.yml"
       # schedule:
     # - cron: "0 2 * * *"
 jobs:
@@ -38,6 +44,11 @@ jobs:
         run: zig build examples -Dis_static=false
       - name: Run unit tests
         run: zig build test --summary all
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Run embedded directory integration tests
+        run: python -B -m unittest discover -s tests -v
   lint:
     runs-on: ubuntu-latest
     steps:

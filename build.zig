@@ -22,6 +22,68 @@ const default_isStatic = true;
 const default_enableTLS = false;
 const default_enableWebUILog = false;
 
+pub const EmbedDirOptions = struct {
+    /// Existing directory relative to the calling project's build root.
+    path: []const u8,
+    /// Import added to the supplied module. Use distinct names for multiple directories.
+    import_name: []const u8 = "embedded_assets",
+};
+
+/// Recursively embed regular files in an existing source directory.
+/// The directory is scanned during build configuration, so it must already exist.
+/// Symlinks are skipped. Keys use '/' separators and are sorted bytewise.
+pub fn addEmbeddedDir(b: *Build, module: *Module, options: EmbedDirOptions) !void {
+    const io = b.graph.io;
+    const root = if (comptime builtin.zig_version.minor >= 17)
+        b.root.root_dir.handle
+    else
+        b.build_root.handle;
+    var dir = try root.openDir(io, options.path, .{ .iterate = true });
+    defer dir.close(io);
+
+    var files: std.ArrayList([]const u8) = .empty;
+    defer files.deinit(b.allocator);
+    var walker = try dir.walk(b.allocator);
+    defer walker.deinit();
+    while (try walker.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        const path = b.dupe(entry.path);
+        if (builtin.os.tag == .windows) {
+            for (path) |*char| {
+                if (char.* == '\\') char.* = '/';
+            }
+        }
+        try files.append(b.allocator, path);
+    }
+    std.mem.sort([]const u8, files.items, {}, struct {
+        fn lessThan(_: void, a: []const u8, c: []const u8) bool {
+            return std.mem.lessThan(u8, a, c);
+        }
+    }.lessThan);
+
+    const generated = b.addWriteFiles();
+    var source: std.Io.Writer.Allocating = .init(b.allocator);
+    defer source.deinit();
+    const writer = &source.writer;
+    try writer.writeAll("pub const files = [_][]const u8{\n");
+    for (files.items) |path| {
+        try writer.print("    \"{f}\",\n", .{std.zig.fmtString(path)});
+    }
+    try writer.writeAll("};\npub const map = [_]struct { []const u8, []const u8 }{\n");
+    for (files.items, 0..) |path, index| {
+        // Numeric cache paths cannot collide with the source or require escaping.
+        const cached_path = b.fmt("files/{d}", .{index});
+        _ = generated.addCopyFile(b.path(b.pathJoin(&.{ options.path, path })), cached_path);
+        try writer.print("    .{{ \"{f}\", @embedFile(\"{s}\") }},\n", .{
+            std.zig.fmtString(path), cached_path,
+        });
+    }
+    try writer.writeAll("};\n");
+    module.addImport(options.import_name, b.createModule(.{
+        .root_source_file = generated.add("embedded_assets.zig", source.written()),
+    }));
+}
+
 pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -264,6 +326,11 @@ fn buildExample(
 
     exe.root_module.addImport("webui", options.webui_module);
     exe.root_module.addImport("compat", options.compat_module);
+    if (std.mem.eql(u8, example_name, "embedded_folder")) {
+        try addEmbeddedDir(b, exe.root_module, .{
+            .path = "examples/embedded_folder/assets",
+        });
+    }
 
     // Install step
     const exe_install = b.addInstallArtifact(exe, .{});

@@ -27,6 +27,33 @@ fn memFindScalar(comptime T: type, haystack: []const T, needle: T) ?usize {
 // Pure-Zig tests (no C calls)
 // =============================================================================
 
+test "EmbeddedFS distinguishes binary, empty, missing, and non-exact paths" {
+    const Assets = webui.EmbeddedFS(struct {
+        pub const files = [_][]const u8{ "empty.txt", "nested/data.bin" };
+        pub const map = [_]struct { []const u8, []const u8 }{
+            .{ "empty.txt", "" },
+            .{ "nested/data.bin", "\x00\xff\x80\n" },
+        };
+    });
+    try std.testing.expectEqualStrings("\x00\xff\x80\n", Assets.get("nested/data.bin").?);
+    try std.testing.expectEqualStrings("", Assets.get("empty.txt").?);
+    for ([_][]const u8{
+        "missing.txt", "EMPTY.TXT", "/empty.txt", "./empty.txt", "nested/../empty.txt",
+    }) |path| {
+        try std.testing.expect(Assets.get(path) == null);
+    }
+}
+
+test "EmbeddedFS supports an empty directory" {
+    const Empty = webui.EmbeddedFS(struct {
+        pub const files = [_][]const u8{};
+        pub const map = [_]struct { []const u8, []const u8 }{};
+    });
+    try std.testing.expectEqual(@as(usize, 0), Empty.list().len);
+    try std.testing.expect(Empty.get("") == null);
+    try std.testing.expect(Empty.get("index.html") == null);
+}
+
 test "WEBUI_VERSION matches build.zig.zon" {
     try std.testing.expectEqual(@as(u64, 2), webui.WEBUI_VERSION.major);
     try std.testing.expectEqual(@as(u64, 5), webui.WEBUI_VERSION.minor);
