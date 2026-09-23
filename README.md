@@ -98,6 +98,49 @@ exe.root_module.addImport("webui", zig_webui.module("webui"));
 
 For hide console window, you can set `exe.subsystem = .Windows;`!
 
+### Cross-compiling to macOS
+
+For macOS targets, `macos_sdk` accepts an **absolute path** to an existing Apple
+macOS SDK. It supplies the SDK's `usr/include`, `usr/lib`, and
+`System/Library/Frameworks` paths to both the native WebUI compilation and the
+final link through the exported `webui` module. No SDK is downloaded or bundled.
+Omit the option to retain the normal toolchain SDK discovery behavior.
+
+When consuming this package, expose and forward the option in your `build.zig`:
+
+```zig
+const zig_webui = b.dependency("zig_webui", .{
+    .target = target,
+    .optimize = optimize,
+    .enable_tls = false,
+    .is_static = true,
+    .macos_sdk = b.option([]const u8, "macos_sdk", "Absolute path to a macOS SDK"),
+});
+exe.root_module.addImport("webui", zig_webui.module("webui"));
+```
+
+Then build your application on Linux:
+
+```sh
+zig build -Dtarget=aarch64-macos -Dmacos_sdk=/opt/MacOSX26.5.sdk
+# For Intel Macs, use -Dtarget=x86_64-macos instead.
+```
+
+To cross-compile this repository's examples, use the same options with
+`zig build examples`. Do not use a `run_*` step on Linux for a macOS executable.
+
+Use this option without additionally passing `--sysroot` or `--search-prefix`
+for the SDK: it provides explicit paths, and combining them with a sysroot can
+cause SDK paths to be prefixed twice. `--search-prefix` alone does not provide
+Apple framework search paths. Relative SDK paths and non-macOS targets are
+rejected. TLS cross-compilation remains unsupported.
+
+Verified with Zig 0.16.0 and macOS SDK 26.5 from Linux ARM64, targeting both
+macOS ARM64 and x86_64. The ARM64 smoke executable also ran on macOS. This is
+not a guarantee of GUI behavior or compatibility with every SDK version:
+SDK 27.0 headers failed to compile with Zig 0.16.0 at
+`API_AVAILABLE(anyappleos(27.0))`.
+
 ### Embed an entire directory
 
 The build-time `addEmbeddedDir` helper recursively embeds a directory from **your

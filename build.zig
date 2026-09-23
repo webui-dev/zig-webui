@@ -91,6 +91,17 @@ pub fn build(b: *Build) !void {
     const isStatic = b.option(bool, "is_static", "whether lib is static") orelse default_isStatic;
     const enableTLS = b.option(bool, "enable_tls", "whether lib enable tls") orelse default_enableTLS;
     const enableWebUILog = b.option(bool, "enable_webui_log", "whether lib enable webui log") orelse default_enableWebUILog;
+    const macos_sdk = b.option([]const u8, "macos_sdk", "Absolute path to a macOS SDK (macOS targets only)");
+    if (macos_sdk) |sdk| {
+        if (target.result.os.tag != .macos) {
+            log.err("macos_sdk requires a macOS target", .{});
+            return error.InvalidMacOSSdk;
+        }
+        if (!std.fs.path.isAbsolute(sdk)) {
+            log.err("macos_sdk must be an absolute path", .{});
+            return error.InvalidMacOSSdk;
+        }
+    }
 
     if (enableTLS) log.info("enable TLS support", .{});
 
@@ -125,6 +136,15 @@ pub fn build(b: *Build) !void {
             .{ .name = "tuple", .module = tuple_module },
         },
     });
+    if (macos_sdk) |sdk| {
+        // The native C/Objective-C compilation and consumers' final link both
+        // need the SDK. Imported module search paths reach the final compiler.
+        for ([_]*Module{ webui.artifact("webui").root_module, webui_module }) |module| {
+            module.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sdk, "usr", "include" }) });
+            module.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ sdk, "usr", "lib" }) });
+            module.addSystemFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sdk, "System", "Library", "Frameworks" }) });
+        }
+    }
     webui_module.linkLibrary(webui.artifact("webui"));
 
     if (!isStatic) b.installArtifact(webui.artifact("webui"));
