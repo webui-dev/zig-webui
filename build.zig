@@ -27,7 +27,59 @@ pub const EmbedDirOptions = struct {
     path: []const u8,
     /// Import added to the supplied module. Use distinct names for multiple directories.
     import_name: []const u8 = "embedded_assets",
+    /// Also generate a complete `HTTP/1.1 200 OK` response (headers + body) per
+    /// file, returned by `EmbeddedFS.response` without copying. A file's bytes
+    /// are stored twice in the executable if both `get` and `response` are used.
+    http_responses: bool = false,
 };
+
+/// Content types for generated HTTP responses. Values follow the table WebUI's
+/// web server (civetweb) uses for folder serving, plus a few modern web types.
+/// Extensions match case-insensitively; anything else is `application/octet-stream`.
+const mime_types = [_]struct { []const u8, []const u8 }{
+    .{ ".html", "text/html" },
+    .{ ".htm", "text/html" },
+    .{ ".css", "text/css" },
+    .{ ".js", "application/javascript" },
+    .{ ".mjs", "application/javascript" },
+    .{ ".json", "application/json" },
+    .{ ".map", "application/json" },
+    .{ ".webmanifest", "application/manifest+json" },
+    .{ ".wasm", "application/wasm" },
+    .{ ".xhtml", "application/xhtml+xml" },
+    .{ ".xml", "text/xml" },
+    .{ ".txt", "text/plain" },
+    .{ ".csv", "text/csv" },
+    .{ ".md", "text/markdown" },
+    .{ ".svg", "image/svg+xml" },
+    .{ ".png", "image/png" },
+    .{ ".jpg", "image/jpeg" },
+    .{ ".jpeg", "image/jpeg" },
+    .{ ".gif", "image/gif" },
+    .{ ".webp", "image/webp" },
+    .{ ".avif", "image/avif" },
+    .{ ".ico", "image/x-icon" },
+    .{ ".bmp", "image/bmp" },
+    .{ ".ttf", "application/font-sfnt" },
+    .{ ".otf", "application/font-sfnt" },
+    .{ ".woff", "application/font-woff" },
+    .{ ".woff2", "application/font-woff2" },
+    .{ ".mp3", "audio/mpeg" },
+    .{ ".ogg", "audio/ogg" },
+    .{ ".wav", "audio/x-wav" },
+    .{ ".mp4", "video/mp4" },
+    .{ ".webm", "video/webm" },
+    .{ ".pdf", "application/pdf" },
+    .{ ".zip", "application/x-zip-compressed" },
+};
+
+fn mimeType(path: []const u8) []const u8 {
+    const ext = std.fs.path.extension(path);
+    for (mime_types) |entry| {
+        if (std.ascii.eqlIgnoreCase(ext, entry[0])) return entry[1];
+    }
+    return "application/octet-stream";
+}
 
 /// Recursively embed regular files in an existing source directory.
 /// The directory is scanned during build configuration, so it must already exist.
@@ -79,6 +131,25 @@ pub fn addEmbeddedDir(b: *Build, module: *Module, options: EmbedDirOptions) !voi
         });
     }
     try writer.writeAll("};\n");
+    if (options.http_responses) {
+        // Concatenated at compile time, so each response is one static slice.
+        try writer.writeAll(
+            \\pub const responses = [_][]const u8{
+            \\
+        );
+        for (files.items, 0..) |path, index| {
+            try writer.print("    response(\"{s}\", @embedFile(\"files/{d}\")),\n", .{ mimeType(path), index });
+        }
+        try writer.writeAll(
+            \\};
+            \\fn response(comptime content_type: []const u8, comptime body: []const u8) []const u8 {
+            \\    return "HTTP/1.1 200 OK\r\nContent-Type: " ++ content_type ++
+            \\        "\r\nContent-Length: " ++ @import("std").fmt.comptimePrint("{d}", .{body.len}) ++
+            \\        "\r\nConnection: close\r\n\r\n" ++ body;
+            \\}
+            \\
+        );
+    }
     module.addImport(options.import_name, b.createModule(.{
         .root_source_file = generated.add("embedded_assets.zig", source.written()),
     }));
@@ -349,6 +420,7 @@ fn buildExample(
     if (std.mem.eql(u8, example_name, "embedded_folder")) {
         try addEmbeddedDir(b, exe.root_module, .{
             .path = "examples/embedded_folder/assets",
+            .http_responses = true,
         });
     }
 

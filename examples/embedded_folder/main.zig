@@ -9,4 +9,6 @@ pub fn main() void {
     }
     std.debug.print("\n{s}", .{Assets.get("css/main.css").?});
     std.debug.print("Missing file: {any}\n", .{Assets.get("missing.txt")});
+    // Ready-made HTTP response for `setFileHandler(Assets.response)`.
+    std.debug.print("\n{s}", .{Assets.response("/css/main.css").?});
 }

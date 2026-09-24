@@ -6,7 +6,7 @@ const compat = @import("compat");
 
 const html = @embedFile("index.html");
 
-var allocator = std.heap.page_allocator;
+var allocator = std.heap.smp_allocator;
 
 // Global user context storage for each window/client
 var global_user_contexts: ?std.AutoHashMap(usize, *UserContext) = null;

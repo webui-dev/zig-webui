@@ -6,7 +6,7 @@ const compat = @import("compat");
 
 const html = @embedFile("index.html");
 
-var allocator = std.heap.page_allocator;
+var allocator = std.heap.smp_allocator;
 
 pub fn main() !void {
     // Create window

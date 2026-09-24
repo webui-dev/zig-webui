@@ -160,6 +160,7 @@ After adding the normal `webui` module to your executable, add this inside your
 try webui_build.addEmbeddedDir(b, exe.root_module, .{
     .path = "assets",
     .import_name = "embedded_assets", // optional; this is the default
+    .http_responses = false, // optional; see "Serving embedded files" below
 });
 ```
 
@@ -195,9 +196,28 @@ pub fn main() void {
 - Filenames containing newlines are not supported by Zig 0.16's build cache:
   a subsequent build can fail with `invalid manifest file format`.
 
-This API returns raw file bytes; it does not install a WebUI HTTP handler.
-If used with `setFileHandler`, your handler still needs to return a full HTTP
-response, including headers.
+#### Serving embedded files
+
+`get` returns raw file bytes. WebUI's `setFileHandler` expects a full HTTP
+response, so set `.http_responses = true` to generate one per file at compile
+time, then pass `response` directly as the handler:
+
+```zig
+win.setFileHandler(Assets.response);
+try win.show("index.html");
+```
+
+- Each response is a static `HTTP/1.1 200 OK` slice with `Content-Type`,
+  `Content-Length`, and `Connection: close`; serving a request neither
+  allocates nor copies, and WebUI does not free it.
+- `response` takes the handler path (for example `/css/main.css`), strips one
+  leading `/`, and otherwise matches like `get`. Missing files return `null`,
+  so WebUI answers 404.
+- `Content-Type` comes from the file extension (case-insensitive) using WebUI's
+  folder-serving values for common web types, without a charset; unknown
+  extensions use `application/octet-stream`.
+- Using both `get` and `response` stores each file's bytes twice in the
+  executable. Calling `response` without the option is a compile error.
 
 Run `zig build run_embedded_folder` for a console example. Its installed binary,
 `zig-out/bin/embedded_folder`, can also run outside the project without the
@@ -213,8 +233,8 @@ python3 -B -m unittest discover -s tests -v
 The integration test requires Python 3 and Zig on `PATH`, with no third-party
 Python packages. It creates and removes a temporary downstream project to check
 root-relative paths, resource-name collisions, empty and multiple directories,
-binary contents, incremental rebuilds, and standalone execution without source
-assets. Both commands are included in CI.
+binary contents, generated HTTP responses, incremental rebuilds, and standalone
+execution without source assets. Both commands are included in CI.
 
 ## UI & The Web Technologies
 

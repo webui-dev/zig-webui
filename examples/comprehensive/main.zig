@@ -6,7 +6,7 @@ const compat = @import("compat");
 
 const html = @embedFile("index.html");
 
-var allocator = std.heap.page_allocator;
+var allocator = std.heap.smp_allocator;
 
 // Settings storage
 var settings_map: std.HashMap([]const u8, []const u8, std.hash_map.StringContext, 80) = undefined;
@@ -139,8 +139,9 @@ fn handleApiRequest(path: []const u8) ?[]const u8 {
             \\{{"users":{}, "messages":{}, "files":{}}}
         , .{ app_state.users_online, app_state.messages_sent, app_state.files_uploaded }) catch return null;
 
-        // Allocate persistent memory for response
-        const response = allocator.dupe(u8, json) catch return null;
+        // WebUI frees file-handler responses only if they come from webui.malloc().
+        const response = webui.malloc(json.len) catch return null;
+        @memcpy(response, json);
         return response;
     }
 

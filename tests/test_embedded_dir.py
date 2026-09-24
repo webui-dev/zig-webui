@@ -72,11 +72,22 @@ class EmbeddedDirIntegrationTest(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 0,
                                  result.stderr.decode(errors="replace"))
-                expected = b"".join(
-                    name.encode() + b"\0" + files[name].hex().encode() + b"\n"
-                    for name in sorted(files, key=lambda name: name.encode())
+                entries = [line.split(b"\0") for line in result.stderr.splitlines()]
+                self.assertEqual(
+                    [(path, bytes.fromhex(raw.decode())) for path, raw, _ in entries],
+                    [(name.encode(), files[name])
+                     for name in sorted(files, key=lambda name: name.encode())],
                 )
-                self.assertEqual(result.stderr, expected)
+                for path, _, response in entries:
+                    head, sep, body = bytes.fromhex(response.decode()).partition(b"\r\n\r\n")
+                    self.assertEqual(sep, b"\r\n\r\n", path)
+                    self.assertEqual(body, files[path.decode()], path)
+                    lines = head.split(b"\r\n")
+                    self.assertEqual(lines[0], b"HTTP/1.1 200 OK", path)
+                    headers = dict(line.split(b": ", 1) for line in lines[1:])
+                    self.assertEqual(headers[b"Content-Length"], str(len(body)).encode(), path)
+                    self.assertEqual(headers[b"Content-Type"],
+                                     CONTENT_TYPES.get(path, b"application/octet-stream"), path)
 
             with self.subTest("initial build outside consumer root"):
                 build()
@@ -123,7 +134,7 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     exe.root_module.addImport("webui", dep.module("webui"));
-    try webui.addEmbeddedDir(b, exe.root_module, .{ .path = "assets" });
+    try webui.addEmbeddedDir(b, exe.root_module, .{ .path = "assets", .http_responses = true });
     try webui.addEmbeddedDir(b, exe.root_module, .{
         .path = "empty", .import_name = "empty_assets",
     });
@@ -143,11 +154,27 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 0), Empty.list().len);
     try std.testing.expect(Empty.get("index.html") == null);
     try std.testing.expectEqualStrings("other directory", Other.get("index.html").?);
+    var buffer: [256]u8 = undefined;
     for (Assets.list()) |path| {
-        std.debug.print("{s}\x00{x}\n", .{ path, Assets.get(path).? });
+        const url = try std.fmt.bufPrint(&buffer, "/{s}", .{path});
+        try std.testing.expect(Assets.response(url).?.ptr == Assets.response(path).?.ptr);
+        std.debug.print("{s}\x00{x}\x00{x}\n", .{ path, Assets.get(path).?, Assets.response(url).? });
     }
+    try std.testing.expect(Assets.response("//index.html") == null);
 }
 '''
+
+# Paths absent here must fall back to application/octet-stream.
+CONTENT_TYPES = {
+    b"index.html": b"text/html",
+    b"space name.txt": b"text/plain",
+    "中文.txt".encode(): b"text/plain",
+    b'quote"name.txt': b"text/plain",
+    b"back\\slash.txt": b"text/plain",
+    b"renamed.txt": b"text/plain",
+    b"nested/added.txt": b"text/plain",
+    b"empty.txt": b"text/plain",
+}
 
 
 if __name__ == "__main__":
