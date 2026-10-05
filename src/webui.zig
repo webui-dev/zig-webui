@@ -639,7 +639,7 @@ pub fn run(self: webui, script_content: [:0]const u8) void {
 
 /// Format JavaScript into `buffer`, then run it without waiting for a response.
 pub fn runFmt(self: webui, buffer: []u8, comptime fmt: []const u8, args: anytype) !void {
-    const script_content = try std.fmt.bufPrintZ(buffer, fmt, args);
+    const script_content = try bufPrintZ(buffer, fmt, args);
     self.run(script_content);
 }
 
@@ -920,7 +920,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
     }
 
     // Verify function does not use varargs
-    if (fnInfo.is_var_args) {
+    if (fnIsVarArgs(fnInfo)) {
         const err_msg = std.fmt.comptimePrint(
             "callback's type ({}), it can not have variable args!",
             .{T},
@@ -928,8 +928,10 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
         @compileError(err_msg);
     }
 
+    const param_types = comptime fnParamTypes(fnInfo);
+
     const tmp_struct = struct {
-        const tup_t = fnParamsToTuple(fnInfo.params);
+        const tup_t = fnParamsToTuple(param_types);
 
         // Event handler that will convert parameters and call the user's callback
         fn handle(e: *Event) void {
@@ -937,8 +939,8 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
 
             var index: usize = 0;
             // Process each parameter of the callback function
-            inline for (fnInfo.params, 0..fnInfo.params.len) |param, i| {
-                if (param.type) |tt| {
+            inline for (param_types, 0..) |param_type, i| {
+                if (param_type) |tt| {
                     const paramTInfo = @typeInfo(tt);
                     switch (paramTInfo) {
                         // Handle struct type parameters (only Event is allowed)
@@ -972,7 +974,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
                         // Handle pointer types with special cases
                         .pointer => |pointer| {
                             // Handle null-terminated string slices
-                            if (pointer.size == .slice and pointer.child == u8 and pointer.is_const == true) {
+                            if (pointer.size == .slice and pointer.child == u8 and ptrIsConst(pointer)) {
                                 if (pointer.sentinel()) |sentinel| {
                                     if (sentinel == 0) {
                                         const str_ptr = e.getStringAt(i - index);
@@ -984,7 +986,7 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
                                 param_tup[i] = e;
                                 index += 1;
                                 // Handle raw byte pointers
-                            } else if (pointer.size == .many and pointer.child == u8 and pointer.is_const == true and pointer.sentinel() == null) {
+                            } else if (pointer.size == .many and pointer.child == u8 and ptrIsConst(pointer) and pointer.sentinel() == null) {
                                 const raw_ptr = e.getRawAt(i - index);
                                 param_tup[i] = raw_ptr;
                             } else {
@@ -1020,6 +1022,33 @@ pub fn binding(self: webui, element: [:0]const u8, comptime callback: anytype) !
 
 /// this function will return a fn's params tuple
 const fnParamsToTuple = tuple.fnParamsToTuple;
+
+// Zig 0.17 rewrote type reflection: `Fn.params` became the `param_types` slice,
+// and `Fn.is_var_args` / `Pointer.is_const` moved into `attrs`. These helpers
+// detect the layout so the bindings build on both 0.16 and 0.17.
+
+fn fnParamTypes(comptime info: std.builtin.Type.Fn) []const ?type {
+    if (@hasField(std.builtin.Type.Fn, "param_types")) return info.param_types;
+    var types: [info.params.len]?type = undefined;
+    for (info.params, &types) |param, *param_type| param_type.* = param.type;
+    const result = types;
+    return &result;
+}
+
+inline fn fnIsVarArgs(comptime info: std.builtin.Type.Fn) bool {
+    return if (@hasField(std.builtin.Type.Fn, "attrs")) info.attrs.varargs else info.is_var_args;
+}
+
+inline fn ptrIsConst(comptime info: std.builtin.Type.Pointer) bool {
+    return if (@hasField(std.builtin.Type.Pointer, "attrs")) info.attrs.@"const" else info.is_const;
+}
+
+/// `std.fmt.bufPrintZ` was removed in Zig 0.17, and its replacement
+/// `std.mem.printSentinel` does not exist on 0.16.
+fn bufPrintZ(buffer: []u8, comptime fmt: []const u8, args: anytype) ![:0]u8 {
+    if (@hasDecl(std.mem, "printSentinel")) return std.mem.printSentinel(buffer, fmt, args, 0);
+    return std.fmt.bufPrintSentinel(buffer, fmt, args, 0);
+}
 
 pub const WEBUI_VERSION: std.SemanticVersion = .{
     .major = 2,
@@ -1190,7 +1219,7 @@ pub const Event = extern struct {
 
     /// Format JavaScript into `buffer`, then run it on the event client.
     pub fn runClientFmt(self: *Event, buffer: []u8, comptime fmt: []const u8, args: anytype) !void {
-        const script_content = try std.fmt.bufPrintZ(buffer, fmt, args);
+        const script_content = try bufPrintZ(buffer, fmt, args);
         self.runClient(script_content);
     }
 
@@ -1240,7 +1269,7 @@ pub const Event = extern struct {
 
     /// Format a string response into `buffer`, then return it to JavaScript.
     pub fn returnFmt(e: *Event, buffer: []u8, comptime fmt: []const u8, args: anytype) !void {
-        const response = try std.fmt.bufPrintZ(buffer, fmt, args);
+        const response = try bufPrintZ(buffer, fmt, args);
         e.returnString(response);
     }
 
