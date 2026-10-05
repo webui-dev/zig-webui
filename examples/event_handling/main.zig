@@ -141,7 +141,8 @@ pub fn main() !void {
     std.debug.print("   Windows: ipconfig | findstr IPv4\n", .{});
     std.debug.print("   Mac/Linux: ifconfig | grep inet\n", .{});
     std.debug.print("   Or check in network settings\n", .{});
-    std.debug.print("\n" ++ "=" ** 60 ++ "\n", .{});
+    const separator: [60]u8 = @splat('=');
+    std.debug.print("\n{s}\n", .{&separator});
     std.debug.print("\n📋 How to test multi-client functionality:\n", .{});
     std.debug.print("\n🔗 Multi-Client Connection Methods:\n", .{});
     std.debug.print("   1. SAME COMPUTER - New Tab/Window:\n", .{});

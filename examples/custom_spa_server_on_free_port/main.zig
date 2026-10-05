@@ -36,8 +36,8 @@ pub fn main() !void {
     // now use the port:
     var buf1: [64]u8 = undefined;
     var buf2: [64]u8 = undefined;
-    const port_argument1: []u8 = try std.fmt.bufPrintZ(&buf1, "{d}", .{backend_port});
-    const port_argument2: []u8 = try std.fmt.bufPrintZ(&buf2, "{d}", .{webui_port});
+    const port_argument1: []u8 = try compat.bufPrintZ(&buf1, "{d}", .{backend_port});
+    const port_argument2: []u8 = try compat.bufPrintZ(&buf2, "{d}", .{webui_port});
     const argv = [_][]const u8{ "python", "./free_port_web_server.py", port_argument1, port_argument2 };
 
     // start the SPA web server:
@@ -45,7 +45,7 @@ pub fn main() !void {
 
     // Show a new window served by our custom web server (spawned above):
     var buf: [64]u8 = undefined;
-    home_url = try std.fmt.bufPrintZ(&buf, "http://localhost:{d}/index.html", .{backend_port});
+    home_url = try compat.bufPrintZ(&buf, "http://localhost:{d}/index.html", .{backend_port});
     try nwin.show(home_url);
 
     // Wait until all windows get closed

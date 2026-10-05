@@ -154,7 +154,7 @@ fn getAppStatus(e: *webui.Event) void {
     const url = win.getUrl() catch "unknown";
 
     var buffer: [1024]u8 = undefined;
-    const json = std.fmt.bufPrintZ(buffer[0..],
+    const json = compat.bufPrintZ(buffer[0..],
         \\{{"status":"running","users":{},"messages":{},"files":{},"port":{},"url":"{s}","clientId":{},"timestamp":{}}}
     , .{ app_state.users_online, app_state.messages_sent, app_state.files_uploaded, port, url, e.client_id, compat.timestamp() }) catch "{\"error\":\"format_error\"}";
 
@@ -172,7 +172,7 @@ fn userAction(e: *webui.Event, action: [:0]const u8, data: [:0]const u8) void {
     if (std.mem.eql(u8, action, "login")) {
         // Check if user is already online
         if (online_users.contains(data)) {
-            result = std.fmt.bufPrintZ(response[0..], "User '{s}' is already online. Online users: {}", .{ data, app_state.users_online }) catch "Error";
+            result = compat.bufPrintZ(response[0..], "User '{s}' is already online. Online users: {}", .{ data, app_state.users_online }) catch "Error";
         } else {
             // Add new user
             const username_copy = allocator.dupe(u8, data) catch {
@@ -187,24 +187,24 @@ fn userAction(e: *webui.Event, action: [:0]const u8, data: [:0]const u8) void {
                 return;
             };
             app_state.users_online += 1;
-            result = std.fmt.bufPrintZ(response[0..], "User '{s}' logged in. Online users: {}", .{ data, app_state.users_online }) catch "Error";
+            result = compat.bufPrintZ(response[0..], "User '{s}' logged in. Online users: {}", .{ data, app_state.users_online }) catch "Error";
         }
     } else if (std.mem.eql(u8, action, "logout")) {
         // Check if user is online
         if (online_users.fetchRemove(data)) |kv| {
             allocator.free(kv.key);
             if (app_state.users_online > 0) app_state.users_online -= 1;
-            result = std.fmt.bufPrintZ(response[0..], "User '{s}' logged out. Online users: {}", .{ data, app_state.users_online }) catch "Error";
+            result = compat.bufPrintZ(response[0..], "User '{s}' logged out. Online users: {}", .{ data, app_state.users_online }) catch "Error";
         } else {
-            result = std.fmt.bufPrintZ(response[0..], "User '{s}' was not online. Online users: {}", .{ data, app_state.users_online }) catch "Error";
+            result = compat.bufPrintZ(response[0..], "User '{s}' was not online. Online users: {}", .{ data, app_state.users_online }) catch "Error";
         }
     } else if (std.mem.eql(u8, action, "message")) {
         app_state.messages_sent += 1;
-        result = std.fmt.bufPrintZ(response[0..], "Message sent. Total messages: {}", .{app_state.messages_sent}) catch "Error";
+        result = compat.bufPrintZ(response[0..], "Message sent. Total messages: {}", .{app_state.messages_sent}) catch "Error";
     } else if (std.mem.eql(u8, action, "upload")) {
         // For simulation purposes, just acknowledge the upload request
         const filename = if (data.len > 0) data else "demo_file.txt";
-        result = std.fmt.bufPrintZ(response[0..], "Upload request received for '{s}'. Use the file input for actual upload.", .{filename}) catch "Error";
+        result = compat.bufPrintZ(response[0..], "Upload request received for '{s}'. Use the file input for actual upload.", .{filename}) catch "Error";
     } else {
         result = "Unknown action";
     }
@@ -217,7 +217,7 @@ fn sendNotification(e: *webui.Event, message: [:0]const u8, level: [:0]const u8)
 
     // Send notification to all clients
     var js_code: [512]u8 = undefined;
-    const script = std.fmt.bufPrintZ(js_code[0..], "showNotification('{s}', '{s}');", .{ message, level }) catch return;
+    const script = compat.bufPrintZ(js_code[0..], "showNotification('{s}', '{s}');", .{ message, level }) catch return;
 
     win.run(script);
 
@@ -238,7 +238,7 @@ fn processData(e: *webui.Event, operation: [:0]const u8, input_data: [:0]const u
         while (i < input_data.len and i < 512) : (i += 1) {
             reversed[i] = input_data[input_data.len - 1 - i];
         }
-        output = std.fmt.bufPrintZ(result[0..], "Reversed: {s}", .{reversed[0..i]}) catch "Error";
+        output = compat.bufPrintZ(result[0..], "Reversed: {s}", .{reversed[0..i]}) catch "Error";
     } else if (std.mem.eql(u8, operation, "uppercase")) {
         // Convert to uppercase
         var upper: [512]u8 = undefined;
@@ -246,14 +246,14 @@ fn processData(e: *webui.Event, operation: [:0]const u8, input_data: [:0]const u
             if (i >= 512) break;
             upper[i] = std.ascii.toUpper(c);
         }
-        output = std.fmt.bufPrintZ(result[0..], "Uppercase: {s}", .{upper[0..@min(input_data.len, 512)]}) catch "Error";
+        output = compat.bufPrintZ(result[0..], "Uppercase: {s}", .{upper[0..@min(input_data.len, 512)]}) catch "Error";
     } else if (std.mem.eql(u8, operation, "hash")) {
         // Simple hash (sum of bytes)
         var hash: u32 = 0;
         for (input_data) |c| {
             hash = hash *% 31 +% c;
         }
-        output = std.fmt.bufPrintZ(result[0..], "Hash: {X}", .{hash}) catch "Error";
+        output = compat.bufPrintZ(result[0..], "Hash: {X}", .{hash}) catch "Error";
     } else {
         output = "Unknown operation";
     }
@@ -268,17 +268,17 @@ fn executeCommand(e: *webui.Event, command: [:0]const u8, args: [:0]const u8) vo
     var result: [:0]const u8 = "";
 
     if (std.mem.eql(u8, command, "echo")) {
-        result = std.fmt.bufPrintZ(response[0..], "Echo: {s}", .{args}) catch "Error";
+        result = compat.bufPrintZ(response[0..], "Echo: {s}", .{args}) catch "Error";
     } else if (std.mem.eql(u8, command, "time")) {
         const timestamp = compat.timestamp();
-        result = std.fmt.bufPrintZ(response[0..], "Current time: {}", .{timestamp}) catch "Error";
+        result = compat.bufPrintZ(response[0..], "Current time: {}", .{timestamp}) catch "Error";
     } else if (std.mem.eql(u8, command, "random")) {
         var prng = std.Random.DefaultPrng.init(@intCast(compat.timestamp()));
         const random_num = prng.random().int(u32);
-        result = std.fmt.bufPrintZ(response[0..], "Random number: {}", .{random_num}) catch "Error";
+        result = compat.bufPrintZ(response[0..], "Random number: {}", .{random_num}) catch "Error";
     } else if (std.mem.eql(u8, command, "memory")) {
         // Simple memory info (simulated)
-        result = std.fmt.bufPrintZ(response[0..], "Memory usage: {}MB", .{50 + @rem(compat.timestamp(), 100)}) catch "Error";
+        result = compat.bufPrintZ(response[0..], "Memory usage: {}MB", .{50 + @rem(compat.timestamp(), 100)}) catch "Error";
     } else {
         result = "Unknown command";
     }
@@ -290,7 +290,7 @@ fn getSystemInfo(e: *webui.Event) void {
     const builtin = @import("builtin");
 
     var buffer: [1024]u8 = undefined;
-    const info = std.fmt.bufPrintZ(buffer[0..],
+    const info = compat.bufPrintZ(buffer[0..],
         \\{{"os":"{s}","arch":"{s}","zigVersion":"{s}","webuiVersion":"2.5.0","timestamp":{}}}
     , .{ @tagName(builtin.os.tag), @tagName(builtin.cpu.arch), @import("builtin").zig_version_string, compat.timestamp() }) catch "{}";
 
@@ -318,7 +318,7 @@ fn testPerformance(e: *webui.Event, iterations: i64, operation: [:0]const u8) vo
     const duration_ms = @as(f64, @floatFromInt(end_time - start_time)) / 1_000_000.0;
 
     var response: [256]u8 = undefined;
-    const msg = std.fmt.bufPrintZ(response[0..], "Performance test completed: {} iterations of {s} in {d:.2}ms", .{ iterations, operation, duration_ms }) catch "Error";
+    const msg = compat.bufPrintZ(response[0..], "Performance test completed: {} iterations of {s} in {d:.2}ms", .{ iterations, operation, duration_ms }) catch "Error";
 
     e.returnString(msg);
     std.debug.print("Performance test: {} iterations in {d:.2}ms\n", .{ iterations, duration_ms });
@@ -357,22 +357,22 @@ fn manageSettings(e: *webui.Event, action: [:0]const u8, key: [:0]const u8, valu
             return;
         };
 
-        result = std.fmt.bufPrintZ(response[0..], "Setting '{s}' set to '{s}'", .{ key, value }) catch "Error";
+        result = compat.bufPrintZ(response[0..], "Setting '{s}' set to '{s}'", .{ key, value }) catch "Error";
     } else if (std.mem.eql(u8, action, "get")) {
         // Get setting from memory
         if (settings_map.get(key)) |stored_value| {
-            result = std.fmt.bufPrintZ(response[0..], "Setting '{s}' = '{s}'", .{ key, stored_value }) catch "Error";
+            result = compat.bufPrintZ(response[0..], "Setting '{s}' = '{s}'", .{ key, stored_value }) catch "Error";
         } else {
-            result = std.fmt.bufPrintZ(response[0..], "Setting '{s}' not found (no value set)", .{key}) catch "Error";
+            result = compat.bufPrintZ(response[0..], "Setting '{s}' not found (no value set)", .{key}) catch "Error";
         }
     } else if (std.mem.eql(u8, action, "delete")) {
         // Delete setting from memory
         if (settings_map.fetchRemove(key)) |kv| {
             allocator.free(kv.key);
             allocator.free(kv.value);
-            result = std.fmt.bufPrintZ(response[0..], "Setting '{s}' deleted", .{key}) catch "Error";
+            result = compat.bufPrintZ(response[0..], "Setting '{s}' deleted", .{key}) catch "Error";
         } else {
-            result = std.fmt.bufPrintZ(response[0..], "Setting '{s}' not found (nothing to delete)", .{key}) catch "Error";
+            result = compat.bufPrintZ(response[0..], "Setting '{s}' not found (nothing to delete)", .{key}) catch "Error";
         }
     } else {
         result = "Unknown settings action";
@@ -468,7 +468,7 @@ fn uploadFile(e: *webui.Event, filename: [:0]const u8, content: [:0]const u8) vo
     // Write content to file
     compat.writeFile(file_path, content) catch |err| {
         std.debug.print("Failed to write file {s}: {}\n", .{ file_path, err });
-        result = std.fmt.bufPrintZ(response[0..], "Error: Failed to write file '{s}' ({s})", .{ filename, @errorName(err) }) catch "Error";
+        result = compat.bufPrintZ(response[0..], "Error: Failed to write file '{s}' ({s})", .{ filename, @errorName(err) }) catch "Error";
         e.returnString(result);
         return;
     };
@@ -477,6 +477,6 @@ fn uploadFile(e: *webui.Event, filename: [:0]const u8, content: [:0]const u8) vo
     app_state.files_uploaded += 1;
 
     // Return success message
-    result = std.fmt.bufPrintZ(response[0..], "File '{s}' uploaded successfully as '{s}'. Size: {} bytes. Total files: {}", .{ filename, safe_filename[0..safe_len :0], content.len, app_state.files_uploaded }) catch "Error";
+    result = compat.bufPrintZ(response[0..], "File '{s}' uploaded successfully as '{s}'. Size: {} bytes. Total files: {}", .{ filename, safe_filename[0..safe_len :0], content.len, app_state.files_uploaded }) catch "Error";
     e.returnString(result);
 }
