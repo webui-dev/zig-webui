@@ -142,20 +142,14 @@ test "WebUIError contains expected variants" {
 }
 
 test "tuple.fnParamsToTuple synthesizes correct tuple" {
-    const Type = std.builtin.Type;
-    const params = [_]Type.Fn.Param{
-        .{ .is_generic = false, .is_noalias = false, .type = i32 },
-        .{ .is_generic = false, .is_noalias = false, .type = bool },
-        .{ .is_generic = false, .is_noalias = false, .type = f64 },
-    };
-    const Tup = tuple.fnParamsToTuple(&params);
+    const Tup = tuple.fnParamsToTuple(&.{ i32, bool, f64 });
 
     const info = @typeInfo(Tup).@"struct";
     try std.testing.expect(info.is_tuple);
-    try std.testing.expectEqual(@as(usize, 3), info.fields.len);
-    try std.testing.expectEqual(i32, info.fields[0].type);
-    try std.testing.expectEqual(bool, info.fields[1].type);
-    try std.testing.expectEqual(f64, info.fields[2].type);
+    try std.testing.expectEqual(@as(usize, 3), std.meta.fieldNames(Tup).len);
+    try std.testing.expectEqual(i32, @FieldType(Tup, "0"));
+    try std.testing.expectEqual(bool, @FieldType(Tup, "1"));
+    try std.testing.expectEqual(f64, @FieldType(Tup, "2"));
 
     // We can build an instance and read it back.
     var t: Tup = undefined;
