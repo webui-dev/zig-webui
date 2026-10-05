@@ -182,6 +182,25 @@ test "newWindowWithId rejects 0 and out-of-range ids" {
     try std.testing.expectError(webui.WebUIError.CreateWindowError, webui.newWindowWithId(webui.WEBUI_MAX_IDS + 100));
 }
 
+fn typedCallback(
+    _: webui.Event,
+    _: *webui.Event,
+    _: bool,
+    _: i32,
+    _: i64,
+    _: f32,
+    _: f64,
+    _: [:0]const u8,
+    _: [*]const u8,
+) void {}
+
+test "binding accepts every supported callback parameter type" {
+    // Instantiates the comptime type-reflection path used to decode arguments.
+    const win = webui.newWindow();
+    defer win.destroy();
+    try std.testing.expect(try win.binding("typedCallback", typedCallback) > 0);
+}
+
 test "newWindowWithId with explicit id" {
     const id = webui.getNewWindowId();
     try std.testing.expect(id > 0);
