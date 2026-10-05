@@ -1,6 +1,7 @@
 //! Public Network Access Example
 const std = @import("std");
 const webui = @import("webui");
+const compat = @import("compat");
 
 // embed the html
 const private_html = @embedFile("private.html");
@@ -32,9 +33,9 @@ fn private_window_events(e: *webui.Event) void {
         const public_win_url: [:0]const u8 = public_window.getUrl() catch return;
 
         var buf = std.mem.zeroes([1024]u8);
-        const js_1 = std.fmt.bufPrintZ(&buf, "document.getElementById('urlSpan1').innerHTML = 'http://localhost:{}';", .{public_win_port}) catch unreachable;
+        const js_1 = compat.bufPrintZ(&buf, "document.getElementById('urlSpan1').innerHTML = 'http://localhost:{}';", .{public_win_port}) catch unreachable;
         private_window.run(js_1);
-        const js_2 = std.fmt.bufPrintZ(&buf, "document.getElementById('urlSpan2').innerHTML = '{s}';", .{public_win_url}) catch unreachable;
+        const js_2 = compat.bufPrintZ(&buf, "document.getElementById('urlSpan2').innerHTML = '{s}';", .{public_win_url}) catch unreachable;
         private_window.run(js_2);
     }
 }

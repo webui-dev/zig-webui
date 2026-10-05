@@ -65,6 +65,13 @@ pub const FixedBufferStream = struct {
     }
 };
 
+/// Format into `buffer` with a NUL terminator. `std.fmt.bufPrintZ` was removed
+/// in Zig 0.17, and its replacement `std.mem.printSentinel` does not exist on 0.16.
+pub fn bufPrintZ(buffer: []u8, comptime format: []const u8, args: anytype) ![:0]u8 {
+    if (@hasDecl(std.mem, "printSentinel")) return std.mem.printSentinel(buffer, format, args, 0);
+    return std.fmt.bufPrintSentinel(buffer, format, args, 0);
+}
+
 // ===== Allocator compat ======================================================
 
 /// `std.heap.GeneralPurposeAllocator` was renamed to `std.heap.DebugAllocator`

@@ -87,7 +87,7 @@ fn events(e: *webui.Event) void {
     // userNumber
     {
         var buffer = std.mem.zeroes([2048]u8);
-        const js = std.fmt.bufPrintZ(
+        const js = compat.bufPrintZ(
             &buffer,
             "document.getElementById(\"userNumber\").innerText = \"{}\";",
             .{client_id},
@@ -98,7 +98,7 @@ fn events(e: *webui.Event) void {
     // connectionNumber
     {
         var buffer = std.mem.zeroes([2048]u8);
-        const js = std.fmt.bufPrintZ(
+        const js = compat.bufPrintZ(
             &buffer,
             "document.getElementById(\"connectionNumber\").innerText = \"{}\";",
             .{connection_id},
@@ -111,7 +111,7 @@ fn events(e: *webui.Event) void {
         const val = if (private_input_arr[client_id]) |val| val else "";
 
         var buffer = std.mem.zeroes([2048]u8);
-        const js = std.fmt.bufPrintZ(
+        const js = compat.bufPrintZ(
             &buffer,
             "document.getElementById(\"privateInput\").value = \"{s}\";",
             .{val},
@@ -123,7 +123,7 @@ fn events(e: *webui.Event) void {
     {
         const val = if (public_input) |val| val else "";
         var buffer = std.mem.zeroes([2048]u8);
-        const js = std.fmt.bufPrintZ(
+        const js = compat.bufPrintZ(
             &buffer,
             "document.getElementById(\"publicInput\").value = \"{s}\";",
             .{val},
@@ -137,7 +137,7 @@ fn events(e: *webui.Event) void {
     // userCount
     {
         var buffer = std.mem.zeroes([2048]u8);
-        const js = std.fmt.bufPrintZ(
+        const js = compat.bufPrintZ(
             &buffer,
             "document.getElementById(\"userCount\").innerText = \"{}\";",
             .{users_count},
@@ -148,7 +148,7 @@ fn events(e: *webui.Event) void {
     // tabCount
     {
         var buffer = std.mem.zeroes([2048]u8);
-        const js = std.fmt.bufPrintZ(
+        const js = compat.bufPrintZ(
             &buffer,
             "document.getElementById(\"tabCount\").innerText = \"{}\";",
             .{tab_count},
