@@ -93,11 +93,20 @@ pub fn addEmbeddedDir(b: *Build, module: *Module, options: EmbedDirOptions) !voi
     var dir = try root.openDir(io, options.path, .{ .iterate = true });
     defer dir.close(io);
 
+    // Zig 0.17 caches the configure phase. Declare every scanned directory so
+    // adding, deleting, or renaming a file re-runs this scan; file contents are
+    // already tracked by `addCopyFile`. The API is not recursive.
+    const track_dirs = @hasDecl(Build, "dependOnDirectoryContents");
+    if (track_dirs) b.dependOnDirectoryContents(b.path(options.path));
+
     var files: std.ArrayList([]const u8) = .empty;
     defer files.deinit(b.allocator);
     var walker = try dir.walk(b.allocator);
     defer walker.deinit();
     while (try walker.next(io)) |entry| {
+        if (track_dirs and entry.kind == .directory) {
+            b.dependOnDirectoryContents(b.path(b.pathJoin(&.{ options.path, entry.path })));
+        }
         if (entry.kind != .file) continue;
         const path = b.dupe(entry.path);
         if (builtin.os.tag == .windows) {
@@ -375,6 +384,9 @@ fn buildExamples(b: *Build, options: BuildExamplesOptions) !void {
             }
         };
         defer examples_dir.close(io);
+
+        // Re-run configuration when an example directory is added or removed.
+        b.dependOnDirectoryContents(b.path(examples_path));
 
         var iter = examples_dir.iterate();
         while (try iter.next(io)) |entry| {
