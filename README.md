@@ -61,9 +61,9 @@ Like `zig build run_minimal`, this will build and run the `minimal` example.
 
 ### Zig `0.16.0` and later
 
-This package targets Zig `0.16.0` and up. Nightly is
-still not recommended — the build-system API can change between dev builds
-and break the binding without warning.
+This package supports Zig `0.16.0` and `0.17.0`; CI builds and tests both.
+Nightly is still not recommended — the build-system API can change between
+dev builds and break the binding without warning.
 
 1. Add to `build.zig.zon`
 
