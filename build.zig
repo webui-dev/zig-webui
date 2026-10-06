@@ -108,7 +108,8 @@ pub fn addEmbeddedDir(b: *Build, module: *Module, options: EmbedDirOptions) !voi
             b.dependOnDirectoryContents(b.path(b.pathJoin(&.{ options.path, entry.path })));
         }
         if (entry.kind != .file) continue;
-        const path = b.dupe(entry.path);
+        // `b.dupe` returns `[]const u8` on Zig 0.17; the path is rewritten in place on Windows.
+        const path = try b.allocator.dupe(u8, entry.path);
         if (builtin.os.tag == .windows) {
             for (path) |*char| {
                 if (char.* == '\\') char.* = '/';
